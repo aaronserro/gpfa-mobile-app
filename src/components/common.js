@@ -110,7 +110,7 @@ export function Logo({ size = 44, stroke = colors.green, strokeWidth = 1.6, spin
  */
 export function DiagonalStripes({ height, radius = 0 }) {
   return (
-    <View style={{ position: 'absolute', inset: 0, borderRadius: radius, overflow: 'hidden' }}>
+    <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
       <Svg width="100%" height={height}>
         <Defs>
           <Pattern id="stripes" patternUnits="userSpaceOnUse" width="22.6" height="22.6" patternTransform="rotate(45)">
