@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import Svg, { Defs, Ellipse, G, Path, Pattern, Rect } from 'react-native-svg';
 import { colors } from '../theme';
 
