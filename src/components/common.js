@@ -108,17 +108,22 @@ export function Logo({ size = 44, stroke = colors.green, strokeWidth = 1.6, spin
  * Stand-in for the design's `repeating-linear-gradient` cover art, which has no
  * RN equivalent — drawn as an SVG pattern instead.
  */
+let patternSeq = 0;
+
 export function DiagonalStripes({ height, radius = 0 }) {
+  // Pattern ids share one namespace, so each instance needs its own.
+  const id = useRef(`stripes${patternSeq++}`).current;
+
   return (
     <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
       <Svg width="100%" height={height}>
         <Defs>
-          <Pattern id="stripes" patternUnits="userSpaceOnUse" width="22.6" height="22.6" patternTransform="rotate(45)">
+          <Pattern id={id} patternUnits="userSpaceOnUse" width="22.6" height="22.6" patternTransform="rotate(45)">
             <Rect x="0" y="0" width="11.3" height="22.6" fill="rgba(169,217,164,0.07)" />
           </Pattern>
         </Defs>
         <Rect x="0" y="0" width="100%" height={height} fill={colors.band} />
-        <Rect x="0" y="0" width="100%" height={height} fill="url(#stripes)" />
+        <Rect x="0" y="0" width="100%" height={height} fill={`url(#${id})`} />
       </Svg>
     </View>
   );

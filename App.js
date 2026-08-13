@@ -1,262 +1,175 @@
 import { useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-export default function App() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+import ComposeSheet from './src/components/ComposeSheet';
+import MoreSheet from './src/components/MoreSheet';
+import TabBar from './src/components/TabBar';
+import { FadeIn } from './src/components/common';
+import { initialGroups, initialThreads } from './src/data';
+import { colors } from './src/theme';
 
-  const handleSignIn = () => {
-    if (!email.trim() || !password) {
-      Alert.alert('Missing info', 'Please enter both your email and password.');
+import Announcements from './src/screens/Announcements';
+import Ask from './src/screens/Ask';
+import Directory from './src/screens/Directory';
+import GroupThreads from './src/screens/GroupThreads';
+import Groups from './src/screens/Groups';
+import Home from './src/screens/Home';
+import News from './src/screens/News';
+import Profile from './src/screens/Profile';
+import SignIn from './src/screens/SignIn';
+import Thread from './src/screens/Thread';
+
+const NOTIF_COUNT = 2;
+
+export default function App() {
+  const [screen, setScreen] = useState('signin');
+  const [groups, setGroups] = useState(initialGroups);
+  const [threads, setThreads] = useState(initialThreads);
+  const [groupFilter, setGroupFilter] = useState('All');
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedThread, setSelectedThread] = useState(null);
+  const [showMore, setShowMore] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+
+  const group = groups.find((g) => g.id === selectedGroup) || null;
+  const thread = threads.find((t) => t.id === selectedThread) || null;
+  const groupThreads = threads.filter((t) => t.group === selectedGroup);
+
+  const go = (next) => {
+    setShowMore(false);
+    setScreen(next);
+  };
+
+  const openThread = (t) => {
+    setSelectedGroup(t.group);
+    setSelectedThread(t.id);
+    go('thread');
+  };
+
+  const toggleSub = (id) =>
+    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, subscribed: !g.subscribed } : g)));
+
+  const postReply = (text) =>
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === selectedThread
+          ? { ...t, posts: [...t.posts, { author: 'Aaron Serro', time: 'now', text }] }
+          : t
+      )
+    );
+
+  const createThread = (title, tags) => {
+    if (!group) return;
+    setThreads((prev) => [
+      {
+        id: `new${Date.now()}`,
+        group: group.id,
+        title,
+        author: 'Aaron Serro',
+        time: 'now',
+        tags: tags.length ? tags : ['#discussion'],
+        posts: [{ author: 'Aaron Serro', time: 'now', text: 'Opening this thread for the group — replies welcome.' }],
+      },
+      ...prev,
+    ]);
+    setShowCompose(false);
+  };
+
+  const onTab = (key) => {
+    if (key === 'more') {
+      setShowMore((v) => !v);
       return;
     }
-    Alert.alert('Signed in', `Welcome back, ${email.trim()}!`);
+    go(key);
+  };
+
+  const renderScreen = () => {
+    switch (screen) {
+      case 'signin':
+        return <SignIn onContinue={() => go('home')} />;
+      case 'home':
+        return (
+          <Home
+            threads={threads}
+            notifCount={NOTIF_COUNT}
+            onOpenThread={openThread}
+            onGoGroups={() => go('groups')}
+            onGoNews={() => go('news')}
+            onGoProfile={() => go('profile')}
+          />
+        );
+      case 'groups':
+        return (
+          <Groups
+            groups={groups}
+            threads={threads}
+            filter={groupFilter}
+            onFilter={setGroupFilter}
+            onToggleSub={toggleSub}
+            onOpenGroup={(id) => {
+              setSelectedGroup(id);
+              go('group');
+            }}
+          />
+        );
+      case 'group':
+        return (
+          <GroupThreads
+            group={group}
+            threads={groupThreads}
+            onBack={() => go('groups')}
+            onOpenThread={openThread}
+            onCompose={() => setShowCompose(true)}
+          />
+        );
+      case 'thread':
+        return (
+          <Thread
+            thread={thread}
+            groupName={group ? group.name : 'Back'}
+            onBack={() => go('group')}
+            onReply={postReply}
+          />
+        );
+      case 'directory':
+        return <Directory />;
+      case 'ask':
+        return <Ask />;
+      case 'news':
+        return <News />;
+      case 'announcements':
+        return <Announcements />;
+      case 'profile':
+        return <Profile onSignOut={() => go('signin')} />;
+      default:
+        return null;
+    }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>GP</Text>
-          </View>
+    <View style={styles.root}>
+      <StatusBar style="light" />
 
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to GPFA</Text>
+      {/* Keyed so every screen change replays the design's `screenIn` entrance. */}
+      <FadeIn key={screen} offset={14} duration={380} style={styles.screen}>
+        {renderScreen()}
+      </FadeIn>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
-              placeholderTextColor="#9AA3AF"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-            />
-          </View>
+      {screen !== 'signin' && <TabBar screen={screen} showMore={showMore} onSelect={onTab} />}
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#9AA3AF"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoComplete="password"
-              />
-              <Pressable
-                style={styles.toggle}
-                onPress={() => setShowPassword((v) => !v)}
-                hitSlop={8}
-              >
-                <Text style={styles.toggleText}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <Pressable hitSlop={8} onPress={() => Alert.alert('Forgot password', 'UI only — no backend wired up.')}>
-            <Text style={styles.forgot}>Forgot password?</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-            onPress={handleSignIn}
-          >
-            <Text style={styles.buttonText}>Sign in</Text>
-          </Pressable>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.divider} />
-          </View>
-
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-            onPress={() => Alert.alert('Continue as guest', 'UI only — no backend wired up.')}
-          >
-            <Text style={styles.secondaryButtonText}>Continue as guest</Text>
-          </Pressable>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <Pressable hitSlop={8} onPress={() => Alert.alert('Sign up', 'UI only — no backend wired up.')}>
-              <Text style={styles.footerLink}>Sign up</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      {showMore && <MoreSheet onClose={() => setShowMore(false)} onNavigate={go} />}
+      {showCompose && <ComposeSheet onClose={() => setShowCompose(false)} onCreate={createThread} />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.bg,
   },
-  flex: {
+  screen: {
     flex: 1,
-  },
-  scroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 48,
-  },
-  logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 28,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#6B7280',
-    marginTop: 6,
-    marginBottom: 32,
-  },
-  field: {
-    marginBottom: 18,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
-  },
-  passwordRow: {
-    justifyContent: 'center',
-  },
-  passwordInput: {
-    paddingRight: 68,
-  },
-  toggle: {
-    position: 'absolute',
-    right: 16,
-  },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2563EB',
-  },
-  forgot: {
-    alignSelf: 'flex-end',
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2563EB',
-    marginBottom: 28,
-  },
-  button: {
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.85,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    fontSize: 13,
-    color: '#9AA3AF',
-  },
-  secondaryButton: {
-    height: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButtonText: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 32,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  footerLink: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2563EB',
   },
 });
