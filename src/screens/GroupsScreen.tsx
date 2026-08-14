@@ -5,7 +5,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, DisplayHead, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
-import { GROUPS, initials } from '../data/portal';
+import { GROUPS, initials, type Reply } from '../data/portal';
+
+export interface GroupsScreenProps {
+  groupIndex: number;
+  onPickGroup: (index: number) => void;
+  threadId: string | null;
+  onOpenThread: (id: string) => void;
+  onCloseThread: () => void;
+  /** Replies posted this session, kept out of the static data and keyed by thread. */
+  extraReplies: Record<string, Reply[] | undefined>;
+  onReply: (threadId: string, reply: Reply) => void;
+  /** Chosen option index per thread; absent means this member has not voted. */
+  votes: Record<string, number | undefined>;
+  onVote: (threadId: string, option: number) => void;
+}
 
 export default function GroupsScreen({
   groupIndex,
@@ -17,7 +31,7 @@ export default function GroupsScreen({
   onReply,
   votes,
   onVote,
-}) {
+}: GroupsScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
@@ -25,7 +39,7 @@ export default function GroupsScreen({
   const group = GROUPS[groupIndex];
   const thread = threadId ? GROUPS.flatMap((g) => g.threads).find((x) => x.id === threadId) : null;
 
-  const repliesFor = (id) => {
+  const repliesFor = (id: string): Reply[] => {
     const base = GROUPS.flatMap((g) => g.threads).find((x) => x.id === id)?.replies ?? [];
     return [...base, ...(extraReplies[id] ?? [])];
   };
@@ -200,7 +214,6 @@ export default function GroupsScreen({
   return (
     <View style={styles.fill}>
       <View style={[styles.listHeader, { backgroundColor: t.surfacePaper, paddingTop: topPad(insets.top, 66) }]}>
-        <Eyebrow size={10}>Discussion board</Eyebrow>
         <DisplayHead size={22} em="groups." style={styles.head}>
           Working{' '}
         </DisplayHead>

@@ -6,9 +6,19 @@ import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
 import { GROUPS, NEWS } from '../data/portal';
 
-const bannerLogo = require('../../assets/banner-logo-white.png');
+import bannerLogo from '../../assets/banner-logo-white.png';
 
-export default function HomeScreen({ onGoAsk, onGoGroups, onPickGroup, showBadges }) {
+export default function HomeScreen({
+  onGoAsk,
+  onGoGroups,
+  onPickGroup,
+  showBadges,
+}: {
+  onGoAsk: () => void;
+  onGoGroups: () => void;
+  onPickGroup: (index: number) => void;
+  showBadges: boolean;
+}) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -18,18 +28,13 @@ export default function HomeScreen({ onGoAsk, onGoGroups, onPickGroup, showBadge
         <RadialWash washes={[{ color: t.brandBlue, o: 0.14, cx: '0.88', cy: '0', rx: '1.2', ry: '1.3', stop: '0.55' }]} />
         <View style={styles.mastheadRow}>
           <Image source={bannerLogo} style={styles.logo} resizeMode="contain" />
-          <View style={styles.mastheadRight}>
-            <MastheadMeta size={10} color={alpha(t.inkInverse, 0.6)} style={styles.volume}>
-              VOL. 06 · NO. 32{'\n'}THU, AUG 13 2026
-            </MastheadMeta>
-            <Pressable
-              onPress={toggle}
-              accessibilityLabel="Toggle dark mode"
-              style={[styles.iconBtn, { borderColor: t.ruleOnAnchor }]}
-            >
-              {isDark ? <Sun size={18} color="#fff" /> : <Moon size={18} color="#fff" />}
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={toggle}
+            accessibilityLabel="Toggle dark mode"
+            style={[styles.iconBtn, { borderColor: t.ruleOnAnchor }]}
+          >
+            {isDark ? <Sun size={18} color="#fff" /> : <Moon size={18} color="#fff" />}
+          </Pressable>
         </View>
         <DisplayHead size={26} onAnchor em="Robert." style={styles.greeting}>
           Good morning,{' '}
@@ -133,12 +138,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logo: { width: 112, height: 30 },
-  mastheadRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  volume: { textAlign: 'right' },
   iconBtn: {
     width: 44,
     height: 44,

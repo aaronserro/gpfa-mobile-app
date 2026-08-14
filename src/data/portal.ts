@@ -1,6 +1,67 @@
 /** Content transcribed verbatim from the design's DCLogic constructor. */
+import type { WgRuleClass } from '../ds/tokens';
 
-export const GROUPS = [
+export interface Reply {
+  a: string;
+  org: string;
+  time: string;
+  initials?: string;
+  /** Rendered as a highlighted @-mention prefix before the body text. */
+  mention?: string;
+  text: string;
+}
+
+export interface PollOption {
+  label: string;
+  votes: number;
+}
+
+export interface Poll {
+  q: string;
+  closes: string;
+  options: PollOption[];
+}
+
+export interface Thread {
+  id: string;
+  title: string;
+  author: string;
+  org: string;
+  time: string;
+  body: string;
+  file?: string;
+  fileMeta?: string;
+  poll?: Poll;
+  replies: Reply[];
+}
+
+export interface Group {
+  id: string;
+  n: string;
+  short: string;
+  cls: WgRuleClass;
+  unread: number;
+  meta: string;
+  threads: Thread[];
+}
+
+export interface Answer {
+  /** Lowercased substrings matched against the question. */
+  k: string[];
+  text: string;
+  sources: string[];
+}
+
+export type Relevance = 'high' | 'medium' | 'low';
+
+export interface NewsItem {
+  rel: Relevance;
+  tag: string;
+  t: string;
+  src: string;
+}
+
+export const GROUPS: Group[] = [
   {
     id: 'cl',
     n: 'Collateral & Liquidity',
@@ -159,7 +220,7 @@ export const GROUPS = [
   },
 ];
 
-export const ANSWERS = [
+export const ANSWERS: Answer[] = [
   {
     k: ['indemn'],
     text: 'Across responding members, agent-provided indemnification remains the default: 28 of 41 organizations in the 2026 practices survey retain it for securities lending, 9 run split structures, and 4 lend unindemnified in at least one program. The live question is pricing — three working groups currently have threads on how Basel recalibration shifts indemnification capital costs, and the draft comparison matrix in Collateral & Liquidity normalizes terms across 24 member programs.',
@@ -177,28 +238,28 @@ export const ANSWERS = [
   },
 ];
 
-export const FALLBACK_ANSWER = {
+export const FALLBACK_ANSWER: Omit<Answer, 'k'> = {
   text: 'I could not find a direct match in the member library for that. The closest material is in the working-group threads — try narrowing to a topic like indemnification, collateral mix, or the tri-party pilot, or post the question to the relevant working group.',
   sources: ['Member library — search index'],
 };
 
-export const NEWS = [
+export const NEWS: NewsItem[] = [
   { rel: 'high', tag: 'Sec Finance', t: 'CDCC expands cleared repo access for beneficial owners', src: 'SECURITIES FINANCE TIMES · 2H' },
   { rel: 'high', tag: 'Regulation', t: 'Basel endgame recalibration: what changes for agency lending indemnification', src: 'RISK.NET · 5H' },
   { rel: 'medium', tag: 'Collateral', t: 'Tri-party interoperability pilot adds two more custodians', src: 'GLOBAL INVESTOR · 9H' },
   { rel: 'low', tag: 'Markets', t: 'Sovereign funds lift allocations to private credit', src: 'FT · 1D' },
 ];
 
-export const SUGGESTIONS = [
+export const SUGGESTIONS: string[] = [
   'How do peers structure agency-lending indemnification?',
   "Summarize this week's Collateral & Liquidity activity",
   'When is the next members-only roundtable?',
 ];
 
-export const initials = (n) =>
+export const initials = (n: string): string =>
   n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
-export const findAnswer = (q) => {
+export const findAnswer = (q: string): Omit<Answer, 'k'> => {
   const lq = q.toLowerCase();
-  return ANSWERS.find((a) => a.k.some((k) => lq.includes(k))) || FALLBACK_ANSWER;
+  return ANSWERS.find((a) => a.k.some((k) => lq.includes(k))) ?? FALLBACK_ANSWER;
 };

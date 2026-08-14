@@ -1,5 +1,5 @@
 /**
- * Regenerates src/components/globe/cobeBundle.js from the installed `cobe`
+ * Regenerates src/components/globe/cobeBundle.ts from the installed `cobe`
  * package. Run after bumping cobe:  node scripts/vendor-cobe.js
  *
  * cobe ships a single self-contained ESM file. The WebView that hosts the globe
@@ -33,5 +33,5 @@ const out = `// Vendored from cobe@${pkg.version} (MIT, https://github.com/shudi
 export default \`${escaped}\`;
 `;
 
-fs.writeFileSync(path.join(root, 'src/components/globe/cobeBundle.js'), out);
+fs.writeFileSync(path.join(root, 'src/components/globe/cobeBundle.ts'), out);
 console.log(`cobe@${pkg.version} vendored (binding: ${match[1]}, ${out.length} bytes)`);

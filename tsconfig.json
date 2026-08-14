@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      // Icons are deep-imported from lib/commonjs to keep the ~1500-icon barrel
+      // out of the bundle (see src/ds/icons.ts), but the package ships its
+      // declarations under lib/typescript instead of beside that build.
+      "phosphor-react-native/lib/commonjs/icons/*": [
+        "./node_modules/phosphor-react-native/lib/typescript/icons/*"
+      ]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
+  "exclude": ["node_modules", "scripts"]
+}

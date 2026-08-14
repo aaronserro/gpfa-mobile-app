@@ -7,10 +7,17 @@ import { useTheme } from '../ds/ThemeProvider';
 import { sans, topPad } from '../ds/tokens';
 import { findAnswer, SUGGESTIONS } from '../data/portal';
 
-const markLogo = require('../../assets/logo-no-txt.png');
+interface ChatMessage {
+  /** true when the member asked it, false for a GPFA answer. */
+  user: boolean;
+  text: string;
+  sources?: string[];
+}
+
+import markLogo from '../../assets/logo-no-txt.png';
 
 /** One dot of the three-dot typing indicator (@keyframes ask-dot). */
-function Dot({ delay, color }) {
+function Dot({ delay, color }: { delay: number; color: string }) {
   const p = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const a = Animated.loop(
@@ -42,15 +49,15 @@ function Dot({ delay, color }) {
 export default function AskScreen() {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
-  const scroller = useRef(null);
-  const timer = useRef(null);
+  const scroller = useRef<ScrollView>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const ask = (q) => {
+  const ask = (q: string) => {
     const question = q.trim();
     if (!question) return;
     setMessages((prev) => [...prev, { user: true, text: question }]);
@@ -80,9 +87,6 @@ export default function AskScreen() {
         <DisplayHead size={22} em="GPFA." style={styles.head}>
           Ask{' '}
         </DisplayHead>
-        <Text style={[styles.sub, { color: t.inkMuted }]}>
-          Answers grounded in the member library and working-group threads
-        </Text>
       </View>
 
       <ScrollView
@@ -96,9 +100,6 @@ export default function AskScreen() {
         {empty && (
           <View>
             <Image source={markLogo} style={styles.mark} resizeMode="contain" />
-            <Text style={[styles.emptyCopy, { color: t.inkMuted }]}>
-              Ask anything covered by member discussion, the library, or the news radar.
-            </Text>
             <Eyebrow size={10} style={styles.tryHead}>
               Try asking
             </Eyebrow>
@@ -201,11 +202,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   head: { marginTop: 4 },
-  sub: {
-    marginTop: 3,
-    fontFamily: sans(400),
-    fontSize: 12.5,
-  },
   chat: {
     padding: 20,
     paddingBottom: 24,
@@ -217,14 +213,6 @@ const styles = StyleSheet.create({
     marginTop: 26,
     marginBottom: 10,
     opacity: 0.85,
-  },
-  emptyCopy: {
-    textAlign: 'center',
-    fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 19,
-    maxWidth: 230,
-    alignSelf: 'center',
   },
   tryHead: { marginTop: 26, marginBottom: 10 },
   suggestions: { gap: 8 },

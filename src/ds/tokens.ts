@@ -9,9 +9,56 @@
  */
 
 /** rgba() from a #rrggbb hex plus an alpha, standing in for color-mix with transparent. */
-export function alpha(hex, a) {
+export function alpha(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** The resolved token set for one theme — the RN stand-in for `:root` / `.dark`. */
+export interface Theme {
+  name: 'light' | 'dark';
+
+  surfacePage: string;
+  surfacePaper: string;
+  surfaceSoft: string;
+  surfaceAnchor: string;
+  surfaceAnchorSoft: string;
+
+  inkStrong: string;
+  inkBody: string;
+  inkMuted: string;
+  inkFaint: string;
+  inkInverse: string;
+
+  brandGreen: string;
+  brandGreenStrong: string;
+  brandGreenSoft: string;
+  brandGreenOnDark: string;
+  brandLeaf: string;
+  brandRed: string;
+  brandBlue: string;
+  brandAmber: string;
+  brandAmberSoft: string;
+  brandBrick: string;
+  brandBrickInk: string;
+
+  ruleHairline: string;
+  ruleStrong: string;
+  ruleOnAnchor: string;
+
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  muted: string;
+  mutedForeground: string;
+  border: string;
+  input: string;
+
+  radius: number;
+  radiusCard: number;
+  radiusBtn: number;
+  radiusPill: number;
 }
 
 const shared = {
@@ -25,7 +72,7 @@ const shared = {
   radiusPill: 9999,
 };
 
-export const light = {
+export const light: Theme = {
   ...shared,
   name: 'light',
   surfacePage: '#f7fafb',
@@ -64,7 +111,7 @@ export const light = {
   input: '#c8d8dc',
 };
 
-export const dark = {
+export const dark: Theme = {
   ...shared,
   name: 'dark',
   surfacePage: '#081416',
@@ -107,18 +154,40 @@ export const dark = {
  * RN selects a face by family name, not by numeric weight, so every weight is
  * a separate loaded font.
  */
-export const sans = (w = 400) =>
-  ({ 400: 'Inter_400Regular', 500: 'Inter_500Medium', 600: 'Inter_600SemiBold', 700: 'Inter_700Bold' })[w];
+export type SansWeight = 400 | 500 | 600 | 700;
+export type MonoWeight = 400 | 500 | 600;
 
-export const mono = (w = 400) =>
-  ({ 400: 'JetBrainsMono_400Regular', 500: 'JetBrainsMono_500Medium', 600: 'JetBrainsMono_600SemiBold' })[w];
+const SANS: Record<SansWeight, string> = {
+  400: 'Inter_400Regular',
+  500: 'Inter_500Medium',
+  600: 'Inter_600SemiBold',
+  700: 'Inter_700Bold',
+};
+
+const MONO: Record<MonoWeight, string> = {
+  400: 'JetBrainsMono_400Regular',
+  500: 'JetBrainsMono_500Medium',
+  600: 'JetBrainsMono_600SemiBold',
+};
+
+export const sans = (w: SansWeight = 400): string => SANS[w];
+export const mono = (w: MonoWeight = 400): string => MONO[w];
 
 /** --tracking-display / --tracking-eyebrow, converted from em to points at a given size. */
-export const trackDisplay = (size) => size * -0.021;
-export const trackEyebrow = (size) => size * 0.18;
+export const trackDisplay = (size: number): number => size * -0.021;
+export const trackEyebrow = (size: number): number => size * 0.18;
 
-/** Left rules for working groups (.wg-rule-* in base.css). */
-export const wgRule = (t, cls) =>
+/** The .wg-rule-* left-border variants in base.css. */
+export type WgRuleClass =
+  | 'wg-rule-legal'
+  | 'wg-rule-risk'
+  | 'wg-rule-technology'
+  | 'wg-rule-collateral-liquidity'
+  | 'wg-rule-private-credit'
+  | 'wg-rule-regional'
+  | 'wg-rule-general';
+
+export const wgRule = (t: Theme, cls: WgRuleClass): string =>
   ({
     'wg-rule-legal': t.surfaceAnchor,
     'wg-rule-risk': t.brandRed,
@@ -127,7 +196,7 @@ export const wgRule = (t, cls) =>
     'wg-rule-private-credit': t.brandGreen,
     'wg-rule-regional': t.inkMuted,
     'wg-rule-general': t.ruleStrong,
-  })[cls] || 'transparent';
+  })[cls];
 
 /**
  * The iOS device frame in the design puts 62px of status bar above the content,
@@ -135,4 +204,5 @@ export const wgRule = (t, cls) =>
  * replaces that allowance.
  */
 export const FRAME_STATUS_BAR = 62;
-export const topPad = (insetTop, designTop) => Math.max(insetTop, 0) + (designTop - FRAME_STATUS_BAR);
+export const topPad = (insetTop: number, designTop: number): number =>
+  Math.max(insetTop, 0) + (designTop - FRAME_STATUS_BAR);

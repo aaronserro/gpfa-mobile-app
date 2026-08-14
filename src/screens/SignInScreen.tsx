@@ -6,9 +6,9 @@ import { DisplayHead, Eyebrow, Input, RadialWash } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad } from '../ds/tokens';
 
-const bannerLogo = require('../../assets/banner-logo-white.png');
+import bannerLogo from '../../assets/banner-logo-white.png';
 
-export default function SignInScreen({ onSignIn }) {
+export default function SignInScreen({ onSignIn }: { onSignIn: () => void }) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');

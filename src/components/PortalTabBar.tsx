@@ -1,16 +1,34 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { Icon } from '../ds/icons';
 import { ChatCircleDots, House, UsersThree } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans } from '../ds/tokens';
 
-const TABS = [
+export type TabId = 'home' | 'ask' | 'groups';
+
+interface TabDef {
+  id: TabId;
+  label: string;
+  Icon: Icon;
+  badge?: number;
+}
+
+const TABS: TabDef[] = [
   { id: 'home', label: 'Home', Icon: House },
   { id: 'ask', label: 'Ask GPFA', Icon: ChatCircleDots },
   { id: 'groups', label: 'Groups', Icon: UsersThree, badge: 22 },
 ];
 
-export default function PortalTabBar({ tab, onSelect, showBadges }) {
+export default function PortalTabBar({
+  tab,
+  onSelect,
+  showBadges,
+}: {
+  tab: TabId;
+  onSelect: (tab: TabId) => void;
+  showBadges: boolean;
+}) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
 

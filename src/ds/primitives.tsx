@@ -1,13 +1,31 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import {
+  Animated,
+  Easing,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type StyleProp,
+  type TextInputProps,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from './ThemeProvider';
 import { alpha, mono, sans, trackDisplay, trackEyebrow } from './tokens';
+import type { Relevance } from '../data/portal';
 
 /* ── motion ──────────────────────────────────────────────────────────────── */
 
+interface FadeUpProps {
+  delay?: number;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}
+
 /** .fade-up — 480ms, 8px rise, --fade-ease. */
-export function FadeUp({ delay = 0, style, children }) {
+export function FadeUp({ delay = 0, style, children }: FadeUpProps) {
   const p = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const a = Animated.timing(p, {
@@ -35,7 +53,17 @@ export function FadeUp({ delay = 0, style, children }) {
 /* ── editorial type (base.css) ───────────────────────────────────────────── */
 
 /** .eyebrow — uppercase, 600, .18em tracking. `onAnchor` applies the anchor-surface override. */
-export function Eyebrow({ children, size = 11.5, onAnchor = false, style }) {
+export function Eyebrow({
+  children,
+  size = 11.5,
+  onAnchor = false,
+  style,
+}: {
+  children: ReactNode;
+  size?: number;
+  onAnchor?: boolean;
+  style?: StyleProp<TextStyle>;
+}) {
   const { t } = useTheme();
   return (
     <Text
@@ -56,7 +84,17 @@ export function Eyebrow({ children, size = 11.5, onAnchor = false, style }) {
 }
 
 /** .masthead-meta — mono, .04em tracking, muted. */
-export function MastheadMeta({ children, size = 11.5, color, style }) {
+export function MastheadMeta({
+  children,
+  size = 11.5,
+  color,
+  style,
+}: {
+  children: ReactNode;
+  size?: number;
+  color?: string;
+  style?: StyleProp<TextStyle>;
+}) {
   const { t } = useTheme();
   return (
     <Text
@@ -81,7 +119,20 @@ export function MastheadMeta({ children, size = 11.5, color, style }) {
  * accented fragment as `<em>`, which base.css recolors to --brand-green
  * (or --brand-green-on-dark on an anchor surface) with normal font-style.
  */
-export function DisplayHead({ children, em, size = 22, onAnchor = false, style }) {
+export function DisplayHead({
+  children,
+  em,
+  size = 22,
+  onAnchor = false,
+  style,
+}: {
+  children: ReactNode;
+  /** The design's `<em>` fragment, recoloured to the brand accent. */
+  em?: string;
+  size?: number;
+  onAnchor?: boolean;
+  style?: StyleProp<TextStyle>;
+}) {
   const { t } = useTheme();
   return (
     <Text
@@ -104,14 +155,45 @@ export function DisplayHead({ children, em, size = 22, onAnchor = false, style }
 
 /* ── components.css ──────────────────────────────────────────────────────── */
 
+export type BadgeVariant = 'secondary' | 'tag-green' | 'tag-default';
+
+export type InputProps = TextInputProps & {
+  /** Applies the sign-in overrides: translucent fill, light text. */
+  onAnchor?: boolean;
+};
+
+/** One layer of a CSS `radial-gradient(...)`, as percentages of the box. */
+export interface Wash {
+  color: string;
+  /** Tint opacity at the centre — the `color-mix` percentage. */
+  o: number;
+  cx: string;
+  cy: string;
+  rx: string;
+  ry: string;
+  /** Offset along the ray where the tint reaches full transparency. */
+  stop: string;
+}
+
 /** .gpfa-badge — h20 pill. variant: 'secondary' | 'tag-green' | 'tag-default'. */
-export function Badge({ children, variant = 'secondary', size = 12, style }) {
+export function Badge({
+  children,
+  variant = 'secondary',
+  size = 12,
+  style,
+}: {
+  children: ReactNode;
+  variant?: BadgeVariant;
+  size?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
   const { t } = useTheme();
-  const skin = {
+  const skins: Record<BadgeVariant, { bg: string; fg: string; upper: boolean }> = {
     secondary: { bg: t.secondary, fg: t.secondaryForeground, upper: false },
     'tag-green': { bg: t.brandGreenSoft, fg: t.brandGreenStrong, upper: true },
     'tag-default': { bg: t.surfaceSoft, fg: t.inkStrong, upper: true },
-  }[variant];
+  };
+  const skin = skins[variant];
 
   return (
     <View
@@ -144,7 +226,7 @@ export function Badge({ children, variant = 'secondary', size = 12, style }) {
 }
 
 /** .gpfa-card — 8px radius, hairline border, paper fill. */
-export function Card({ children, style }) {
+export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { t } = useTheme();
   return (
     <View
@@ -165,7 +247,15 @@ export function Card({ children, style }) {
 }
 
 /** .gpfa-avatar + __fallback — round, inset hairline ring, muted fill. */
-export function Avatar({ initials, size = 32, style }) {
+export function Avatar({
+  initials,
+  size = 32,
+  style,
+}: {
+  initials: string;
+  size?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
   const { t } = useTheme();
   return (
     <View
@@ -191,7 +281,7 @@ export function Avatar({ initials, size = 32, style }) {
 }
 
 /** .gpfa-input. `onAnchor` applies the sign-in overrides (translucent fill, light text). */
-export function Input({ onAnchor = false, style, ...props }) {
+export function Input({ onAnchor = false, style, ...props }: InputProps) {
   const { t } = useTheme();
   return (
     <TextInput
@@ -215,9 +305,10 @@ export function Input({ onAnchor = false, style, ...props }) {
 }
 
 /** .relevance-dot — high carries a 3px translucent ring. */
-export function RelevanceDot({ level, style }) {
+export function RelevanceDot({ level, style }: { level: Relevance; style?: StyleProp<ViewStyle> }) {
   const { t } = useTheme();
-  const fill = { high: t.brandGreen, medium: '#d6a64b', low: t.inkFaint }[level];
+  const fills: Record<Relevance, string> = { high: t.brandGreen, medium: '#d6a64b', low: t.inkFaint };
+  const fill = fills[level];
   return (
     <View
       style={[
@@ -276,7 +367,7 @@ export function LiveDot() {
  * Each wash: { color, o } tint, `cx`/`cy` center and `rx`/`ry` extent as CSS
  * percentages, and `stop` where it reaches full transparency.
  */
-export function RadialWash({ washes, style }) {
+export function RadialWash({ washes, style }: { washes: Wash[]; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[StyleSheet.absoluteFill, style]} pointerEvents="none">
       <Svg width="100%" height="100%">
@@ -288,7 +379,7 @@ export function RadialWash({ washes, style }) {
             </RadialGradient>
           ))}
         </Defs>
-        {washes.map((w, i) => (
+        {washes.map((_w, i) => (
           <Rect key={i} x="0" y="0" width="100%" height="100%" fill={`url(#w${i})`} />
         ))}
       </Svg>

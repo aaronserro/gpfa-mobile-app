@@ -13,16 +13,17 @@ import JetBrainsMono_400Regular from '@expo-google-fonts/jetbrains-mono/400Regul
 import JetBrainsMono_500Medium from '@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf';
 import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf';
 
-import PortalTabBar from './src/components/PortalTabBar';
+import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import type { Reply } from './src/data/portal';
 
 // The design exposes these as editor props on the component.
 const START_SIGNED_IN = false;
-const DEFAULT_TAB = 'home';
+const DEFAULT_TAB: TabId = 'home';
 const DARK_MODE = false;
 const SHOW_BADGES = true;
 
@@ -30,29 +31,29 @@ function Portal() {
   const { t, isDark } = useTheme();
 
   const [signedIn, setSignedIn] = useState(START_SIGNED_IN);
-  const [tab, setTab] = useState(DEFAULT_TAB);
+  const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
   const [groupIndex, setGroupIndex] = useState(0);
-  const [threadId, setThreadId] = useState(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   // Replies the member posts are kept outside the static data, keyed by thread.
-  const [extraReplies, setExtraReplies] = useState({});
-  const [votes, setVotes] = useState({});
+  const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
+  const [votes, setVotes] = useState<Record<string, number | undefined>>({});
 
-  const pickGroup = useCallback((i) => {
+  const pickGroup = useCallback((i: number) => {
     setGroupIndex(i);
     setThreadId(null);
     setTab('groups');
   }, []);
 
-  const addReply = useCallback((id, reply) => {
+  const addReply = useCallback((id: string, reply: Reply) => {
     setExtraReplies((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), reply] }));
   }, []);
 
   // One vote per organization — the first choice sticks.
-  const vote = useCallback((id, option) => {
+  const vote = useCallback((id: string, option: number) => {
     setVotes((prev) => (prev[id] === undefined ? { ...prev, [id]: option } : prev));
   }, []);
 
-  const selectTab = useCallback((next) => {
+  const selectTab = useCallback((next: TabId) => {
     setTab(next);
     if (next === 'groups') setThreadId(null);
   }, []);
@@ -86,7 +87,7 @@ function Portal() {
             {tab === 'groups' && (
               <GroupsScreen
                 groupIndex={groupIndex}
-                onPickGroup={(i) => {
+                onPickGroup={(i: number) => {
                   setGroupIndex(i);
                   setThreadId(null);
                 }}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { AccessibilityInfo, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import cobeBundle from './cobeBundle';
 
 /**
@@ -25,7 +25,22 @@ import cobeBundle from './cobeBundle';
 
 const MOVEMENT_DAMPING = 1400;
 
-export const GPFA_GLOBE_CONFIG = {
+/** A subset of COBE's options — only what this component passes through. */
+export interface GlobeConfig {
+  phi: number;
+  theta: number;
+  dark: number;
+  diffuse: number;
+  mapSamples: number;
+  mapBrightness: number;
+  /** Linear RGB triples in 0–1, not hex. */
+  baseColor: [number, number, number];
+  markerColor: [number, number, number];
+  glowColor: [number, number, number];
+  markers: { location: [number, number]; size: number }[];
+}
+
+export const GPFA_GLOBE_CONFIG: GlobeConfig = {
   phi: 0,
   theta: 0.28,
   dark: 1,
@@ -48,7 +63,15 @@ export const GPFA_GLOBE_CONFIG = {
   ],
 };
 
-function buildHtml({ config, interactive, reduceMotion }) {
+function buildHtml({
+  config,
+  interactive,
+  reduceMotion,
+}: {
+  config: GlobeConfig;
+  interactive: boolean;
+  reduceMotion: boolean;
+}): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -180,15 +203,32 @@ function buildHtml({ config, interactive, reduceMotion }) {
 </html>`;
 }
 
-export default function Globe({ style, config = GPFA_GLOBE_CONFIG, interactive = false, onReady, onError }) {
-  const [reduceMotion, setReduceMotion] = useState(null);
+export interface GlobeProps {
+  style?: StyleProp<ViewStyle>;
+  config?: GlobeConfig;
+  /** Off by default: a touch-capturing WebView would swallow ScrollView gestures. */
+  interactive?: boolean;
+  onReady?: () => void;
+  onError?: (error: Error) => void;
+}
+
+export default function Globe({
+  style,
+  config = GPFA_GLOBE_CONFIG,
+  interactive = false,
+  onReady,
+  onError,
+}: GlobeProps) {
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
   useEffect(() => {
     let alive = true;
     AccessibilityInfo.isReduceMotionEnabled()
       .then((v) => alive && setReduceMotion(v))
       .catch(() => alive && setReduceMotion(false));
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (v: boolean) =>
+      setReduceMotion(v)
+    );
     return () => {
       alive = false;
       sub?.remove();
@@ -201,7 +241,7 @@ export default function Globe({ style, config = GPFA_GLOBE_CONFIG, interactive =
     [config, interactive, reduceMotion]
   );
 
-  const onMessage = (event) => {
+  const onMessage = (event: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') onReady?.();
