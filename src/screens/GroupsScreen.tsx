@@ -4,44 +4,65 @@ import {
   ArrowBendUpLeft,
   ArrowFatUp,
   ArrowUp,
+  Bell,
   BookmarkSimple,
   CalendarDots,
+  CaretDown,
   CaretLeft,
   ChartBar,
-  ChartLineUp,
   ChatCircle,
+  Check,
   CheckCircle,
+  DotsThreeOutline,
   DownloadSimple,
   FileXls,
+  MagnifyingGlass,
   MapPin,
   Megaphone,
-  Plus,
-  Repeat,
+  PaperPlaneTilt,
+  ShareFat,
   SlidersHorizontal,
   UsersThree,
+  X,
+  type Icon,
 } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay } from '../ds/tokens';
-import { GROUPS, initials, type PostType, type Reply } from '../data/portal';
+import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
+import { GROUPS, initials, type PostType, type Reply, type Thread } from '../data/portal';
 
 export type RsvpChoice = 'yes' | 'no';
 
-/** Filter-sheet axes from the design's listVals(). */
-const TYPE_FILTERS = ['All', 'Discussion', 'Poll', 'Event', 'Announcement'] as const;
-const SORTS = ['Newest', 'Most commented', 'Most upvoted'] as const;
-type SortKey = (typeof SORTS)[number];
+const POST_TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
-/** The filter chips are Capitalised labels; post types are lowercase keys. */
-const postTypeLabel = (type: PostType | undefined): string => {
-  const key = type ?? 'discussion';
-  return key.charAt(0).toUpperCase() + key.slice(1);
+const TYPE_ICON: Record<PostType, Icon> = {
+  discussion: ChatCircle,
+  poll: ChartBar,
+  announcement: Megaphone,
+  event: CalendarDots,
 };
 
+const ROW_ICON = { calendar: CalendarDots, pin: MapPin, people: UsersThree };
+
+const SORTS = [
+  { id: 'newest', label: 'Newest', meta: 'NEWEST' },
+  { id: 'upvoted', label: 'Most upvoted', meta: 'MOST UPVOTED' },
+  { id: 'replies', label: 'Most replies', meta: 'MOST REPLIES' },
+] as const;
+type SortId = (typeof SORTS)[number]['id'];
+
+/** Every post paired with the group it belongs to — the feed spans all groups. */
+const ALL_POSTS: { post: Thread; groupId: string }[] = GROUPS.flatMap((g) =>
+  g.threads.map((post) => ({ post, groupId: g.id }))
+);
+
+const groupOf = (id: string) => GROUPS.find((g) => g.id === id);
+
 export interface GroupsScreenProps {
-  groupIndex: number;
-  onPickGroup: (index: number) => void;
+  /** Ids of the working groups whose posts appear in the feed. */
+  groupIds: string[];
+  onSetGroupIds: (ids: string[]) => void;
   threadId: string | null;
   onOpenThread: (id: string) => void;
   onCloseThread: () => void;
@@ -57,11 +78,13 @@ export interface GroupsScreenProps {
   /** RSVP per event post. */
   rsvps: Record<string, RsvpChoice | undefined>;
   onRsvp: (threadId: string, choice: RsvpChoice) => void;
+  /** Design prop: colour each card's left rule by working group. */
+  showRules?: boolean;
 }
 
 export default function GroupsScreen({
-  groupIndex,
-  onPickGroup,
+  groupIds,
+  onSetGroupIds,
   threadId,
   onOpenThread,
   onCloseThread,
@@ -73,19 +96,21 @@ export default function GroupsScreen({
   onToggleUpvote,
   rsvps,
   onRsvp,
+  showRules = true,
 }: GroupsScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<string>('All');
-  const [sort, setSort] = useState<SortKey>('Newest');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [types, setTypes] = useState<PostType[]>(POST_TYPES);
+  const [sortId, setSortId] = useState<SortId>('newest');
+  const [expanded, setExpanded] = useState<Record<string, boolean | undefined>>({});
 
-  const group = GROUPS[groupIndex];
-  const thread = threadId ? GROUPS.flatMap((g) => g.threads).find((x) => x.id === threadId) : null;
+  const thread = threadId ? ALL_POSTS.find((x) => x.post.id === threadId)?.post ?? null : null;
+  const group = threadId ? groupOf(ALL_POSTS.find((x) => x.post.id === threadId)?.groupId ?? '') : undefined;
 
   const repliesFor = (id: string): Reply[] => {
-    const base = GROUPS.flatMap((g) => g.threads).find((x) => x.id === id)?.replies ?? [];
+    const base = ALL_POSTS.find((x) => x.post.id === id)?.post.replies ?? [];
     return [...base, ...(extraReplies[id] ?? [])];
   };
 
@@ -104,13 +129,7 @@ export default function GroupsScreen({
     const isUpvoted = !!upvoted[thread.id];
     const rsvp = rsvps[thread.id];
 
-    const TypeIcon = {
-      discussion: ChatCircle,
-      poll: ChartLineUp,
-      announcement: Megaphone,
-      event: CalendarDots,
-    }[type];
-    const RowIcon = { calendar: CalendarDots, pin: MapPin, people: UsersThree };
+    const TypeIcon = TYPE_ICON[type];
 
     const send = () => {
       const text = draft.trim();
@@ -129,7 +148,7 @@ export default function GroupsScreen({
         >
           <Pressable onPress={onCloseThread} style={styles.backBtn} hitSlop={6}>
             <CaretLeft size={17} color={t.brandGreen} />
-            <Text style={[styles.backText, { color: t.brandGreen }]}>{group.n}</Text>
+            <Text style={[styles.backText, { color: t.brandGreen }]}>{group?.n ?? 'Back'}</Text>
           </Pressable>
         </View>
 
@@ -138,7 +157,7 @@ export default function GroupsScreen({
           <View
             style={[
               styles.post,
-              { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, borderLeftColor: kind.rule },
+              { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, borderLeftColor: kind.ink },
             ]}
           >
             <View style={styles.kindRow}>
@@ -183,7 +202,7 @@ export default function GroupsScreen({
               <>
                 <View style={styles.eventRows}>
                   {thread.eventRows.map((e) => {
-                    const RIcon = RowIcon[e.icon];
+                    const RIcon = ROW_ICON[e.icon];
                     return (
                       <View
                         key={e.text}
@@ -391,171 +410,248 @@ export default function GroupsScreen({
     );
   }
 
-  /* ── group feed ──────────────────────────────────────────────────────── */
-  // The design accents the last word of the group name: "Collateral & Liquidity."
-  const words = group.n.split(' ');
-  const lead = words.slice(0, -1).join(' ');
-  const tail = words[words.length - 1];
+  /* ── cross-group feed ────────────────────────────────────────────────── */
+  const allGroupsOn = groupIds.length === GROUPS.length;
 
-  const visible =
-    typeFilter === 'All'
-      ? [...group.threads]
-      : group.threads.filter((th) => postTypeLabel(th.type) === typeFilter);
+  const feed = ALL_POSTS.filter(
+    (x) => groupIds.includes(x.groupId) && types.includes(x.post.type ?? 'discussion')
+  );
 
-  if (sort === 'Most commented') {
-    visible.sort((a, b) => repliesFor(b.id).length - repliesFor(a.id).length);
-  } else if (sort === 'Most upvoted') {
-    visible.sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0));
+  if (sortId === 'newest') {
+    feed.sort((a, b) => (a.post.mins ?? 0) - (b.post.mins ?? 0));
+  } else if (sortId === 'upvoted') {
+    const score = (th: Thread) => (th.upvotes ?? 0) + (upvoted[th.id] ? 1 : 0);
+    feed.sort((a, b) => score(b.post) - score(a.post));
+  } else {
+    feed.sort((a, b) => repliesFor(b.post.id).length - repliesFor(a.post.id).length);
   }
 
-  const filterLabel = `${typeFilter === 'All' ? 'All posts' : typeFilter} · ${sort}`;
+  const sortMeta = SORTS.find((s) => s.id === sortId)?.meta ?? 'NEWEST';
+  const cycleSort = () => {
+    const i = SORTS.findIndex((s) => s.id === sortId);
+    setSortId(SORTS[(i + 1) % SORTS.length].id);
+  };
 
-  const chipRow = (options: readonly string[], active: string, onPick: (v: string) => void) => (
-    <View style={styles.sheetChips}>
-      {options.map((label) => {
-        const on = label === active;
-        return (
-          <Pressable
-            key={label}
-            onPress={() => onPick(label)}
-            style={[
-              styles.sheetChip,
-              {
-                backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
-                borderColor: on ? t.surfaceAnchor : t.ruleHairline,
-              },
-            ]}
-          >
-            <Text style={[styles.sheetChipText, { color: on ? t.inkInverse : t.inkMuted }]}>{label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  const toggleGroup = (id: string) =>
+    onSetGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
+
+  const toggleType = (k: PostType) =>
+    setTypes((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
+
+  /** Checkbox styling shared by the group and post-type rows. */
+  const box = (on: boolean) => ({
+    boxBg: on ? t.brandLeaf : t.surfacePaper,
+    boxBd: on ? t.brandLeaf : t.ruleHairline,
+    labelColor: on ? t.inkStrong : t.inkFaint,
+  });
+
+  const checkRow = (
+    key: string,
+    on: boolean,
+    onPress: () => void,
+    left: React.ReactNode,
+    label: string,
+    trailing?: string
+  ) => {
+    const b = box(on);
+    return (
+      <Pressable
+        key={key}
+        onPress={onPress}
+        style={({ pressed }) => [styles.drawerRow, pressed && { backgroundColor: t.surfacePage }]}
+      >
+        <View style={[styles.checkbox, { backgroundColor: b.boxBg, borderColor: b.boxBd }]}>
+          {on && <Check size={11} color="#fff" />}
+        </View>
+        {left}
+        <Text style={[styles.drawerLabel, { color: b.labelColor }]}>{label}</Text>
+        {!!trailing && <MastheadMeta size={10}>{trailing}</MastheadMeta>}
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.fill}>
       <View
         style={[
-          styles.feedHeader,
-          { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, paddingTop: topPad(insets.top, 66) },
+          styles.topBar,
+          { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, paddingTop: topPad(insets.top, 48) },
         ]}
       >
-        <Text style={[styles.feedTitle, { color: t.inkStrong }]}>
-          {lead}
-          {lead ? ' ' : ''}
-          <Text style={{ color: t.brandGreen }}>{tail}.</Text>
-        </Text>
-        <MastheadMeta size={10} style={styles.feedMeta}>
-          MEMBER-LED · {group.meta.toUpperCase()}
-        </MastheadMeta>
-      </View>
-
-      <View style={styles.composeRow}>
-        <View style={[styles.composeBox, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-          <View style={[styles.composePlus, { backgroundColor: t.surfaceAnchor }]}>
-            <Plus size={14} color="#fff" />
+        <View style={styles.searchRow}>
+          <Avatar initials="RG" size={32} />
+          <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+            <MagnifyingGlass size={15} color={t.inkMuted} />
+            <Text style={[styles.searchText, { color: t.inkFaint }]}>Search all posts</Text>
           </View>
-          <Text style={[styles.composeText, { color: t.inkMuted }]}>
-            Add a discussion, announcement, event, or poll
-          </Text>
+          <Bell size={21} color={t.inkMuted} />
+        </View>
+
+        <View style={styles.chipRow}>
+          <Pressable
+            onPress={() => setDrawerOpen(true)}
+            style={({ pressed }) => [
+              styles.chip,
+              { backgroundColor: t.surfaceAnchor, borderColor: t.surfaceAnchor, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <SlidersHorizontal size={13} color={t.inkInverse} />
+            <Text style={[styles.chipText, { color: t.inkInverse }]}>Filter</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setDrawerOpen(true)}
+            style={[styles.chip, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+          >
+            <Text style={[styles.chipText, { color: t.inkMuted }]}>
+              {allGroupsOn ? 'ALL GROUPS' : `${groupIds.length} GROUPS`}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={cycleSort}
+            style={[styles.chip, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+          >
+            <Text style={[styles.chipText, { color: t.inkMuted }]}>{sortMeta}</Text>
+            <CaretDown size={11} color={t.inkFaint} />
+          </Pressable>
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        <MastheadMeta size={10} style={styles.filterLabel}>
-          {filterLabel.toUpperCase()}
-        </MastheadMeta>
-        <Pressable
-          onPress={() => setSheetOpen(true)}
-          style={[styles.filterBtn, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
-        >
-          <SlidersHorizontal size={14} color={t.brandGreen} />
-          <Text style={[styles.filterBtnText, { color: t.brandGreen }]}>Filter</Text>
-        </Pressable>
-      </View>
-
       <ScrollView contentContainerStyle={styles.feed} showsVerticalScrollIndicator={false}>
-        {visible.map((th) => {
-          const replies = repliesFor(th.id);
-          const kind = postTypeStyle(t, th.type ?? 'discussion');
-          // The design's stacked avatars are the repliers, so derive them.
-          const stack = replies.slice(0, 3).map((r) => r.initials ?? initials(r.a));
+        {feed.map(({ post, groupId }) => {
+          const g = groupOf(groupId);
+          const kind = postTypeStyle(t, post.type ?? 'discussion');
+          const TypeIcon = TYPE_ICON[post.type ?? 'discussion'];
+          const replies = repliesFor(post.id);
+          const isUp = !!upvoted[post.id];
+          const isOpen = !!expanded[post.id];
+          const rule = showRules && g ? wgRule(t, g.cls) : t.ruleHairline;
+
           return (
             <Pressable
-              key={th.id}
-              onPress={() => onOpenThread(th.id)}
+              key={post.id}
+              onPress={() => onOpenThread(post.id)}
               style={({ pressed }) => [
                 styles.card,
                 {
                   backgroundColor: t.surfacePaper,
-                  borderColor: t.ruleHairline,
-                  borderLeftColor: kind.rule,
-                  opacity: pressed ? 0.85 : 1,
+                  borderTopColor: t.ruleHairline,
+                  borderBottomColor: t.ruleHairline,
+                  borderLeftColor: rule,
+                  opacity: pressed ? 0.9 : 1,
                 },
               ]}
             >
-              <View style={styles.cardHead}>
-                <Avatar initials={th.initials ?? initials(th.author)} size={24} />
-                <View style={[styles.typePill, { backgroundColor: kind.chipBg }]}>
-                  <Text style={[styles.typePillText, { color: kind.ink }]}>{kind.label}</Text>
+              <View style={styles.cardTop}>
+                <View style={[styles.typeChip, { backgroundColor: kind.chipBg, borderColor: kind.chipBd }]}>
+                  <TypeIcon size={11} color={kind.ink} />
+                  <Text style={[styles.typeChipText, { color: kind.ink }]}>{kind.label}</Text>
                 </View>
-                <MastheadMeta size={9.5} style={styles.cardMeta}>
-                  {th.author} · {th.org} · {th.time}
+                <MastheadMeta size={9.5} color={t.inkFaint} style={styles.groupName}>
+                  {g?.n.toUpperCase()}
+                </MastheadMeta>
+                {!!post.state && (
+                  <MastheadMeta size={9.5} color={t.inkFaint}>
+                    {post.state.toUpperCase()}
+                  </MastheadMeta>
+                )}
+              </View>
+
+              <View style={styles.feedByline}>
+                <Avatar initials={post.initials ?? initials(post.author)} size={36} />
+                <View style={styles.feedBylineText}>
+                  <Text style={[styles.feedAuthor, { color: t.inkStrong }]}>{post.author}</Text>
+                  <MastheadMeta size={10}>
+                    {post.org.toUpperCase()} · {post.time.toUpperCase()}
+                  </MastheadMeta>
+                </View>
+                <DotsThreeOutline size={17} color={t.inkFaint} />
+              </View>
+
+              <Text style={[styles.cardTitle, { color: t.inkStrong }]}>{post.title}</Text>
+
+              <Text style={[styles.cardBody, { color: t.inkBody }]} numberOfLines={isOpen ? undefined : 2}>
+                {post.body}
+              </Text>
+              {!isOpen && (
+                <Pressable
+                  onPress={() => setExpanded((prev) => ({ ...prev, [post.id]: true }))}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.seeMore, { color: t.inkMuted }]}>…see more</Text>
+                </Pressable>
+              )}
+
+              {!!post.file && (
+                <View style={[styles.attachment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+                  <FileXls size={22} color={t.brandGreen} />
+                  <View style={styles.attachmentBody}>
+                    <Text style={[styles.attachmentName, { color: t.inkStrong }]}>{post.file}</Text>
+                    <MastheadMeta size={9.5}>{post.fileMeta}</MastheadMeta>
+                  </View>
+                  <DownloadSimple size={17} color={t.inkFaint} />
+                </View>
+              )}
+
+              {!!post.poll && (
+                <View style={[styles.feedPoll, { borderColor: t.ruleHairline }]}>
+                  <View style={styles.pollQRow}>
+                    <ChartBar size={15} color={t.brandAmber} />
+                    <Text style={[styles.pollQ, { color: t.inkStrong }]}>{post.poll.q}</Text>
+                  </View>
+                  <View style={styles.pollOptions}>
+                    {post.poll.options.map((o) => (
+                      <View key={o.label} style={[styles.feedPollOption, { borderColor: t.ruleHairline }]}>
+                        <Text style={[styles.feedPollLabel, { color: t.inkStrong }]}>{o.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <MastheadMeta size={9.5} style={styles.pollMeta}>
+                    {post.poll.closes.toUpperCase()}
+                  </MastheadMeta>
+                </View>
+              )}
+
+              {!!post.eventRows && (
+                <View style={styles.eventRows}>
+                  {post.eventRows.map((e) => {
+                    const RIcon = ROW_ICON[e.icon];
+                    return (
+                      <View
+                        key={e.text}
+                        style={[styles.eventChip, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+                      >
+                        <RIcon size={13} color={t.inkMuted} />
+                        <Text style={[styles.eventChipText, { color: t.inkBody }]}>{e.text}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View style={[styles.countRow, { borderBottomColor: t.ruleHairline }]}>
+                <ArrowFatUp size={12} weight="fill" color={t.brandLeaf} />
+                <MastheadMeta size={10}>
+                  {(post.upvotes ?? 0) + (isUp ? 1 : 0)} · {replies.length} REPLIES
                 </MastheadMeta>
               </View>
 
-              <Text style={[styles.cardTitle, { color: t.inkStrong }]}>{th.title}</Text>
-              <Text style={[styles.cardBody, { color: t.inkBody }]} numberOfLines={3}>
-                {th.body}
-              </Text>
-
-              {!!th.feedStatus && (
-                <MastheadMeta size={9} color={kind.ink} style={styles.cardStatus}>
-                  {th.feedStatus}
-                </MastheadMeta>
-              )}
-
-              {!!th.tags?.length && (
-                <View style={styles.tagRow}>
-                  {th.tags.map((tag) => (
-                    <View key={tag} style={[styles.tag, { backgroundColor: t.surfaceSoft }]}>
-                      <Text style={[styles.tagText, { color: t.inkStrong }]}># {tag}</Text>
-                    </View>
-                  ))}
+              <View style={styles.actionRow}>
+                <Pressable style={styles.feedAction} onPress={() => onToggleUpvote(post.id)}>
+                  <ArrowFatUp size={18} color={isUp ? t.brandLeaf : t.inkMuted} />
+                  <Text style={[styles.feedActionText, { color: isUp ? t.brandLeaf : t.inkMuted }]}>Upvote</Text>
+                </Pressable>
+                <Pressable style={styles.feedAction} onPress={() => onOpenThread(post.id)}>
+                  <ChatCircle size={18} color={t.inkMuted} />
+                  <Text style={[styles.feedActionText, { color: t.inkMuted }]}>Comment</Text>
+                </Pressable>
+                <View style={styles.feedAction}>
+                  <ShareFat size={18} color={t.inkMuted} />
+                  <Text style={[styles.feedActionText, { color: t.inkMuted }]}>Share</Text>
                 </View>
-              )}
-
-              <View style={[styles.cardFoot, { borderTopColor: t.ruleHairline }]}>
-                <View style={[styles.upPill, { borderColor: t.ruleHairline }]}>
-                  <ArrowUp size={13} color={t.inkMuted} />
-                  <Text style={[styles.upCount, { color: t.inkBody }]}>{th.upvotes ?? 0}</Text>
-                </View>
-                <View style={styles.footStat}>
-                  <ChatCircle size={13} color={t.inkFaint} />
-                  <Text style={[styles.footStatText, { color: t.inkMuted }]}>{replies.length} comments</Text>
-                </View>
-                <View style={styles.footStat}>
-                  <Repeat size={13} color={t.inkFaint} />
-                  <Text style={[styles.footStatText, { color: t.inkMuted }]}>Repost {th.reposts ?? 0}</Text>
-                </View>
-                <View style={styles.footSpacer} />
-                <View style={styles.stack}>
-                  {stack.map((ini, i) => (
-                    <View
-                      key={`${ini}-${i}`}
-                      style={[
-                        styles.stackAvatar,
-                        {
-                          backgroundColor: t.surfaceSoft,
-                          borderColor: t.surfacePaper,
-                          marginLeft: i === 0 ? 0 : -6,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.stackText, { color: t.inkMuted }]}>{ini}</Text>
-                    </View>
-                  ))}
+                <View style={styles.feedAction}>
+                  <PaperPlaneTilt size={18} color={t.inkMuted} />
                 </View>
               </View>
             </Pressable>
@@ -567,27 +663,93 @@ export default function GroupsScreen({
         </Text>
       </ScrollView>
 
-      {sheetOpen && (
-        <View style={styles.sheetWrap}>
-          <Pressable style={styles.sheetScrim} onPress={() => setSheetOpen(false)} />
-          <View style={[styles.sheet, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
-            <View style={[styles.sheetGrabber, { backgroundColor: t.ruleHairline }]} />
-            <View style={styles.sheetHead}>
-              <Text style={[styles.sheetTitle, { color: t.inkStrong }]}>Filter &amp; sort</Text>
-              <Pressable onPress={() => setSheetOpen(false)} hitSlop={8}>
-                <Text style={[styles.sheetDone, { color: t.brandGreen }]}>Done</Text>
+      {drawerOpen && (
+        <View style={styles.drawerWrap}>
+          <Pressable style={styles.drawerScrim} onPress={() => setDrawerOpen(false)} />
+          <View style={[styles.drawer, { backgroundColor: t.surfacePaper, borderRightColor: t.ruleHairline }]}>
+            <View style={[styles.drawerHead, { borderBottomColor: t.ruleHairline, paddingTop: topPad(insets.top, 62) }]}>
+              <Text style={[styles.drawerTitle, { color: t.inkStrong }]}>Filter feed</Text>
+              <Pressable onPress={() => setDrawerOpen(false)} hitSlop={10}>
+                <X size={18} color={t.inkMuted} />
               </Pressable>
             </View>
 
-            <Eyebrow size={10} style={styles.sheetLabel}>
-              Post type
-            </Eyebrow>
-            {chipRow(TYPE_FILTERS, typeFilter, setTypeFilter)}
+            <ScrollView contentContainerStyle={styles.drawerBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.drawerSectionHead}>
+                <MastheadMeta size={9.5} color={t.inkFaint} style={styles.drawerSectionLabel}>
+                  WORKING GROUPS
+                </MastheadMeta>
+                <Pressable
+                  onPress={() => onSetGroupIds(allGroupsOn ? [] : GROUPS.map((g) => g.id))}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.drawerAction, { color: t.brandGreen }]}>
+                    {allGroupsOn ? 'None' : 'All'}
+                  </Text>
+                </Pressable>
+              </View>
 
-            <Eyebrow size={10} style={styles.sheetLabelTop}>
-              Sort by
-            </Eyebrow>
-            {chipRow(SORTS, sort, (v) => setSort(v as SortKey))}
+              {GROUPS.map((g) =>
+                checkRow(
+                  g.id,
+                  groupIds.includes(g.id),
+                  () => toggleGroup(g.id),
+                  <View key="swatch" style={[styles.swatch, { backgroundColor: wgRule(t, g.cls) }]} />,
+                  g.n,
+                  String(g.threads.length)
+                )
+              )}
+
+              <View style={[styles.drawerRule, { backgroundColor: t.ruleHairline }]} />
+
+              <MastheadMeta size={9.5} color={t.inkFaint} style={styles.drawerSectionLabelSolo}>
+                POST TYPE
+              </MastheadMeta>
+              {POST_TYPES.map((k) => {
+                const kind = postTypeStyle(t, k);
+                const TypeIcon = TYPE_ICON[k];
+                return checkRow(
+                  k,
+                  types.includes(k),
+                  () => toggleType(k),
+                  <TypeIcon key="icon" size={14} color={kind.ink} />,
+                  kind.label
+                );
+              })}
+
+              <View style={[styles.drawerRule, { backgroundColor: t.ruleHairline }]} />
+
+              <MastheadMeta size={9.5} color={t.inkFaint} style={styles.drawerSectionLabelSolo}>
+                SORT BY
+              </MastheadMeta>
+              {SORTS.map((s) => {
+                const on = s.id === sortId;
+                return (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => setSortId(s.id)}
+                    style={({ pressed }) => [styles.drawerRow, pressed && { backgroundColor: t.surfacePage }]}
+                  >
+                    <View style={[styles.radio, { borderColor: on ? t.brandLeaf : t.ruleHairline }]}>
+                      {on && <View style={[styles.radioDot, { backgroundColor: t.brandLeaf }]} />}
+                    </View>
+                    <Text style={[styles.drawerLabel, { color: on ? t.inkStrong : t.inkFaint }]}>{s.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <View style={[styles.drawerFoot, { borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 18) }]}>
+              <Pressable
+                onPress={() => setDrawerOpen(false)}
+                style={({ pressed }) => [
+                  styles.applyBtn,
+                  { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+                ]}
+              >
+                <Text style={styles.applyText}>Show {feed.length} posts</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -598,245 +760,273 @@ export default function GroupsScreen({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
 
-  feedHeader: {
-    paddingHorizontal: 20,
-    paddingBottom: 14,
+  topBar: {
+    paddingBottom: 10,
     borderBottomWidth: 1,
   },
-  feedTitle: {
-    marginTop: 4,
-    fontFamily: sans(600),
-    fontSize: 22,
-    lineHeight: 24.2,
-    letterSpacing: trackDisplay(22),
-  },
-  feedMeta: { marginTop: 6 },
-  composeRow: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  composeBox: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 48,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  search: {
+    flex: 1,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  searchText: {
+    fontFamily: sans(400),
+    fontSize: 13,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 30,
+    paddingHorizontal: 11,
+    borderRadius: 32,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontFamily: mono(400),
+    fontSize: 9.5,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  feed: {
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  card: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 3,
+    paddingTop: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 32,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  typeChipText: {
+    fontFamily: mono(400),
+    fontSize: 9.5,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  groupName: { flex: 1 },
+  feedByline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 11,
+  },
+  feedBylineText: { flex: 1 },
+  feedAuthor: {
+    fontFamily: sans(600),
+    fontSize: 13.5,
+  },
+  cardTitle: {
+    marginTop: 11,
+    fontFamily: sans(600),
+    fontSize: 15.5,
+    lineHeight: 20.5,
+    letterSpacing: -0.33,
+  },
+  cardBody: {
+    marginTop: 7,
+    fontFamily: sans(400),
+    fontSize: 13.5,
+    lineHeight: 21.6,
+  },
+  seeMore: {
+    fontFamily: sans(400),
+    fontSize: 13,
+  },
+  feedPoll: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+  },
+  feedPollOption: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderRadius: 8,
   },
-  composePlus: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  feedPollLabel: {
+    fontFamily: sans(500),
+    fontSize: 13,
+  },
+  countRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    marginTop: 13,
+    paddingBottom: 9,
+    borderBottomWidth: 1,
   },
-  composeText: {
-    flex: 1,
-    fontFamily: sans(400),
-    fontSize: 12.5,
-  },
-  filterRow: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingVertical: 4,
   },
-  filterLabel: { flex: 1, letterSpacing: 1.2 },
-  filterBtn: {
+  feedAction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    minHeight: 36,
+    minHeight: 44,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderWidth: 1,
-    borderRadius: 32,
   },
-  filterBtnText: {
-    fontFamily: mono(400),
-    fontSize: 10,
-    letterSpacing: 0.74,
-    textTransform: 'uppercase',
-  },
-  feed: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    gap: 12,
-  },
-  card: {
-    borderWidth: 1,
-    borderLeftWidth: 3,
-    borderRadius: 8,
-    paddingTop: 14,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-  },
-  cardHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  typePill: {
-    height: 20,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    borderRadius: 32,
-  },
-  typePillText: {
-    fontFamily: mono(400),
-    fontSize: 9,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  cardMeta: { flex: 1 },
-  cardTitle: {
-    marginTop: 10,
-    fontFamily: sans(600),
-    fontSize: 14.5,
-    lineHeight: 19.5,
-    letterSpacing: -0.3,
-  },
-  cardBody: {
-    marginTop: 6,
-    fontFamily: sans(400),
-    fontSize: 12.5,
-    lineHeight: 19,
-  },
-  cardStatus: { marginTop: 8, letterSpacing: 0.6 },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
-  },
-  tag: {
-    height: 20,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    borderRadius: 32,
-  },
-  tagText: {
-    fontFamily: mono(400),
-    fontSize: 9,
-    letterSpacing: 0.4,
-  },
-  cardFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 11,
-    borderTopWidth: 1,
-  },
-  upPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 30,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderRadius: 32,
-  },
-  upCount: {
-    fontFamily: sans(600),
-    fontSize: 11.5,
-  },
-  footStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 30,
-  },
-  footStatText: {
-    fontFamily: sans(400),
-    fontSize: 11.5,
-  },
-  footSpacer: { flex: 1 },
-  stack: { flexDirection: 'row' },
-  stackAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stackText: {
-    fontFamily: sans(600),
-    fontSize: 8.5,
+  feedActionText: {
+    fontFamily: sans(500),
+    fontSize: 12,
   },
   feedDisclaimer: {
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingTop: 8,
+    paddingHorizontal: 16,
     fontFamily: sans(400),
     fontSize: 10.5,
   },
-  sheetWrap: {
+  drawerWrap: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 80,
-    justifyContent: 'flex-end',
+    flexDirection: 'row',
   },
-  sheetScrim: {
+  drawerScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(19,35,41,.42)',
   },
-  sheet: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderTopWidth: 1,
-    paddingTop: 14,
-    paddingHorizontal: 20,
-    paddingBottom: 30,
+  drawer: {
+    width: 300,
+    borderRightWidth: 1,
   },
-  sheetGrabber: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
-  sheetHead: {
+  drawerHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
   },
-  sheetTitle: {
+  drawerTitle: {
     fontFamily: sans(600),
-    fontSize: 15,
-    letterSpacing: trackDisplay(15),
+    fontSize: 16,
+    letterSpacing: trackDisplay(16),
   },
-  sheetDone: {
-    fontFamily: mono(400),
-    fontSize: 10,
-    letterSpacing: 0.74,
-    textTransform: 'uppercase',
+  drawerBody: {
+    paddingTop: 14,
+    paddingBottom: 20,
   },
-  sheetLabel: { marginTop: 16, marginBottom: 8 },
-  sheetLabelTop: { marginTop: 18, marginBottom: 8 },
-  sheetChips: {
+  drawerSectionHead: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingBottom: 8,
   },
-  sheetChip: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+  drawerSectionLabel: { letterSpacing: 1.7 },
+  drawerSectionLabelSolo: {
+    letterSpacing: 1.7,
+    paddingHorizontal: 18,
+    paddingBottom: 8,
+  },
+  drawerAction: {
+    fontFamily: sans(400),
+    fontSize: 11,
+  },
+  drawerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 44,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+  },
+  drawerLabel: {
+    flex: 1,
+    fontFamily: sans(400),
+    fontSize: 13,
+  },
+  checkbox: {
+    width: 17,
+    height: 17,
+    borderRadius: 3,
     borderWidth: 1,
-    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sheetChipText: {
-    fontFamily: mono(400),
-    fontSize: 10.5,
-    letterSpacing: 0.74,
-    textTransform: 'uppercase',
+  swatch: {
+    width: 3,
+    height: 15,
+    borderRadius: 2,
   },
-
+  radio: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  drawerRule: {
+    height: 1,
+    marginVertical: 14,
+    marginHorizontal: 18,
+  },
+  drawerFoot: {
+    borderTopWidth: 1,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+  },
+  applyBtn: {
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyText: {
+    fontFamily: sans(600),
+    fontSize: 13.5,
+    color: '#fff',
+  },
   detailBar: {
     paddingHorizontal: 12,
     paddingBottom: 6,

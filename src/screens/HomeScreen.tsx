@@ -16,7 +16,7 @@ export default function HomeScreen({
 }: {
   onGoAsk: () => void;
   onGoGroups: () => void;
-  onPickGroup: (index: number) => void;
+  onPickGroup: (groupId: string) => void;
   showBadges: boolean;
 }) {
   const { t, isDark, toggle } = useTheme();
@@ -79,7 +79,7 @@ export default function HomeScreen({
         {GROUPS.map((g, i) => (
           <Pressable
             key={g.id}
-            onPress={() => onPickGroup(i)}
+            onPress={() => onPickGroup(g.id)}
             style={({ pressed }) => [
               styles.groupRow,
               { borderLeftColor: wgRule(t, g.cls) },
@@ -93,7 +93,7 @@ export default function HomeScreen({
                 {g.threads[0].title}
               </Text>
             </View>
-            {showBadges && <Badge variant="secondary">{g.unread}</Badge>}
+            {showBadges && g.unread > 0 && <Badge variant="secondary">{g.unread}</Badge>}
           </Pressable>
         ))}
       </View>

@@ -188,15 +188,15 @@ export type WgRuleClass =
   | 'wg-rule-general';
 
 /**
- * Per post type: left rule colour, chip ink/fill, and label.
+ * Per post type: chip ink, fill, border and label.
  *
- * Values follow the Working Group Posts design's SKIN map, which reassigned
- * these colours from the earlier WG Forum design (discussion teal not amber,
- * poll amber, event blue, announcement brick). Derived from tokens rather than
- * the design's literal hexes so the dark theme's remapped brands carry through.
+ * Three designs have specified these. WG Forum and Working Groups Feed (the
+ * newest) agree on this assignment; the Working Group Posts doc briefly
+ * reassigned them, and that outlier is not what's used here. Derived from
+ * tokens rather than the designs' literal hexes so the dark theme's remapped
+ * brand colours carry through.
  */
 export interface PostTypeStyle {
-  rule: string;
   ink: string;
   chipBg: string;
   chipBd: string;
@@ -207,19 +207,16 @@ export const postTypeStyle = (
   t: Theme,
   type: 'discussion' | 'poll' | 'announcement' | 'event'
 ): PostTypeStyle => {
-  // Announcement is the one type whose ink and rule differ (--brand-red on
-  // --brand-brick); the rest use a single colour for both.
   const base = {
-    discussion: { ink: t.surfaceAnchor, fill: t.surfaceAnchor, a: 0.1, label: 'Discussion' },
-    poll: { ink: t.brandAmber, fill: t.brandAmber, a: 0.1, label: 'Poll' },
-    event: { ink: t.brandBlue, fill: t.brandBlue, a: 0.12, label: 'Event' },
-    announcement: { ink: t.brandRed, fill: t.brandBrick, a: 0.1, label: 'Announcement' },
+    discussion: { c: t.brandAmber, bd: 0.4, label: 'Discussion' },
+    poll: { c: t.brandGreenStrong, bd: 0.35, label: 'Poll' },
+    announcement: { c: t.brandBlue, bd: 0.35, label: 'Announcement' },
+    event: { c: t.surfaceAnchor, bd: 0.4, label: 'Event' },
   }[type];
   return {
-    rule: base.fill,
-    ink: base.ink,
-    chipBg: alpha(base.fill, base.a),
-    chipBd: alpha(base.fill, 0.35),
+    ink: base.c,
+    chipBg: alpha(base.c, 0.1),
+    chipBd: alpha(base.c, base.bd),
     label: base.label,
   };
 };

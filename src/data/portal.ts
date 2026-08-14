@@ -51,12 +51,8 @@ export interface Thread {
   eventRows?: EventRow[];
   /** Absent means none yet. */
   upvotes?: number;
-  /** Hashtags shown on the feed card. */
-  tags?: string[];
-  /** Not derivable from the data, so stored; absent means none. */
-  reposts?: number;
-  /** Longer status line on the feed card, e.g. 'OPEN · CLOSES MON'. */
-  feedStatus?: string;
+  /** Age in minutes — the feed's "Newest" sort key. */
+  mins?: number;
   replies: Reply[];
 }
 
@@ -103,9 +99,8 @@ export const GROUPS: Group[] = [
         initials: 'ER',
         org: 'APG',
         time: '2h ago',
-        upvotes: 11,
-        tags: ['indemnification', 'documentation'],
-        reposts: 1,
+        upvotes: 9,
+        mins: 120,
         body: 'Draft v3 of the comparison matrix is attached. Changes since v2: split the indemnification column into agent-provided vs third-party wrap, added the two SWF respondents, and normalized collateral haircut bands. Please comment by Friday — we want to close this out before the October roundtable.',
         file: 'Indemnification-Matrix-v3.xlsx',
         fileMeta: 'XLSX · 214 KB · UPLOADED TODAY',
@@ -123,11 +118,9 @@ export const GROUPS: Group[] = [
         initials: 'MC',
         org: 'CPP Investments',
         time: '6h ago',
+        upvotes: 6,
+        mins: 360,
         state: 'Closes Mon',
-        upvotes: 9,
-        tags: ['tri-party', 'settlement'],
-        reposts: 0,
-        feedStatus: 'OPEN · CLOSES MON',
         body: 'Before the custodians lock the pilot spec we should agree a preferred settlement window. Vote below — one response per organization, closes Monday.',
         poll: {
           q: 'Which settlement window should the pilot target?',
@@ -152,8 +145,7 @@ export const GROUPS: Group[] = [
         org: 'GIC',
         time: '1d ago',
         upvotes: 5,
-        tags: ['collateral'],
-        reposts: 0,
+        mins: 1440,
         body: 'Our non-cash share crossed 60% this quarter, driven by equity collateral acceptance in two lending programs. Curious where other members sit and whether anyone has repriced their cash reinvestment guidelines as a result.',
         replies: [
           { a: 'Robert Goobie', org: 'HOOPP', time: '22h ago', initials: 'RG', up: 3, text: 'We are near 70/30 non-cash. Reinvestment guidelines unchanged, but we tightened eligible-collateral schedules instead.' },
@@ -169,6 +161,7 @@ export const GROUPS: Group[] = [
         org: 'OTPP',
         time: '1d ago',
         upvotes: 12,
+        mins: 1500,
         body: 'Once the comment window closes Friday, draft v3 of the comparison matrix is published to the library as the reference version and circulated as the pre-read for the October 8 roundtable. Comments after Friday go into the next revision, not this one.',
         replies: [],
       },
@@ -180,11 +173,9 @@ export const GROUPS: Group[] = [
         initials: 'AO',
         org: 'OTPP',
         time: '2d ago',
+        upvotes: 7,
+        mins: 2880,
         state: 'Oct 8',
-        upvotes: 14,
-        tags: ['roundtable', 'basel'],
-        reposts: 3,
-        feedStatus: 'OCT 8 · VIRTUAL',
         body: 'Ninety minutes, practitioner-only, no vendors in the room. The finalized comparison matrix from this group is the pre-read. Chatham House rule applies; no recording.',
         eventRows: [
           { icon: 'calendar', text: 'Oct 8 · 15:00 UTC' },
@@ -211,6 +202,8 @@ export const GROUPS: Group[] = [
         author: 'Amara Okafor',
         org: 'OTPP',
         time: '5h ago',
+        upvotes: 4,
+        mins: 300,
         body: 'Consolidating the jurisdiction carve-out language members have negotiated into the 2018 annex. Netherlands and Singapore versions are in. If your counsel has agreed language for other jurisdictions, post it here and we will fold it into the library template.',
         replies: [
           { a: 'Elena Rossi', org: 'APG', time: '3h ago', initials: 'ER', text: 'Dutch language attached to the library entry — note it predates the 2025 securities law amendment, flagging for review.' },
@@ -223,6 +216,8 @@ export const GROUPS: Group[] = [
         author: 'David Park',
         org: 'NPS',
         time: '2d ago',
+        upvotes: 6,
+        mins: 2880,
         body: 'Following the recalibration draft, our agent lender proposed revised indemnification language that shifts capital-driven costs to the lender. Has anyone accepted, rejected, or countered similar language? Redacted excerpts welcome.',
         replies: [
           { a: 'Amara Okafor', org: 'OTPP', time: '1d ago', initials: 'AO', text: 'We countered with a fee-adjustment mechanism instead of accepting the shifted language. Counsel memo is in the library under Basel/Indemnification.' },
@@ -240,15 +235,13 @@ export const GROUPS: Group[] = [
     threads: [
       {
         id: 'te1',
-        type: 'announcement',
         title: 'Connectivity survey open until Aug 22 — please respond',
         author: 'Sofia Lindqvist',
         initials: 'SL',
         org: 'AP4',
         time: '8h ago',
-        upvotes: 6,
-        tags: ['survey', 'operations'],
-        reposts: 2,
+        upvotes: 3,
+        mins: 480,
         body: 'The annual connectivity survey is open: platforms, messaging standards, and post-trade integrations. Fifteen minutes, one response per organization. Results presented at the September call and feed the vendor scorecard.',
         replies: [
           { a: 'Marcus Chen', org: 'CPP Investments', time: '5h ago', initials: 'MC', text: 'Submitted. One suggestion: add a question on API access to tri-party data — it came up in three threads this quarter.' },
@@ -260,6 +253,8 @@ export const GROUPS: Group[] = [
         author: 'Jonas Weber',
         org: 'Allianz IM',
         time: '3d ago',
+        upvotes: 8,
+        mins: 4320,
         body: 'We have a proof of concept moving collateral records to a shared ledger with one custodian. Before we commit to a production pilot: has any member run this in production, and what broke first?',
         replies: [
           { a: 'Priya Nair', org: 'GIC', time: '2d ago', initials: 'PN', text: 'Production since March, limited to one counterparty pair. What broke first was reconciliation with the custodian legacy feed, not the ledger itself.' },
@@ -282,6 +277,8 @@ export const GROUPS: Group[] = [
         author: 'Robert Goobie',
         org: 'HOOPP',
         time: '1d ago',
+        upvotes: 5,
+        mins: 1460,
         body: 'V2 of the shared counterparty scoring methodology incorporates the feedback from June: separate liquidity and wrong-way risk factors, and a quarterly refresh cadence. Feedback window closes end of month, then we publish to the library as the reference version.',
         replies: [
           { a: 'David Park', org: 'NPS', time: '20h ago', initials: 'DP', text: 'The wrong-way risk factor split is the right call. One request: publish the scoring worksheet alongside the methodology PDF.' },
@@ -293,10 +290,110 @@ export const GROUPS: Group[] = [
         author: 'Amara Okafor',
         org: 'OTPP',
         time: '4d ago',
+        upvotes: 4,
+        mins: 5760,
         body: 'If agents withdraw or reprice indemnification post-Basel, what does the stress scenario look like for your lending revenue and collateral posture? Sketching a common scenario set the group can run internally.',
         replies: [
           { a: 'Robert Goobie', org: 'HOOPP', time: '3d ago', initials: 'RG', text: 'We ran a version of this in Q2 — happy to contribute our scenario parameters as a starting point.' },
         ],
+      },
+    ],
+  },
+  {
+    id: 'pc',
+    n: 'Private Credit',
+    short: 'Private Credit',
+    cls: 'wg-rule-private-credit',
+    unread: 0,
+    meta: '2 new posts this week',
+    threads: [
+      {
+        id: 'pc1',
+        title: 'Fund-level leverage disclosure — what members receive today',
+        author: 'Sofia Lindqvist',
+        initials: 'SL',
+        org: 'AP4',
+        time: '4h ago',
+        upvotes: 4,
+        mins: 240,
+        body: 'Our managers report leverage quarterly at the fund level, but definitions vary enough that aggregation is unreliable. Interested in what disclosure members have negotiated at subscription, and whether anyone has standard language to share.',
+        replies: [],
+      },
+      {
+        id: 'pc2',
+        title: 'Secondaries marks versus custodian valuations',
+        author: 'David Park',
+        initials: 'DP',
+        org: 'NPS',
+        time: '2d ago',
+        upvotes: 3,
+        mins: 2900,
+        body: 'We are seeing a persistent gap between secondaries transaction marks and the valuations our custodian carries. Curious how other members reconcile the two for internal reporting.',
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: 'rg',
+    n: 'Regional',
+    short: 'Regional',
+    cls: 'wg-rule-regional',
+    unread: 0,
+    meta: '2 new posts this week',
+    threads: [
+      {
+        id: 'rg1',
+        type: 'event',
+        title: 'Asia-Pacific member call: collateral eligibility under local rules',
+        author: 'Priya Nair',
+        initials: 'PN',
+        org: 'GIC',
+        time: '1d ago',
+        state: 'Oct 21',
+        upvotes: 5,
+        mins: 1470,
+        body: 'Sixty minutes for members in the region, covering eligibility schedules and the two rule changes taking effect in Q1. Practitioner-only, no recording.',
+        eventRows: [
+          { icon: 'calendar', text: 'Oct 21 · 06:00 UTC' },
+          { icon: 'pin', text: 'Virtual' },
+          { icon: 'people', text: '11 going' },
+        ],
+        replies: [],
+      },
+      {
+        id: 'rg2',
+        title: 'European members: T+1 readiness after the first quarter',
+        author: 'Elena Rossi',
+        initials: 'ER',
+        org: 'APG',
+        time: '3d ago',
+        upvotes: 6,
+        mins: 4400,
+        body: 'One quarter in, our fails rate is back to pre-transition levels but funding cut-offs are tighter than modelled. Interested in what other European members changed operationally, and what is still manual.',
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: 'gn',
+    n: 'General',
+    short: 'General',
+    cls: 'wg-rule-general',
+    unread: 0,
+    meta: '1 new post this week',
+    threads: [
+      {
+        id: 'gn1',
+        type: 'announcement',
+        title: '2026 Member Practices Survey opens next Monday',
+        author: 'Robert Goobie',
+        initials: 'RG',
+        org: 'HOOPP',
+        time: '7h ago',
+        upvotes: 8,
+        mins: 420,
+        body: 'The survey opens Monday and closes in three weeks. One response per organization; results are aggregated and published to the library, and feed the indemnification and collateral work in the groups above.',
+        replies: [],
       },
     ],
   },

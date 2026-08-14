@@ -19,7 +19,7 @@ import AskScreen from './src/screens/AskScreen';
 import GroupsScreen, { type RsvpChoice } from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import SignInScreen from './src/screens/SignInScreen';
-import type { Reply } from './src/data/portal';
+import { GROUPS, type Reply } from './src/data/portal';
 
 // The design exposes these as editor props on the component.
 const START_SIGNED_IN = false;
@@ -32,7 +32,8 @@ function Portal() {
 
   const [signedIn, setSignedIn] = useState(START_SIGNED_IN);
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
-  const [groupIndex, setGroupIndex] = useState(0);
+  // The Groups tab is a cross-group feed; this is the set of groups it shows.
+  const [feedGroupIds, setFeedGroupIds] = useState<string[]>(() => GROUPS.map((g) => g.id));
   const [threadId, setThreadId] = useState<string | null>(null);
   // Replies the member posts are kept outside the static data, keyed by thread.
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
@@ -40,8 +41,9 @@ function Portal() {
   const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
   const [rsvps, setRsvps] = useState<Record<string, RsvpChoice | undefined>>({});
 
-  const pickGroup = useCallback((i: number) => {
-    setGroupIndex(i);
+  // Tapping a group on Home narrows the feed to just that group.
+  const pickGroup = useCallback((id: string) => {
+    setFeedGroupIds([id]);
     setThreadId(null);
     setTab('groups');
   }, []);
@@ -96,11 +98,8 @@ function Portal() {
             {tab === 'ask' && <AskScreen />}
             {tab === 'groups' && (
               <GroupsScreen
-                groupIndex={groupIndex}
-                onPickGroup={(i: number) => {
-                  setGroupIndex(i);
-                  setThreadId(null);
-                }}
+                groupIds={feedGroupIds}
+                onSetGroupIds={setFeedGroupIds}
                 threadId={threadId}
                 onOpenThread={setThreadId}
                 onCloseThread={() => setThreadId(null)}
