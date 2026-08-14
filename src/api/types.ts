@@ -112,3 +112,35 @@ export interface AskAnswer {
 
 /** RSVP state for an event post. */
 export type RsvpChoice = 'yes' | 'no';
+
+/** The signed-in member. Drives the greeting, avatars, and authorship. */
+export interface Member {
+  id: string;
+  /** Full name, e.g. "Robert Goobie". */
+  name: string;
+  /** Used in the Home greeting: "Good morning, Robert." */
+  firstName: string;
+  /** Avatar fallback, e.g. "RG". Derived from `name` if omitted. */
+  initials?: string;
+  /** Member organization, e.g. "HOOPP". */
+  org: string;
+}
+
+/** A badge on the calendar card. */
+export interface EventTag {
+  label: string;
+  tone: 'green' | 'default';
+}
+
+/** The "Next on the calendar" card on Home. */
+export interface CalendarEvent {
+  id: string;
+  /** Short month, e.g. "Sep". */
+  month: string;
+  /** Day of month as a string, e.g. "17". */
+  day: string;
+  title: string;
+  /** "Toronto, Canada · registration open" */
+  meta: string;
+  tags: EventTag[];
+}

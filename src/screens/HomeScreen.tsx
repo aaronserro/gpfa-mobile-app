@@ -4,11 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Card, DisplayHead, Eyebrow, LiveDot, MastheadMeta, RadialWash, RelevanceDot } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
-import type { Group, NewsItem } from '../api/types';
+import type { CalendarEvent, Group, Member, NewsItem } from '../api/types';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
 export default function HomeScreen({
+  member,
+  event,
   groups,
   news,
   onGoAsk,
@@ -16,6 +18,8 @@ export default function HomeScreen({
   onPickGroup,
   showBadges,
 }: {
+  member: Member;
+  event: CalendarEvent | null;
   groups: Group[];
   news: NewsItem[];
   onGoAsk: () => void;
@@ -40,7 +44,7 @@ export default function HomeScreen({
             {isDark ? <Sun size={18} color="#fff" /> : <Moon size={18} color="#fff" />}
           </Pressable>
         </View>
-        <DisplayHead size={26} onAnchor em="Robert." style={styles.greeting}>
+        <DisplayHead size={26} onAnchor em={`${member.firstName}.`} style={styles.greeting}>
           Good morning,{' '}
         </DisplayHead>
       </View>
@@ -102,27 +106,30 @@ export default function HomeScreen({
         ))}
       </View>
 
-      <View style={styles.calendar}>
-        <Text style={[styles.h3, styles.calendarHead, { color: t.inkStrong }]}>Next on the calendar</Text>
-        <Card style={styles.eventCard}>
-          <View style={[styles.dateChip, { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft }]}>
-            <Eyebrow size={9}>Sep</Eyebrow>
-            <Text style={[styles.dateNum, { color: t.inkStrong }]}>17</Text>
-          </View>
-          <View style={styles.eventBody}>
-            <Text style={[styles.eventTitle, { color: t.inkStrong }]}>GPFA Annual Meeting 2026</Text>
-            <Text style={[styles.eventMeta, { color: t.inkMuted }]}>Toronto, Canada · registration open</Text>
-            <View style={styles.eventTags}>
-              <Badge variant="tag-green" size={9.5}>
-                Registered
-              </Badge>
-              <Badge variant="tag-default" size={9.5}>
-                Conference
-              </Badge>
+      {!!event && (
+        <View style={styles.calendar}>
+          <Text style={[styles.h3, styles.calendarHead, { color: t.inkStrong }]}>Next on the calendar</Text>
+          <Card style={styles.eventCard}>
+            <View style={[styles.dateChip, { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft }]}>
+              <Eyebrow size={9}>{event.month}</Eyebrow>
+              <Text style={[styles.dateNum, { color: t.inkStrong }]}>{event.day}</Text>
             </View>
-          </View>
-        </Card>
-      </View>
+            <View style={styles.eventBody}>
+              <Text style={[styles.eventTitle, { color: t.inkStrong }]}>{event.title}</Text>
+              <Text style={[styles.eventMeta, { color: t.inkMuted }]}>{event.meta}</Text>
+              {!!event.tags.length && (
+                <View style={styles.eventTags}>
+                  {event.tags.map((tag) => (
+                    <Badge key={tag.label} variant={tag.tone === 'green' ? 'tag-green' : 'tag-default'} size={9.5}>
+                      {tag.label}
+                    </Badge>
+                  ))}
+                </View>
+              )}
+            </View>
+          </Card>
+        </View>
+      )}
     </ScrollView>
   );
 }

@@ -5,7 +5,7 @@
  * outside src/api/ should import this — screens read through the repository in
  * src/api/portal.ts so the source can change without touching the UI.
  */
-import type { AskAnswer, Answer, Group, NewsItem } from '../api/types';
+import type { AskAnswer, Answer, CalendarEvent, Group, Member, NewsItem } from '../api/types';
 
 export const GROUPS: Group[] = [
   {
@@ -364,4 +364,25 @@ export const SUGGESTIONS: string[] = [
 export const findAnswer = (q: string): AskAnswer => {
   const lq = q.toLowerCase();
   return ANSWERS.find((a) => a.k.some((k) => lq.includes(k))) ?? FALLBACK_ANSWER;
+};
+
+/** The signed-in member in fixture mode. */
+export const MEMBER: Member = {
+  id: 'rg',
+  name: 'Robert Goobie',
+  firstName: 'Robert',
+  initials: 'RG',
+  org: 'HOOPP',
+};
+
+export const NEXT_EVENT: CalendarEvent = {
+  id: 'annual-2026',
+  month: 'Sep',
+  day: '17',
+  title: 'GPFA Annual Meeting 2026',
+  meta: 'Toronto, Canada · registration open',
+  tags: [
+    { label: 'Registered', tone: 'green' },
+    { label: 'Conference', tone: 'default' },
+  ],
 };

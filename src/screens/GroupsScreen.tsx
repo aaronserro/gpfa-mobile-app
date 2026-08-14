@@ -40,7 +40,7 @@ import { Avatar, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
 import { initials } from '../lib/format';
-import type { FeedEntry, Group, PostType, Reply, RsvpChoice, Thread } from '../api/types';
+import type { FeedEntry, Group, Member, PostType, Reply, RsvpChoice, Thread } from '../api/types';
 
 const POST_TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
@@ -63,6 +63,8 @@ type SortId = (typeof SORTS)[number]['id'];
 
 
 export interface GroupsScreenProps {
+  /** The signed-in member — authors replies and fills the top-bar avatar. */
+  member: Member;
   /** All working groups, from the API. */
   groups: Group[];
   /** Every post across those groups, from the API. */
@@ -93,6 +95,7 @@ export interface GroupsScreenProps {
 }
 
 export default function GroupsScreen({
+  member,
   groups,
   posts,
   groupIds,
@@ -153,7 +156,13 @@ export default function GroupsScreen({
     const send = () => {
       const text = draft.trim();
       if (!text) return;
-      onReply(thread.id, { a: 'Robert Goobie', org: 'HOOPP', time: 'Just now', initials: 'RG', text });
+      onReply(thread.id, {
+        a: member.name,
+        org: member.org,
+        time: 'Just now',
+        initials: member.initials ?? initials(member.name),
+        text,
+      });
       setDraft('');
     };
 
@@ -498,7 +507,7 @@ export default function GroupsScreen({
         ]}
       >
         <View style={styles.searchRow}>
-          <Avatar initials="RG" size={32} />
+          <Avatar initials={member.initials ?? initials(member.name)} size={32} />
           <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
             <MagnifyingGlass size={15} color={t.inkMuted} />
             <TextInput

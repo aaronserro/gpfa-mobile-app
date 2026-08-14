@@ -26,12 +26,14 @@ import {
   createReply,
   getFeed,
   getGroups,
+  getMe,
   getNews,
+  getNextEvent,
   setRsvp as setRsvpRequest,
   setUpvote,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
-import type { FeedEntry, NewPostInput, Reply, RsvpChoice, Thread } from './src/api/types';
+import type { FeedEntry, Member, NewPostInput, Reply, RsvpChoice, Thread } from './src/api/types';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import DataGate from './src/components/DataGate';
 
@@ -59,10 +61,15 @@ function Portal() {
   const [composerOpen, setComposerOpen] = useState(false);
 
   // Portal data. Resolves from fixtures until EXPO_PUBLIC_API_URL is set.
+  const meQuery = useQuery(getMe, []);
+  const eventQuery = useQuery(getNextEvent, []);
   const groupsQuery = useQuery(getGroups, []);
   const feedQuery = useQuery(getFeed, []);
   const newsQuery = useQuery(getNews, []);
 
+  // DataGate blocks these screens until the member resolves, so the fallback
+  // only exists to satisfy the type before the first response lands.
+  const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
 
@@ -123,14 +130,15 @@ function Portal() {
     });
   }, []);
 
-  const createPost = useCallback((draft: NewPostInput) => {
+  const createPost = useCallback(
+    (draft: NewPostInput, member: Member) => {
     const post: Thread = {
       id: `new-${Date.now()}`,
       type: draft.type,
       title: draft.title,
-      author: 'Robert Goobie',
-      initials: 'RG',
-      org: 'HOOPP',
+      author: member.name,
+      initials: member.initials,
+      org: member.org,
       time: 'Just now',
       // 0 keeps it at the top of the "Newest" sort.
       mins: 0,
@@ -152,7 +160,9 @@ function Portal() {
       .catch(() => {
         setNewPosts((prev) => prev.filter((e) => e !== entry));
       });
-  }, []);
+    },
+    []
+  );
 
   const selectTab = useCallback((next: TabId) => {
     setTab(next);
@@ -175,14 +185,17 @@ function Portal() {
           <View style={styles.screen}>
             {tab === 'home' && (
               <DataGate
-                loading={groupsQuery.loading || newsQuery.loading}
-                error={groupsQuery.error ?? newsQuery.error}
+                loading={meQuery.loading || groupsQuery.loading || newsQuery.loading}
+                error={meQuery.error ?? groupsQuery.error ?? newsQuery.error}
                 onRetry={() => {
+                  meQuery.refetch();
                   groupsQuery.refetch();
                   newsQuery.refetch();
                 }}
               >
                 <HomeScreen
+                  member={member}
+                  event={eventQuery.data ?? null}
                   groups={groups}
                   news={newsQuery.data ?? []}
                   showBadges={SHOW_BADGES}
@@ -195,14 +208,16 @@ function Portal() {
             {tab === 'ask' && <AskScreen />}
             {tab === 'groups' && (
               <DataGate
-                loading={groupsQuery.loading || feedQuery.loading}
-                error={groupsQuery.error ?? feedQuery.error}
+                loading={meQuery.loading || groupsQuery.loading || feedQuery.loading}
+                error={meQuery.error ?? groupsQuery.error ?? feedQuery.error}
                 onRetry={() => {
+                  meQuery.refetch();
                   groupsQuery.refetch();
                   feedQuery.refetch();
                 }}
               >
               <GroupsScreen
+                member={member}
                 groups={groups}
                 posts={posts}
                 groupIds={visibleGroupIds}
@@ -230,7 +245,7 @@ function Portal() {
               groups={groups}
               initialGroupId={visibleGroupIds[0] ?? groups[0]?.id ?? ''}
               onClose={() => setComposerOpen(false)}
-              onCreate={createPost}
+              onCreate={(draft) => createPost(draft, member)}
             />
           )}
         </>

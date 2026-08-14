@@ -133,7 +133,9 @@ Base URL is prefixed to every path. All bodies are JSON.
 | Method | Path | Used by | Returns |
 | --- | --- | --- | --- |
 | `POST` | `/auth/login` | Sign-in | `{ accessToken, refreshToken? }` |
+| `GET` | `/me` | Greeting, avatars, authorship | `Member` |
 | `GET` | `/groups` | Home, Groups drawer | `Group[]` |
+| `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
 | `GET` | `/news` | Home News Radar | `NewsItem[]` |
 | `GET` | `/ask/suggestions` | Ask GPFA empty state | `string[]` |
@@ -152,6 +154,37 @@ To change any path, edit `ROUTES` in `src/api/config.ts` — nothing else
 references URLs.
 
 ### 4.1 Request/response details
+
+**`GET /me` → `Member`**
+
+The signed-in member. Home and Groups **block on this** — `DataGate` holds the
+spinner until it resolves, because the greeting, top-bar avatar, and the author
+of anything the member posts all come from it.
+
+```json
+{ "id": "rg", "name": "Robert Goobie", "firstName": "Robert", "initials": "RG", "org": "HOOPP" }
+```
+
+`initials` is optional — derived from `name` when absent.
+
+**`GET /events/next` → `CalendarEvent | null`**
+
+The single "Next on the calendar" card on Home. Return `null` and the card is
+hidden entirely.
+
+```json
+{
+  "id": "annual-2026",
+  "month": "Sep",
+  "day": "17",
+  "title": "GPFA Annual Meeting 2026",
+  "meta": "Toronto, Canada · registration open",
+  "tags": [{ "label": "Registered", "tone": "green" }, { "label": "Conference", "tone": "default" }]
+}
+```
+
+`month` and `day` are pre-formatted display strings, not a date. `tone` is
+`"green"` (accented) or `"default"` (neutral).
 
 **`GET /groups` → `Group[]`**
 
@@ -302,6 +335,27 @@ member's own vote. Send current tallies; the app does the arithmetic.
   src: string;                      // "RISK.NET · 5H"
 }
 ```
+
+### `Member`
+
+```ts
+{
+  id: string;
+  name: string;        // "Robert Goobie" — authorship, avatars
+  firstName: string;   // "Robert" — Home greeting
+  initials?: string;   // "RG" — derived from name if omitted
+  org: string;         // "HOOPP"
+}
+```
+
+### `CalendarEvent`, `EventTag`
+
+```ts
+CalendarEvent { id, month, day, title, meta, tags: EventTag[] }
+EventTag      { label: string; tone: 'green' | 'default' }
+```
+
+`month` ("Sep") and `day` ("17") are display strings, not a parsed date.
 
 ### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
 

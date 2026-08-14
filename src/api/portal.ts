@@ -2,15 +2,17 @@ import { request } from './client';
 import { ROUTES, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
+  CalendarEvent,
   FeedEntry,
   Group,
   NewPostInput,
+  Member,
   NewsItem,
   Reply,
   RsvpChoice,
   Thread,
 } from './types';
-import { findAnswer, GROUPS, NEWS, SUGGESTIONS } from '../data/fixtures';
+import { findAnswer, GROUPS, MEMBER, NEWS, NEXT_EVENT, SUGGESTIONS } from '../data/fixtures';
 
 /**
  * The one place that decides where portal data comes from.
@@ -26,6 +28,18 @@ import { findAnswer, GROUPS, NEWS, SUGGESTIONS } from '../data/fixtures';
 
 /** Fixtures resolve immediately but still asynchronously. */
 const local = <T>(value: T): Promise<T> => Promise.resolve(value);
+
+/** The signed-in member. Everything that shows "who am I" reads this. */
+export function getMe(): Promise<Member> {
+  if (!USING_REMOTE_API) return local(MEMBER);
+  return request<Member>(ROUTES.me);
+}
+
+/** The Home calendar card. Resolve null to hide it. */
+export function getNextEvent(): Promise<CalendarEvent | null> {
+  if (!USING_REMOTE_API) return local(NEXT_EVENT);
+  return request<CalendarEvent | null>(ROUTES.nextEvent);
+}
 
 export function getGroups(): Promise<Group[]> {
   if (!USING_REMOTE_API) return local(GROUPS);
