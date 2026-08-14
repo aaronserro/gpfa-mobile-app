@@ -94,7 +94,7 @@ export default function HomeScreen({
             <View style={styles.groupBody}>
               <Text style={[styles.groupName, { color: t.inkStrong }]}>{g.n}</Text>
               <Text style={[styles.groupMeta, { color: t.inkMuted }]} numberOfLines={1}>
-                {g.threads[0].title}
+                {g.threads[0]?.title ?? 'No posts yet'}
               </Text>
             </View>
             {showBadges && g.unread > 0 && <Badge variant="secondary">{g.unread}</Badge>}

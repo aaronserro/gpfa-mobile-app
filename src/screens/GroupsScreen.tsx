@@ -729,7 +729,7 @@ export default function GroupsScreen({
                   () => toggleGroup(g.id),
                   <View key="swatch" style={[styles.swatch, { backgroundColor: wgRule(t, g.cls) }]} />,
                   g.n,
-                  String(g.threads.length)
+                  String(g.threads?.length ?? 0)
                 )
               )}
 
