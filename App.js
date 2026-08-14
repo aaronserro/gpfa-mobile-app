@@ -1,175 +1,137 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+// Imported per weight, not from the package root — the root index re-exports
+// every weight and italic, which pulls ~30 unused TTFs into the bundle.
+import Inter_400Regular from '@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf';
+import Inter_500Medium from '@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf';
+import Inter_600SemiBold from '@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf';
+import Inter_700Bold from '@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf';
+import JetBrainsMono_400Regular from '@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf';
+import JetBrainsMono_500Medium from '@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf';
+import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf';
 
-import ComposeSheet from './src/components/ComposeSheet';
-import MoreSheet from './src/components/MoreSheet';
-import TabBar from './src/components/TabBar';
-import { FadeIn } from './src/components/common';
-import { initialGroups, initialThreads } from './src/data';
-import { colors } from './src/theme';
+import PortalTabBar from './src/components/PortalTabBar';
+import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
+import AskScreen from './src/screens/AskScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import SignInScreen from './src/screens/SignInScreen';
 
-import Announcements from './src/screens/Announcements';
-import Ask from './src/screens/Ask';
-import Directory from './src/screens/Directory';
-import GroupThreads from './src/screens/GroupThreads';
-import Groups from './src/screens/Groups';
-import Home from './src/screens/Home';
-import News from './src/screens/News';
-import Profile from './src/screens/Profile';
-import SignIn from './src/screens/SignIn';
-import Thread from './src/screens/Thread';
+// The design exposes these as editor props on the component.
+const START_SIGNED_IN = false;
+const DEFAULT_TAB = 'home';
+const DARK_MODE = false;
+const SHOW_BADGES = true;
 
-const NOTIF_COUNT = 2;
+function Portal() {
+  const { t, isDark } = useTheme();
 
-export default function App() {
-  const [screen, setScreen] = useState('signin');
-  const [groups, setGroups] = useState(initialGroups);
-  const [threads, setThreads] = useState(initialThreads);
-  const [groupFilter, setGroupFilter] = useState('All');
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedThread, setSelectedThread] = useState(null);
-  const [showMore, setShowMore] = useState(false);
-  const [showCompose, setShowCompose] = useState(false);
+  const [signedIn, setSignedIn] = useState(START_SIGNED_IN);
+  const [tab, setTab] = useState(DEFAULT_TAB);
+  const [groupIndex, setGroupIndex] = useState(0);
+  const [threadId, setThreadId] = useState(null);
+  // Replies the member posts are kept outside the static data, keyed by thread.
+  const [extraReplies, setExtraReplies] = useState({});
+  const [votes, setVotes] = useState({});
 
-  const group = groups.find((g) => g.id === selectedGroup) || null;
-  const thread = threads.find((t) => t.id === selectedThread) || null;
-  const groupThreads = threads.filter((t) => t.group === selectedGroup);
+  const pickGroup = useCallback((i) => {
+    setGroupIndex(i);
+    setThreadId(null);
+    setTab('groups');
+  }, []);
 
-  const go = (next) => {
-    setShowMore(false);
-    setScreen(next);
-  };
+  const addReply = useCallback((id, reply) => {
+    setExtraReplies((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), reply] }));
+  }, []);
 
-  const openThread = (t) => {
-    setSelectedGroup(t.group);
-    setSelectedThread(t.id);
-    go('thread');
-  };
+  // One vote per organization — the first choice sticks.
+  const vote = useCallback((id, option) => {
+    setVotes((prev) => (prev[id] === undefined ? { ...prev, [id]: option } : prev));
+  }, []);
 
-  const toggleSub = (id) =>
-    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, subscribed: !g.subscribed } : g)));
+  const selectTab = useCallback((next) => {
+    setTab(next);
+    if (next === 'groups') setThreadId(null);
+  }, []);
 
-  const postReply = (text) =>
-    setThreads((prev) =>
-      prev.map((t) =>
-        t.id === selectedThread
-          ? { ...t, posts: [...t.posts, { author: 'Aaron Serro', time: 'now', text }] }
-          : t
-      )
-    );
-
-  const createThread = (title, tags) => {
-    if (!group) return;
-    setThreads((prev) => [
-      {
-        id: `new${Date.now()}`,
-        group: group.id,
-        title,
-        author: 'Aaron Serro',
-        time: 'now',
-        tags: tags.length ? tags : ['#discussion'],
-        posts: [{ author: 'Aaron Serro', time: 'now', text: 'Opening this thread for the group — replies welcome.' }],
-      },
-      ...prev,
-    ]);
-    setShowCompose(false);
-  };
-
-  const onTab = (key) => {
-    if (key === 'more') {
-      setShowMore((v) => !v);
-      return;
-    }
-    go(key);
-  };
-
-  const renderScreen = () => {
-    switch (screen) {
-      case 'signin':
-        return <SignIn onContinue={() => go('home')} />;
-      case 'home':
-        return (
-          <Home
-            threads={threads}
-            notifCount={NOTIF_COUNT}
-            onOpenThread={openThread}
-            onGoGroups={() => go('groups')}
-            onGoNews={() => go('news')}
-            onGoProfile={() => go('profile')}
-          />
-        );
-      case 'groups':
-        return (
-          <Groups
-            groups={groups}
-            threads={threads}
-            filter={groupFilter}
-            onFilter={setGroupFilter}
-            onToggleSub={toggleSub}
-            onOpenGroup={(id) => {
-              setSelectedGroup(id);
-              go('group');
-            }}
-          />
-        );
-      case 'group':
-        return (
-          <GroupThreads
-            group={group}
-            threads={groupThreads}
-            onBack={() => go('groups')}
-            onOpenThread={openThread}
-            onCompose={() => setShowCompose(true)}
-          />
-        );
-      case 'thread':
-        return (
-          <Thread
-            thread={thread}
-            groupName={group ? group.name : 'Back'}
-            onBack={() => go('group')}
-            onReply={postReply}
-          />
-        );
-      case 'directory':
-        return <Directory />;
-      case 'ask':
-        return <Ask />;
-      case 'news':
-        return <News />;
-      case 'announcements':
-        return <Announcements />;
-      case 'profile':
-        return <Profile onSignOut={() => go('signin')} />;
-      default:
-        return null;
-    }
-  };
+  // `statusDark` in the design: light status-bar glyphs over the anchor surface.
+  const lightStatusBar = isDark || !signedIn || tab === 'home';
 
   return (
-    <View style={styles.root}>
-      <StatusBar style="light" />
+    <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
+      <StatusBar style={lightStatusBar ? 'light' : 'dark'} />
 
-      {/* Keyed so every screen change replays the design's `screenIn` entrance. */}
-      <FadeIn key={screen} offset={14} duration={380} style={styles.screen}>
-        {renderScreen()}
-      </FadeIn>
-
-      {screen !== 'signin' && <TabBar screen={screen} showMore={showMore} onSelect={onTab} />}
-
-      {showMore && <MoreSheet onClose={() => setShowMore(false)} onNavigate={go} />}
-      {showCompose && <ComposeSheet onClose={() => setShowCompose(false)} onCreate={createThread} />}
+      {!signedIn ? (
+        <SignInScreen
+          onSignIn={() => {
+            setSignedIn(true);
+            setTab('home');
+          }}
+        />
+      ) : (
+        <>
+          <View style={styles.screen}>
+            {tab === 'home' && (
+              <HomeScreen
+                showBadges={SHOW_BADGES}
+                onGoAsk={() => setTab('ask')}
+                onGoGroups={() => selectTab('groups')}
+                onPickGroup={pickGroup}
+              />
+            )}
+            {tab === 'ask' && <AskScreen />}
+            {tab === 'groups' && (
+              <GroupsScreen
+                groupIndex={groupIndex}
+                onPickGroup={(i) => {
+                  setGroupIndex(i);
+                  setThreadId(null);
+                }}
+                threadId={threadId}
+                onOpenThread={setThreadId}
+                onCloseThread={() => setThreadId(null)}
+                extraReplies={extraReplies}
+                onReply={addReply}
+                votes={votes}
+                onVote={vote}
+              />
+            )}
+          </View>
+          <PortalTabBar tab={tab} onSelect={selectTab} showBadges={SHOW_BADGES} />
+        </>
+      )}
     </View>
   );
 }
 
+export default function App() {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_600SemiBold,
+  });
+
+  // Every text style names a font face, so nothing should paint until they load.
+  if (!fontsLoaded) return <View style={[styles.root, styles.blank]} />;
+
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider initialDark={DARK_MODE}>
+        <Portal />
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  screen: {
-    flex: 1,
-  },
+  root: { flex: 1 },
+  blank: { backgroundColor: '#f7fafb' },
+  screen: { flex: 1, minHeight: 0 },
 });
