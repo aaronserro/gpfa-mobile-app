@@ -1,11 +1,30 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ArrowUp, CaretLeft, ChartBar, ChatCircle, CheckCircle, DownloadSimple, FileXls, Paperclip } from '../ds/icons';
+import {
+  ArrowBendUpLeft,
+  ArrowFatUp,
+  ArrowUp,
+  BookmarkSimple,
+  CalendarDots,
+  CaretLeft,
+  ChartBar,
+  ChartLineUp,
+  ChatCircle,
+  CheckCircle,
+  DownloadSimple,
+  FileXls,
+  MapPin,
+  Megaphone,
+  Paperclip,
+  UsersThree,
+} from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, DisplayHead, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, mono, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
+import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
 import { GROUPS, initials, type Reply } from '../data/portal';
+
+export type RsvpChoice = 'yes' | 'no';
 
 export interface GroupsScreenProps {
   groupIndex: number;
@@ -19,6 +38,12 @@ export interface GroupsScreenProps {
   /** Chosen option index per thread; absent means this member has not voted. */
   votes: Record<string, number | undefined>;
   onVote: (threadId: string, option: number) => void;
+  /** Whether this member has upvoted a post; adds 1 to its stored count. */
+  upvoted: Record<string, boolean | undefined>;
+  onToggleUpvote: (threadId: string) => void;
+  /** RSVP per event post. */
+  rsvps: Record<string, RsvpChoice | undefined>;
+  onRsvp: (threadId: string, choice: RsvpChoice) => void;
 }
 
 export default function GroupsScreen({
@@ -31,6 +56,10 @@ export default function GroupsScreen({
   onReply,
   votes,
   onVote,
+  upvoted,
+  onToggleUpvote,
+  rsvps,
+  onRsvp,
 }: GroupsScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -44,12 +73,28 @@ export default function GroupsScreen({
     return [...base, ...(extraReplies[id] ?? [])];
   };
 
-  /* ── thread detail ───────────────────────────────────────────────────── */
+  /* ── post detail ─────────────────────────────────────────────────────── */
   if (thread) {
     const replies = repliesFor(thread.id);
-    const voted = votes[thread.id] !== undefined;
-    const counts = thread.poll?.options.map((o, i) => o.votes + (votes[thread.id] === i ? 1 : 0)) ?? [];
+    const type = thread.type ?? 'discussion';
+    const kind = postTypeStyle(t, type);
+    const isAnnouncement = type === 'announcement';
+
+    const choice = votes[thread.id];
+    const voted = choice !== undefined;
+    const counts = thread.poll?.options.map((o, i) => o.votes + (choice === i ? 1 : 0)) ?? [];
     const total = counts.reduce((a, b) => a + b, 0);
+
+    const isUpvoted = !!upvoted[thread.id];
+    const rsvp = rsvps[thread.id];
+
+    const TypeIcon = {
+      discussion: ChatCircle,
+      poll: ChartLineUp,
+      announcement: Megaphone,
+      event: CalendarDots,
+    }[type];
+    const RowIcon = { calendar: CalendarDots, pin: MapPin, people: UsersThree };
 
     const send = () => {
       const text = draft.trim();
@@ -73,14 +118,25 @@ export default function GroupsScreen({
         </View>
 
         <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
+          {/* The left rule and chip take the post type's colour, not the group's. */}
           <View
             style={[
               styles.post,
-              { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, borderLeftColor: wgRule(t, group.cls) },
+              { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, borderLeftColor: kind.rule },
             ]}
           >
+            <View style={styles.kindRow}>
+              <View style={[styles.kindChip, { backgroundColor: kind.chipBg, borderColor: kind.chipBd }]}>
+                <TypeIcon size={12} color={kind.tint} />
+                <Text style={[styles.kindLabel, { color: kind.tint }]}>{kind.label}</Text>
+              </View>
+              {!!thread.state && <Text style={[styles.kindState, { color: t.inkFaint }]}>{thread.state}</Text>}
+            </View>
+
+            <Text style={[styles.postTitle, { color: t.inkStrong }]}>{thread.title}</Text>
+
             <View style={styles.byline}>
-              <Avatar initials={initials(thread.author)} size={32} />
+              <Avatar initials={thread.initials ?? initials(thread.author)} size={32} />
               <View>
                 <Text style={[styles.author, { color: t.inkStrong }]}>{thread.author}</Text>
                 <MastheadMeta size={10}>
@@ -89,7 +145,6 @@ export default function GroupsScreen({
               </View>
             </View>
 
-            <Text style={[styles.postTitle, { color: t.inkStrong }]}>{thread.title}</Text>
             <Text style={[styles.postBody, { color: t.inkBody }]}>{thread.body}</Text>
 
             {!!thread.file && (
@@ -108,104 +163,214 @@ export default function GroupsScreen({
               </Pressable>
             )}
 
-            {!!thread.poll && (
-              <View style={[styles.poll, { borderColor: t.ruleHairline }]}>
-                <View style={styles.pollQRow}>
-                  <ChartBar size={15} color={t.brandAmber} />
-                  <Text style={[styles.pollQ, { color: t.inkStrong }]}>{thread.poll.q}</Text>
-                </View>
-                <View style={styles.pollOptions}>
-                  {thread.poll.options.map((o, i) => {
-                    const chosen = votes[thread.id] === i;
-                    const pct = voted ? Math.round((counts[i] / total) * 100) : 0;
+            {!!thread.eventRows && (
+              <>
+                <View style={styles.eventRows}>
+                  {thread.eventRows.map((e) => {
+                    const RIcon = RowIcon[e.icon];
                     return (
-                      <Pressable
-                        key={o.label}
-                        onPress={() => onVote(thread.id, i)}
-                        style={[
-                          styles.pollOption,
-                          {
-                            borderColor: chosen ? t.brandGreen : t.ruleHairline,
-                            backgroundColor: t.surfacePaper,
-                          },
-                        ]}
+                      <View
+                        key={e.text}
+                        style={[styles.eventChip, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
                       >
-                        {voted && (
-                          <View
-                            style={[
-                              styles.pollFill,
-                              {
-                                width: `${pct}%`,
-                                backgroundColor: chosen ? t.brandGreenSoft : alpha(t.surfaceSoft, 0.6),
-                              },
-                            ]}
-                          />
-                        )}
-                        <View style={styles.pollLabelRow}>
-                          <Text
-                            style={[styles.pollLabel, { color: t.inkStrong, fontFamily: sans(chosen ? 600 : 500) }]}
-                          >
-                            {o.label}
-                          </Text>
-                          {chosen && <CheckCircle size={15} weight="fill" color={t.brandLeaf} />}
-                        </View>
-                        {voted && <Text style={[styles.pollPct, { color: t.inkMuted }]}>{pct}%</Text>}
-                      </Pressable>
+                        <RIcon size={13} color={t.inkMuted} />
+                        <Text style={[styles.eventChipText, { color: t.inkBody }]}>{e.text}</Text>
+                      </View>
                     );
                   })}
                 </View>
-                <MastheadMeta size={9.5} style={styles.pollMeta}>
-                  {(voted ? `${total} VOTES · ` : '') + thread.poll.closes.toUpperCase()}
-                </MastheadMeta>
-              </View>
+                <View style={styles.rsvpRow}>
+                  <Pressable
+                    onPress={() => onRsvp(thread.id, 'yes')}
+                    style={[
+                      styles.rsvpBtn,
+                      { borderColor: t.brandGreen, backgroundColor: rsvp === 'yes' ? t.brandGreen : t.surfacePaper },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.rsvpYes,
+                        { color: rsvp === 'yes' ? t.primaryForeground : t.brandGreen },
+                      ]}
+                    >
+                      {rsvp === 'yes' ? 'Going' : 'Attend'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => onRsvp(thread.id, 'no')}
+                    style={[
+                      styles.rsvpBtn,
+                      { borderColor: t.ruleHairline, backgroundColor: rsvp === 'no' ? t.surfaceSoft : t.surfacePaper },
+                    ]}
+                  >
+                    <Text style={[styles.rsvpNo, { color: t.inkBody }]}>Can&apos;t attend</Text>
+                  </Pressable>
+                </View>
+              </>
             )}
-          </View>
 
-          <Eyebrow size={10} style={styles.repliesHead}>
-            Replies · {replies.length}
-          </Eyebrow>
-
-          {replies.map((r, i) => (
-            <View
-              key={`${r.a}-${i}`}
-              style={[styles.reply, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}
-            >
-              <Avatar initials={r.initials || initials(r.a)} size={24} style={styles.replyAvatar} />
-              <View style={styles.replyBody}>
-                <View style={styles.replyByline}>
-                  <Text style={[styles.replyAuthor, { color: t.inkStrong }]}>{r.a}</Text>
-                  <MastheadMeta size={9.5}>
-                    {r.org.toUpperCase()} · {r.time.toUpperCase()}
+            {!!thread.poll && (
+              <>
+                <View style={[styles.poll, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                  <View style={styles.pollQRow}>
+                    <ChartBar size={15} color={t.brandAmber} />
+                    <Text style={[styles.pollQ, { color: t.inkStrong }]}>{thread.poll.q}</Text>
+                  </View>
+                  <View style={styles.pollOptions}>
+                    {thread.poll.options.map((o, i) => {
+                      const chosen = choice === i;
+                      const pct = voted ? Math.round((counts[i] / total) * 100) : 0;
+                      return (
+                        <Pressable
+                          key={o.label}
+                          onPress={() => onVote(thread.id, i)}
+                          style={[
+                            styles.pollOption,
+                            { borderColor: chosen ? t.brandGreen : t.ruleHairline, backgroundColor: t.surfacePaper },
+                          ]}
+                        >
+                          {voted && (
+                            <View
+                              style={[
+                                styles.pollFill,
+                                {
+                                  width: `${pct}%`,
+                                  backgroundColor: chosen ? t.brandGreenSoft : alpha(t.surfaceSoft, 0.6),
+                                },
+                              ]}
+                            />
+                          )}
+                          <View style={styles.pollLabelRow}>
+                            <Text
+                              style={[styles.pollLabel, { color: t.inkStrong, fontFamily: sans(chosen ? 600 : 500) }]}
+                            >
+                              {o.label}
+                            </Text>
+                            {chosen && <CheckCircle size={15} weight="fill" color={t.brandLeaf} />}
+                          </View>
+                          {voted && <Text style={[styles.pollPct, { color: t.inkMuted }]}>{pct}%</Text>}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <MastheadMeta size={9.5} style={styles.pollMeta}>
+                    {(voted ? `${total} VOTES · ` : '') + thread.poll.closes.toUpperCase()}
                   </MastheadMeta>
                 </View>
-                <Text style={[styles.replyText, { color: t.inkBody }]}>
-                  {!!r.mention && <Text style={{ color: t.brandGreen, fontFamily: sans(600) }}>{r.mention} </Text>}
-                  {r.text}
+
+                <View style={[styles.pollStats, { borderColor: t.ruleHairline }]}>
+                  {[
+                    { k: 'Responses', v: String(total) },
+                    { k: 'Of orgs', v: '87%' },
+                    { k: 'Status', v: 'Open' },
+                  ].map((stat, i) => (
+                    <View
+                      key={stat.k}
+                      style={[
+                        styles.pollStat,
+                        i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline },
+                      ]}
+                    >
+                      <MastheadMeta size={9.5}>{stat.k.toUpperCase()}</MastheadMeta>
+                      <Text style={[styles.pollStatValue, { color: t.inkStrong }]}>{stat.v}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+
+            <View style={styles.actions}>
+              <Pressable style={styles.action} onPress={() => onToggleUpvote(thread.id)} hitSlop={6}>
+                <ArrowFatUp
+                  size={15}
+                  weight={isUpvoted ? 'fill' : 'regular'}
+                  color={isUpvoted ? t.brandLeaf : t.inkMuted}
+                />
+                <Text style={[styles.actionText, { color: isUpvoted ? t.brandLeaf : t.inkMuted }]}>
+                  {(thread.upvotes ?? 0) + (isUpvoted ? 1 : 0)}
                 </Text>
+              </Pressable>
+              <View style={styles.action}>
+                <ChatCircle size={15} color={t.inkMuted} />
+                <Text style={[styles.actionText, { color: t.inkMuted }]}>{replies.length}</Text>
+              </View>
+              <View style={[styles.action, styles.actionEnd]}>
+                <BookmarkSimple size={15} color={t.inkMuted} />
+                <Text style={[styles.actionText, { color: t.inkMuted }]}>Save</Text>
               </View>
             </View>
-          ))}
+          </View>
 
-          <View style={styles.tail} />
+          {isAnnouncement ? (
+            <View style={[styles.readOnly, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+              <Text style={[styles.readOnlyText, { color: t.inkMuted }]}>
+                Announcements are read-only. Reply in the linked discussion thread if you have questions for the
+                co-leads.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Eyebrow size={10} style={styles.repliesHead}>
+                Replies · {replies.length}
+              </Eyebrow>
+
+              {replies.map((r, i) => (
+                <View
+                  key={`${r.a}-${i}`}
+                  style={[styles.reply, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}
+                >
+                  <Avatar initials={r.initials ?? initials(r.a)} size={24} style={styles.replyAvatar} />
+                  <View style={styles.replyBody}>
+                    <View style={styles.replyByline}>
+                      <Text style={[styles.replyAuthor, { color: t.inkStrong }]}>{r.a}</Text>
+                      <MastheadMeta size={9.5}>
+                        {r.org.toUpperCase()} · {r.time.toUpperCase()}
+                      </MastheadMeta>
+                    </View>
+                    <Text style={[styles.replyText, { color: t.inkBody }]}>
+                      {!!r.mention && (
+                        <Text style={{ color: t.brandBlue, fontFamily: sans(600) }}>{r.mention} </Text>
+                      )}
+                      {r.text}
+                    </Text>
+                    <View style={styles.replyActions}>
+                      <View style={styles.replyAction}>
+                        <ArrowFatUp size={13} color={t.inkFaint} />
+                        <Text style={[styles.replyActionText, { color: t.inkFaint }]}>{r.up ?? 0}</Text>
+                      </View>
+                      <View style={styles.replyAction}>
+                        <ArrowBendUpLeft size={13} color={t.inkFaint} />
+                        <Text style={[styles.replyActionText, { color: t.inkFaint }]}>Reply</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.tail} />
+            </>
+          )}
         </ScrollView>
 
-        <View style={[styles.composer, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-          <Input
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Reply — @ to mention a member"
-            style={styles.composerInput}
-            returnKeyType="send"
-            onSubmitEditing={send}
-          />
-          <Pressable
-            onPress={send}
-            accessibilityLabel="Post reply"
-            style={({ pressed }) => [styles.send, { backgroundColor: pressed ? t.brandGreenStrong : t.brandGreen }]}
-          >
-            <ArrowUp size={18} color={t.primaryForeground} />
-          </Pressable>
-        </View>
+        {!isAnnouncement && (
+          <View style={[styles.composer, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            <Input
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Reply — @ to mention a member"
+              style={styles.composerInput}
+              returnKeyType="send"
+              onSubmitEditing={send}
+            />
+            <Pressable
+              onPress={send}
+              accessibilityLabel="Post reply"
+              style={({ pressed }) => [styles.send, { backgroundColor: pressed ? t.brandGreenStrong : t.brandGreen }]}
+            >
+              <ArrowUp size={18} color={t.primaryForeground} />
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
     );
   }
@@ -397,17 +562,44 @@ const styles = StyleSheet.create({
     paddingRight: 20,
     paddingLeft: 17,
   },
+  kindRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kindChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 32,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  kindLabel: {
+    fontFamily: mono(400),
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  kindState: {
+    fontFamily: mono(400),
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   byline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    marginTop: 12,
   },
   author: {
     fontFamily: sans(600),
     fontSize: 13.5,
   },
   postTitle: {
-    marginTop: 14,
+    marginTop: 12,
     fontFamily: sans(600),
     fontSize: 17,
     lineHeight: 22,
@@ -517,6 +709,109 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   tail: { height: 16 },
+  eventRows: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  eventChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 32,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  eventChipText: {
+    fontFamily: sans(400),
+    fontSize: 11.5,
+  },
+  rsvpRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+  },
+  rsvpBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rsvpYes: {
+    fontFamily: sans(600),
+    fontSize: 13,
+  },
+  rsvpNo: {
+    fontFamily: sans(500),
+    fontSize: 13,
+  },
+  pollStats: {
+    flexDirection: 'row',
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  pollStat: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  pollStatValue: {
+    marginTop: 3,
+    fontFamily: sans(600),
+    fontSize: 14,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  actionEnd: { marginLeft: 'auto' },
+  actionText: {
+    fontFamily: mono(400),
+    fontSize: 11,
+  },
+  replyActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 6,
+  },
+  replyAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  replyActionText: {
+    fontFamily: mono(400),
+    fontSize: 10,
+  },
+  readOnly: {
+    margin: 16,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  readOnlyText: {
+    fontFamily: sans(400),
+    fontSize: 12,
+    lineHeight: 19.2,
+  },
   composer: {
     flexDirection: 'row',
     gap: 8,

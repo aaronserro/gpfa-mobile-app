@@ -77,28 +77,21 @@ export default function AskScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline, paddingTop: topPad(insets.top, 66) },
-        ]}
-      >
-        <Eyebrow size={10}>Member intelligence</Eyebrow>
-        <DisplayHead size={22} em="GPFA." style={styles.head}>
-          Ask{' '}
-        </DisplayHead>
-      </View>
-
       <ScrollView
         ref={scroller}
         style={styles.fill}
-        contentContainerStyle={styles.chat}
+        contentContainerStyle={[styles.chat, { paddingTop: topPad(insets.top, 66) }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollDown}
       >
         {empty && (
           <View>
+            {/* The page carries no header bar, so the title lives with the
+                empty state and clears once the conversation starts. */}
+            <DisplayHead size={38} em="GPFA." style={styles.title}>
+              Ask{' '}
+            </DisplayHead>
             <Image source={markLogo} style={styles.mark} resizeMode="contain" />
             <Eyebrow size={10} style={styles.tryHead}>
               Try asking
@@ -196,25 +189,22 @@ export default function AskScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  head: { marginTop: 4 },
   chat: {
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 24,
   },
+  title: {
+    textAlign: 'center',
+    marginTop: 32,
+  },
   mark: {
-    width: 44,
-    height: 44,
+    width: 56,
+    height: 56,
     alignSelf: 'center',
-    marginTop: 26,
-    marginBottom: 10,
+    marginTop: 20,
     opacity: 0.85,
   },
-  tryHead: { marginTop: 26, marginBottom: 10 },
+  tryHead: { marginTop: 34, marginBottom: 10 },
   suggestions: { gap: 8 },
   suggestion: {
     flexDirection: 'row',

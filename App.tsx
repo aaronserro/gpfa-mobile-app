@@ -16,7 +16,7 @@ import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600Semi
 import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
-import GroupsScreen from './src/screens/GroupsScreen';
+import GroupsScreen, { type RsvpChoice } from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import type { Reply } from './src/data/portal';
@@ -37,6 +37,8 @@ function Portal() {
   // Replies the member posts are kept outside the static data, keyed by thread.
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
   const [votes, setVotes] = useState<Record<string, number | undefined>>({});
+  const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
+  const [rsvps, setRsvps] = useState<Record<string, RsvpChoice | undefined>>({});
 
   const pickGroup = useCallback((i: number) => {
     setGroupIndex(i);
@@ -51,6 +53,14 @@ function Portal() {
   // One vote per organization — the first choice sticks.
   const vote = useCallback((id: string, option: number) => {
     setVotes((prev) => (prev[id] === undefined ? { ...prev, [id]: option } : prev));
+  }, []);
+
+  const toggleUpvote = useCallback((id: string) => {
+    setUpvoted((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const setRsvp = useCallback((id: string, choice: RsvpChoice) => {
+    setRsvps((prev) => ({ ...prev, [id]: choice }));
   }, []);
 
   const selectTab = useCallback((next: TabId) => {
@@ -98,6 +108,10 @@ function Portal() {
                 onReply={addReply}
                 votes={votes}
                 onVote={vote}
+                upvoted={upvoted}
+                onToggleUpvote={toggleUpvote}
+                rsvps={rsvps}
+                onRsvp={setRsvp}
               />
             )}
           </View>

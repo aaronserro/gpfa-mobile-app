@@ -11,10 +11,15 @@
  * The bare names (`House`) are deprecated upstream in favour of the `*Icon`
  * suffix, so the suffixed exports are aliased back to the short names here.
  */
+export { ArrowBendUpLeftIcon as ArrowBendUpLeft } from 'phosphor-react-native/lib/commonjs/icons/ArrowBendUpLeft';
+export { ArrowFatUpIcon as ArrowFatUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowFatUp';
 export { ArrowRightIcon as ArrowRight } from 'phosphor-react-native/lib/commonjs/icons/ArrowRight';
 export { ArrowUpIcon as ArrowUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowUp';
+export { BookmarkSimpleIcon as BookmarkSimple } from 'phosphor-react-native/lib/commonjs/icons/BookmarkSimple';
+export { CalendarDotsIcon as CalendarDots } from 'phosphor-react-native/lib/commonjs/icons/CalendarDots';
 export { CaretLeftIcon as CaretLeft } from 'phosphor-react-native/lib/commonjs/icons/CaretLeft';
 export { ChartBarIcon as ChartBar } from 'phosphor-react-native/lib/commonjs/icons/ChartBar';
+export { ChartLineUpIcon as ChartLineUp } from 'phosphor-react-native/lib/commonjs/icons/ChartLineUp';
 export { ChatCircleIcon as ChatCircle } from 'phosphor-react-native/lib/commonjs/icons/ChatCircle';
 export { ChatCircleDotsIcon as ChatCircleDots } from 'phosphor-react-native/lib/commonjs/icons/ChatCircleDots';
 export { CheckCircleIcon as CheckCircle } from 'phosphor-react-native/lib/commonjs/icons/CheckCircle';
@@ -22,6 +27,8 @@ export { DownloadSimpleIcon as DownloadSimple } from 'phosphor-react-native/lib/
 export { FileTextIcon as FileText } from 'phosphor-react-native/lib/commonjs/icons/FileText';
 export { FileXlsIcon as FileXls } from 'phosphor-react-native/lib/commonjs/icons/FileXls';
 export { HouseIcon as House } from 'phosphor-react-native/lib/commonjs/icons/House';
+export { MapPinIcon as MapPin } from 'phosphor-react-native/lib/commonjs/icons/MapPin';
+export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/icons/Megaphone';
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
 export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';

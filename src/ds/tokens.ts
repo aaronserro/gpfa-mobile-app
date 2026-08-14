@@ -187,6 +187,38 @@ export type WgRuleClass =
   | 'wg-rule-regional'
   | 'wg-rule-general';
 
+/**
+ * The WG Forum design's RULE map: per post type, the left rule colour, chip
+ * fill/border and label. Derived from tokens rather than the design's literal
+ * hexes so the dark theme's remapped brand colours carry through.
+ */
+export interface PostTypeStyle {
+  rule: string;
+  tint: string;
+  chipBg: string;
+  chipBd: string;
+  label: string;
+}
+
+export const postTypeStyle = (
+  t: Theme,
+  type: 'discussion' | 'poll' | 'announcement' | 'event'
+): PostTypeStyle => {
+  const base = {
+    discussion: { c: t.brandAmber, bd: 0.4, label: 'Discussion' },
+    poll: { c: t.brandGreenStrong, bd: 0.35, label: 'Poll' },
+    announcement: { c: t.brandBlue, bd: 0.35, label: 'Announcement' },
+    event: { c: t.surfaceAnchor, bd: 0.4, label: 'Event' },
+  }[type];
+  return {
+    rule: base.c,
+    tint: base.c,
+    chipBg: alpha(base.c, 0.1),
+    chipBd: alpha(base.c, base.bd),
+    label: base.label,
+  };
+};
+
 export const wgRule = (t: Theme, cls: WgRuleClass): string =>
   ({
     'wg-rule-legal': t.surfaceAnchor,

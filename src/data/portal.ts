@@ -9,6 +9,17 @@ export interface Reply {
   /** Rendered as a highlighted @-mention prefix before the body text. */
   mention?: string;
   text: string;
+  /** Upvotes on the reply. Absent means none yet. */
+  up?: number;
+}
+
+/** Post kinds from the WG Forum design; each carries its own rule colour and chip. */
+export type PostType = 'discussion' | 'poll' | 'announcement' | 'event';
+
+/** A labelled fact shown as a chip on an event post (date, location, headcount). */
+export interface EventRow {
+  icon: 'calendar' | 'pin' | 'people';
+  text: string;
 }
 
 export interface PollOption {
@@ -24,14 +35,22 @@ export interface Poll {
 
 export interface Thread {
   id: string;
+  /** Defaults to 'discussion' when the source design didn't classify the post. */
+  type?: PostType;
   title: string;
   author: string;
+  initials?: string;
   org: string;
   time: string;
+  /** Short status shown beside the type chip, e.g. 'Closes Mon' or 'Oct 8'. */
+  state?: string;
   body: string;
   file?: string;
   fileMeta?: string;
   poll?: Poll;
+  eventRows?: EventRow[];
+  /** Absent means none yet. */
+  upvotes?: number;
   replies: Reply[];
 }
 
@@ -72,25 +91,32 @@ export const GROUPS: Group[] = [
     threads: [
       {
         id: 'cl1',
+        type: 'discussion',
         title: 'Indemnification comparison matrix — draft v3 open for comment',
         author: 'Elena Rossi',
+        initials: 'ER',
         org: 'APG',
         time: '2h ago',
+        upvotes: 9,
         body: 'Draft v3 of the comparison matrix is attached. Changes since v2: split the indemnification column into agent-provided vs third-party wrap, added the two SWF respondents, and normalized collateral haircut bands. Please comment by Friday — we want to close this out before the October roundtable.',
         file: 'Indemnification-Matrix-v3.xlsx',
         fileMeta: 'XLSX · 214 KB · UPLOADED TODAY',
         replies: [
-          { a: 'Marcus Chen', org: 'CPP Investments', time: '1h ago', initials: 'MC', mention: '@Elena Rossi', text: 'row 14 — our program moved to a split structure in June, so the v2 entry is stale. I will send corrected figures directly.' },
-          { a: 'Priya Nair', org: 'GIC', time: '48m ago', initials: 'PN', text: 'The haircut bands are much easier to compare now. Suggest we freeze the taxonomy after this round so the roundtable pre-read is stable.' },
-          { a: 'Jonas Weber', org: 'Allianz IM', time: '20m ago', initials: 'JW', text: 'Can we add a column flagging which programs changed indemnification terms after the Basel recalibration draft? That is the question our board keeps asking.' },
+          { a: 'Marcus Chen', org: 'CPP Investments', time: '1h ago', initials: 'MC', mention: '@Marcus Chen', up: 4, text: 'row 14 — our program moved to a split structure in June, so the v2 entry is stale. I will send corrected figures directly.' },
+          { a: 'Priya Nair', org: 'GIC', time: '48m ago', initials: 'PN', up: 2, text: 'The haircut bands are much easier to compare now. Suggest we freeze the taxonomy after this round so the roundtable pre-read is stable.' },
+          { a: 'Jonas Weber', org: 'Allianz IM', time: '20m ago', initials: 'JW', up: 1, text: 'Can we add a column flagging which programs changed indemnification terms after the Basel recalibration draft? That is the question our board keeps asking.' },
         ],
       },
       {
         id: 'cl2',
+        type: 'poll',
         title: 'Preferred settlement window for the Q4 tri-party pilot',
         author: 'Marcus Chen',
+        initials: 'MC',
         org: 'CPP Investments',
         time: '6h ago',
+        state: 'Closes Mon',
+        upvotes: 6,
         body: 'Before the custodians lock the pilot spec we should agree a preferred settlement window. Vote below — one response per organization, closes Monday.',
         poll: {
           q: 'Which settlement window should the pilot target?',
@@ -102,20 +128,55 @@ export const GROUPS: Group[] = [
           ],
         },
         replies: [
-          { a: 'Sofia Lindqvist', org: 'AP4', time: '3h ago', initials: 'SL', text: 'Voted T+0. If the pilot cannot prove same-day we will not get internal sign-off to scale it.' },
-          { a: 'Elena Rossi', org: 'APG', time: '2h ago', initials: 'ER', mention: '@Marcus Chen', text: 'the currency split matters for us — EUR legs settle differently under our custody setup. Happy to write up the edge cases.' },
+          { a: 'Sofia Lindqvist', org: 'AP4', time: '3h ago', initials: 'SL', up: 3, text: 'Voted T+0. If the pilot cannot prove same-day we will not get internal sign-off to scale it.' },
+          { a: 'Elena Rossi', org: 'APG', time: '2h ago', initials: 'ER', mention: '@Marcus Chen', up: 2, text: 'the currency split matters for us — EUR legs settle differently under our custody setup. Happy to write up the edge cases.' },
         ],
       },
       {
         id: 'cl3',
+        type: 'discussion',
         title: 'Cash vs non-cash collateral mix — what peers are seeing',
         author: 'Priya Nair',
+        initials: 'PN',
         org: 'GIC',
         time: '1d ago',
+        upvotes: 5,
         body: 'Our non-cash share crossed 60% this quarter, driven by equity collateral acceptance in two lending programs. Curious where other members sit and whether anyone has repriced their cash reinvestment guidelines as a result.',
         replies: [
-          { a: 'Robert Goobie', org: 'HOOPP', time: '22h ago', initials: 'RG', text: 'We are near 70/30 non-cash. Reinvestment guidelines unchanged, but we tightened eligible-collateral schedules instead.' },
-          { a: 'Jonas Weber', org: 'Allianz IM', time: '18h ago', initials: 'JW', text: 'Similar picture. The interesting shift is custodians quoting differentiated fees by collateral type — worth a thread of its own.' },
+          { a: 'Robert Goobie', org: 'HOOPP', time: '22h ago', initials: 'RG', up: 3, text: 'We are near 70/30 non-cash. Reinvestment guidelines unchanged, but we tightened eligible-collateral schedules instead.' },
+          { a: 'Jonas Weber', org: 'Allianz IM', time: '18h ago', initials: 'JW', up: 2, text: 'Similar picture. The interesting shift is custodians quoting differentiated fees by collateral type — worth a thread of its own.' },
+        ],
+      },
+      {
+        id: 'an1',
+        type: 'announcement',
+        title: 'Matrix v3 becomes the October roundtable pre-read',
+        author: 'Amara Okafor',
+        initials: 'AO',
+        org: 'OTPP',
+        time: '1d ago',
+        upvotes: 12,
+        body: 'Once the comment window closes Friday, draft v3 of the comparison matrix is published to the library as the reference version and circulated as the pre-read for the October 8 roundtable. Comments after Friday go into the next revision, not this one.',
+        replies: [],
+      },
+      {
+        id: 'ev1',
+        type: 'event',
+        title: 'Members-only roundtable: indemnification under Basel recalibration',
+        author: 'Amara Okafor',
+        initials: 'AO',
+        org: 'OTPP',
+        time: '2d ago',
+        state: 'Oct 8',
+        upvotes: 7,
+        body: 'Ninety minutes, practitioner-only, no vendors in the room. The finalized comparison matrix from this group is the pre-read. Chatham House rule applies; no recording.',
+        eventRows: [
+          { icon: 'calendar', text: 'Oct 8 · 15:00 UTC' },
+          { icon: 'pin', text: 'Virtual' },
+          { icon: 'people', text: '18 going' },
+        ],
+        replies: [
+          { a: 'Priya Nair', org: 'GIC', time: '1d ago', initials: 'PN', up: 1, text: 'Two of us from GIC will join. Is the pre-read circulated a week ahead?' },
         ],
       },
     ],

@@ -87,16 +87,6 @@ export default function SignInScreen({ onSignIn }: { onSignIn: () => void }) {
               >
                 <Text style={styles.primaryBtnText}>Sign in</Text>
               </Pressable>
-              <Pressable
-                onPress={onSignIn}
-                style={({ pressed }) => [
-                  styles.ssoBtn,
-                  { borderColor: t.ruleOnAnchor },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={[styles.ssoBtnText, { color: t.inkInverse }]}>Continue with organization SSO</Text>
-              </Pressable>
             </View>
 
             <Pressable hitSlop={8}>
@@ -162,17 +152,6 @@ const styles = StyleSheet.create({
     fontFamily: sans(600),
     fontSize: 15,
     color: '#07171b',
-  },
-  ssoBtn: {
-    height: 48,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ssoBtnText: {
-    fontFamily: sans(500),
-    fontSize: 14,
   },
   pressed: { transform: [{ translateY: 1 }], opacity: 0.9 },
   forgot: {
