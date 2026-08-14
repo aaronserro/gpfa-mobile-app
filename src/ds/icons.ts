@@ -31,6 +31,9 @@ export { MapPinIcon as MapPin } from 'phosphor-react-native/lib/commonjs/icons/M
 export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/icons/Megaphone';
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
 export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
+export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
+export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/Repeat';
+export { SlidersHorizontalIcon as SlidersHorizontal } from 'phosphor-react-native/lib/commonjs/icons/SlidersHorizontal';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { UsersThreeIcon as UsersThree } from 'phosphor-react-native/lib/commonjs/icons/UsersThree';
 

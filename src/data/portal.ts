@@ -51,6 +51,12 @@ export interface Thread {
   eventRows?: EventRow[];
   /** Absent means none yet. */
   upvotes?: number;
+  /** Hashtags shown on the feed card. */
+  tags?: string[];
+  /** Not derivable from the data, so stored; absent means none. */
+  reposts?: number;
+  /** Longer status line on the feed card, e.g. 'OPEN · CLOSES MON'. */
+  feedStatus?: string;
   replies: Reply[];
 }
 
@@ -97,7 +103,9 @@ export const GROUPS: Group[] = [
         initials: 'ER',
         org: 'APG',
         time: '2h ago',
-        upvotes: 9,
+        upvotes: 11,
+        tags: ['indemnification', 'documentation'],
+        reposts: 1,
         body: 'Draft v3 of the comparison matrix is attached. Changes since v2: split the indemnification column into agent-provided vs third-party wrap, added the two SWF respondents, and normalized collateral haircut bands. Please comment by Friday — we want to close this out before the October roundtable.',
         file: 'Indemnification-Matrix-v3.xlsx',
         fileMeta: 'XLSX · 214 KB · UPLOADED TODAY',
@@ -116,7 +124,10 @@ export const GROUPS: Group[] = [
         org: 'CPP Investments',
         time: '6h ago',
         state: 'Closes Mon',
-        upvotes: 6,
+        upvotes: 9,
+        tags: ['tri-party', 'settlement'],
+        reposts: 0,
+        feedStatus: 'OPEN · CLOSES MON',
         body: 'Before the custodians lock the pilot spec we should agree a preferred settlement window. Vote below — one response per organization, closes Monday.',
         poll: {
           q: 'Which settlement window should the pilot target?',
@@ -141,6 +152,8 @@ export const GROUPS: Group[] = [
         org: 'GIC',
         time: '1d ago',
         upvotes: 5,
+        tags: ['collateral'],
+        reposts: 0,
         body: 'Our non-cash share crossed 60% this quarter, driven by equity collateral acceptance in two lending programs. Curious where other members sit and whether anyone has repriced their cash reinvestment guidelines as a result.',
         replies: [
           { a: 'Robert Goobie', org: 'HOOPP', time: '22h ago', initials: 'RG', up: 3, text: 'We are near 70/30 non-cash. Reinvestment guidelines unchanged, but we tightened eligible-collateral schedules instead.' },
@@ -168,7 +181,10 @@ export const GROUPS: Group[] = [
         org: 'OTPP',
         time: '2d ago',
         state: 'Oct 8',
-        upvotes: 7,
+        upvotes: 14,
+        tags: ['roundtable', 'basel'],
+        reposts: 3,
+        feedStatus: 'OCT 8 · VIRTUAL',
         body: 'Ninety minutes, practitioner-only, no vendors in the room. The finalized comparison matrix from this group is the pre-read. Chatham House rule applies; no recording.',
         eventRows: [
           { icon: 'calendar', text: 'Oct 8 · 15:00 UTC' },
@@ -224,10 +240,15 @@ export const GROUPS: Group[] = [
     threads: [
       {
         id: 'te1',
+        type: 'announcement',
         title: 'Connectivity survey open until Aug 22 — please respond',
         author: 'Sofia Lindqvist',
+        initials: 'SL',
         org: 'AP4',
         time: '8h ago',
+        upvotes: 6,
+        tags: ['survey', 'operations'],
+        reposts: 2,
         body: 'The annual connectivity survey is open: platforms, messaging standards, and post-trade integrations. Fifteen minutes, one response per organization. Results presented at the September call and feed the vendor scorecard.',
         replies: [
           { a: 'Marcus Chen', org: 'CPP Investments', time: '5h ago', initials: 'MC', text: 'Submitted. One suggestion: add a question on API access to tri-party data — it came up in three threads this quarter.' },

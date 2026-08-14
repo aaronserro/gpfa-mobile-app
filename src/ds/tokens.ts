@@ -188,13 +188,16 @@ export type WgRuleClass =
   | 'wg-rule-general';
 
 /**
- * The WG Forum design's RULE map: per post type, the left rule colour, chip
- * fill/border and label. Derived from tokens rather than the design's literal
- * hexes so the dark theme's remapped brand colours carry through.
+ * Per post type: left rule colour, chip ink/fill, and label.
+ *
+ * Values follow the Working Group Posts design's SKIN map, which reassigned
+ * these colours from the earlier WG Forum design (discussion teal not amber,
+ * poll amber, event blue, announcement brick). Derived from tokens rather than
+ * the design's literal hexes so the dark theme's remapped brands carry through.
  */
 export interface PostTypeStyle {
   rule: string;
-  tint: string;
+  ink: string;
   chipBg: string;
   chipBd: string;
   label: string;
@@ -204,17 +207,19 @@ export const postTypeStyle = (
   t: Theme,
   type: 'discussion' | 'poll' | 'announcement' | 'event'
 ): PostTypeStyle => {
+  // Announcement is the one type whose ink and rule differ (--brand-red on
+  // --brand-brick); the rest use a single colour for both.
   const base = {
-    discussion: { c: t.brandAmber, bd: 0.4, label: 'Discussion' },
-    poll: { c: t.brandGreenStrong, bd: 0.35, label: 'Poll' },
-    announcement: { c: t.brandBlue, bd: 0.35, label: 'Announcement' },
-    event: { c: t.surfaceAnchor, bd: 0.4, label: 'Event' },
+    discussion: { ink: t.surfaceAnchor, fill: t.surfaceAnchor, a: 0.1, label: 'Discussion' },
+    poll: { ink: t.brandAmber, fill: t.brandAmber, a: 0.1, label: 'Poll' },
+    event: { ink: t.brandBlue, fill: t.brandBlue, a: 0.12, label: 'Event' },
+    announcement: { ink: t.brandRed, fill: t.brandBrick, a: 0.1, label: 'Announcement' },
   }[type];
   return {
-    rule: base.c,
-    tint: base.c,
-    chipBg: alpha(base.c, 0.1),
-    chipBd: alpha(base.c, base.bd),
+    rule: base.fill,
+    ink: base.ink,
+    chipBg: alpha(base.fill, base.a),
+    chipBd: alpha(base.fill, 0.35),
     label: base.label,
   };
 };
