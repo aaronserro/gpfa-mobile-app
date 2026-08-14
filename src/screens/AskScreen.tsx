@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DisplayHead, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans, topPad } from '../ds/tokens';
-import { findAnswer, SUGGESTIONS } from '../data/portal';
+import { askGpfa, getAskSuggestions } from '../api/portal';
+import { useQuery } from '../api/useQuery';
 
 interface ChatMessage {
   /** true when the member asked it, false for a GPFA answer. */
@@ -53,23 +54,36 @@ export default function AskScreen() {
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
   const scroller = useRef<ScrollView>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const alive = useRef(true);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
-  const ask = (q: string) => {
+  const { data: suggestions } = useQuery(getAskSuggestions, []);
+
+  const ask = async (q: string) => {
     const question = q.trim();
     if (!question) return;
     setMessages((prev) => [...prev, { user: true, text: question }]);
     setDraft('');
     setTyping(true);
-    clearTimeout(timer.current);
-    // The design answers after a fixed 1100ms think.
-    timer.current = setTimeout(() => {
-      const a = findAnswer(question);
-      setMessages((prev) => [...prev, { user: false, text: a.text, sources: a.sources }]);
-      setTyping(false);
-    }, 1100);
+    try {
+      const answer = await askGpfa(question);
+      if (!alive.current) return;
+      setMessages((prev) => [...prev, { user: false, text: answer.text, sources: answer.sources }]);
+    } catch {
+      if (!alive.current) return;
+      setMessages((prev) => [
+        ...prev,
+        { user: false, text: 'Ask GPFA is unavailable right now. Please try again.' },
+      ]);
+    } finally {
+      if (alive.current) setTyping(false);
+    }
   };
 
   const scrollDown = () => scroller.current?.scrollToEnd({ animated: true });
@@ -97,10 +111,10 @@ export default function AskScreen() {
               Try asking
             </Eyebrow>
             <View style={styles.suggestions}>
-              {SUGGESTIONS.map((q) => (
+              {(suggestions ?? []).map((q) => (
                 <Pressable
                   key={q}
-                  onPress={() => ask(q)}
+                  onPress={() => void ask(q)}
                   style={({ pressed }) => [
                     styles.suggestion,
                     { borderColor: pressed ? t.ruleStrong : t.ruleHairline, backgroundColor: t.surfacePaper },
@@ -166,10 +180,10 @@ export default function AskScreen() {
             placeholder="Ask GPFA…"
             style={styles.composerInput}
             returnKeyType="send"
-            onSubmitEditing={() => ask(draft)}
+            onSubmitEditing={() => void ask(draft)}
           />
           <Pressable
-            onPress={() => ask(draft)}
+            onPress={() => void ask(draft)}
             accessibilityLabel="Send"
             style={({ pressed }) => [
               styles.send,

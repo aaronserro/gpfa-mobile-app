@@ -36,6 +36,7 @@ export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/i
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
 export { PaperPlaneTiltIcon as PaperPlaneTilt } from 'phosphor-react-native/lib/commonjs/icons/PaperPlaneTilt';
 export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
+export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SlidersHorizontalIcon as SlidersHorizontal } from 'phosphor-react-native/lib/commonjs/icons/SlidersHorizontal';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';

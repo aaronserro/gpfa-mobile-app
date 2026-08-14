@@ -4,16 +4,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Card, DisplayHead, Eyebrow, LiveDot, MastheadMeta, RadialWash, RelevanceDot } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
-import { GROUPS, NEWS } from '../data/portal';
+import type { Group, NewsItem } from '../api/types';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
 export default function HomeScreen({
+  groups,
+  news,
   onGoAsk,
   onGoGroups,
   onPickGroup,
   showBadges,
 }: {
+  groups: Group[];
+  news: NewsItem[];
   onGoAsk: () => void;
   onGoGroups: () => void;
   onPickGroup: (groupId: string) => void;
@@ -52,7 +56,7 @@ export default function HomeScreen({
       </View>
 
       <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-        {NEWS.map((n, i) => (
+        {news.map((n, i) => (
           <View key={n.t} style={[styles.newsRow, i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}>
             <RelevanceDot level={n.rel} style={styles.newsDot} />
             <View style={styles.newsBody}>
@@ -76,7 +80,7 @@ export default function HomeScreen({
       </View>
 
       <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-        {GROUPS.map((g, i) => (
+        {groups.map((g, i) => (
           <Pressable
             key={g.id}
             onPress={() => onPickGroup(g.id)}

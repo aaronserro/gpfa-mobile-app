@@ -1,5 +1,14 @@
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   ArrowBendUpLeft,
   ArrowFatUp,
@@ -7,7 +16,6 @@ import {
   Bell,
   BookmarkSimple,
   CalendarDots,
-  CaretDown,
   CaretLeft,
   ChartBar,
   ChatCircle,
@@ -20,6 +28,7 @@ import {
   MapPin,
   Megaphone,
   PaperPlaneTilt,
+  Plus,
   ShareFat,
   SlidersHorizontal,
   UsersThree,
@@ -30,9 +39,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
-import { GROUPS, initials, type PostType, type Reply, type Thread } from '../data/portal';
-
-export type RsvpChoice = 'yes' | 'no';
+import { initials } from '../lib/format';
+import type { FeedEntry, Group, PostType, Reply, RsvpChoice, Thread } from '../api/types';
 
 const POST_TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
@@ -52,14 +60,13 @@ const SORTS = [
 ] as const;
 type SortId = (typeof SORTS)[number]['id'];
 
-/** Every post paired with the group it belongs to — the feed spans all groups. */
-const ALL_POSTS: { post: Thread; groupId: string }[] = GROUPS.flatMap((g) =>
-  g.threads.map((post) => ({ post, groupId: g.id }))
-);
 
-const groupOf = (id: string) => GROUPS.find((g) => g.id === id);
 
 export interface GroupsScreenProps {
+  /** All working groups, from the API. */
+  groups: Group[];
+  /** Every post across those groups, from the API. */
+  posts: FeedEntry[];
   /** Ids of the working groups whose posts appear in the feed. */
   groupIds: string[];
   onSetGroupIds: (ids: string[]) => void;
@@ -78,11 +85,16 @@ export interface GroupsScreenProps {
   /** RSVP per event post. */
   rsvps: Record<string, RsvpChoice | undefined>;
   onRsvp: (threadId: string, choice: RsvpChoice) => void;
+  /** Posts composed this session, newest first. */
+  newPosts: FeedEntry[];
+  onCompose: () => void;
   /** Design prop: colour each card's left rule by working group. */
   showRules?: boolean;
 }
 
 export default function GroupsScreen({
+  groups,
+  posts,
   groupIds,
   onSetGroupIds,
   threadId,
@@ -96,6 +108,8 @@ export default function GroupsScreen({
   onToggleUpvote,
   rsvps,
   onRsvp,
+  newPosts,
+  onCompose,
   showRules = true,
 }: GroupsScreenProps) {
   const { t } = useTheme();
@@ -105,12 +119,17 @@ export default function GroupsScreen({
   const [types, setTypes] = useState<PostType[]>(POST_TYPES);
   const [sortId, setSortId] = useState<SortId>('newest');
   const [expanded, setExpanded] = useState<Record<string, boolean | undefined>>({});
+  const [query, setQuery] = useState('');
 
-  const thread = threadId ? ALL_POSTS.find((x) => x.post.id === threadId)?.post ?? null : null;
-  const group = threadId ? groupOf(ALL_POSTS.find((x) => x.post.id === threadId)?.groupId ?? '') : undefined;
+  const groupOf = useCallback((id: string) => groups.find((g) => g.id === id), [groups]);
+  const allPosts = useMemo(() => [...newPosts, ...posts], [newPosts, posts]);
+
+  const entry = threadId ? allPosts.find((x) => x.post.id === threadId) : undefined;
+  const thread = entry?.post ?? null;
+  const group = entry ? groupOf(entry.groupId) : undefined;
 
   const repliesFor = (id: string): Reply[] => {
-    const base = ALL_POSTS.find((x) => x.post.id === id)?.post.replies ?? [];
+    const base = allPosts.find((x) => x.post.id === id)?.post.replies ?? [];
     return [...base, ...(extraReplies[id] ?? [])];
   };
 
@@ -411,11 +430,17 @@ export default function GroupsScreen({
   }
 
   /* ── cross-group feed ────────────────────────────────────────────────── */
-  const allGroupsOn = groupIds.length === GROUPS.length;
+  const allGroupsOn = groupIds.length === groups.length;
 
-  const feed = ALL_POSTS.filter(
-    (x) => groupIds.includes(x.groupId) && types.includes(x.post.type ?? 'discussion')
-  );
+  const q = query.trim().toLowerCase();
+  const feed = allPosts.filter(({ post, groupId }) => {
+    if (!groupIds.includes(groupId) || !types.includes(post.type ?? 'discussion')) return false;
+    if (!q) return true;
+    const haystack = [post.title, post.body, post.author, post.org, groupOf(groupId)?.n ?? '']
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(q);
+  });
 
   if (sortId === 'newest') {
     feed.sort((a, b) => (a.post.mins ?? 0) - (b.post.mins ?? 0));
@@ -425,12 +450,6 @@ export default function GroupsScreen({
   } else {
     feed.sort((a, b) => repliesFor(b.post.id).length - repliesFor(a.post.id).length);
   }
-
-  const sortMeta = SORTS.find((s) => s.id === sortId)?.meta ?? 'NEWEST';
-  const cycleSort = () => {
-    const i = SORTS.findIndex((s) => s.id === sortId);
-    setSortId(SORTS[(i + 1) % SORTS.length].id);
-  };
 
   const toggleGroup = (id: string) =>
     onSetGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
@@ -482,7 +501,17 @@ export default function GroupsScreen({
           <Avatar initials="RG" size={32} />
           <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
             <MagnifyingGlass size={15} color={t.inkMuted} />
-            <Text style={[styles.searchText, { color: t.inkFaint }]}>Search all posts</Text>
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search all posts"
+              placeholderTextColor={t.inkFaint}
+              style={[styles.searchInput, { color: t.inkStrong }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
           </View>
           <Bell size={21} color={t.inkMuted} />
         </View>
@@ -499,22 +528,6 @@ export default function GroupsScreen({
             <Text style={[styles.chipText, { color: t.inkInverse }]}>Filter</Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => setDrawerOpen(true)}
-            style={[styles.chip, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
-          >
-            <Text style={[styles.chipText, { color: t.inkMuted }]}>
-              {allGroupsOn ? 'ALL GROUPS' : `${groupIds.length} GROUPS`}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={cycleSort}
-            style={[styles.chip, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
-          >
-            <Text style={[styles.chipText, { color: t.inkMuted }]}>{sortMeta}</Text>
-            <CaretDown size={11} color={t.inkFaint} />
-          </Pressable>
         </View>
       </View>
 
@@ -658,10 +671,30 @@ export default function GroupsScreen({
           );
         })}
 
+        {feed.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={[styles.emptyText, { color: t.inkMuted }]}>
+              {q ? `No posts match “${query.trim()}”.` : 'No posts match the current filters.'}
+            </Text>
+          </View>
+        )}
+
         <Text style={[styles.feedDisclaimer, { color: t.inkFaint }]}>
           Content reflects member discussion and is not investment advice.
         </Text>
       </ScrollView>
+
+      <Pressable
+        onPress={onCompose}
+        accessibilityLabel="Create a post"
+        style={({ pressed }) => [
+          styles.fab,
+          { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+        ]}
+      >
+        <Plus size={20} color="#fff" />
+        <Text style={styles.fabText}>Post</Text>
+      </Pressable>
 
       {drawerOpen && (
         <View style={styles.drawerWrap}>
@@ -680,7 +713,7 @@ export default function GroupsScreen({
                   WORKING GROUPS
                 </MastheadMeta>
                 <Pressable
-                  onPress={() => onSetGroupIds(allGroupsOn ? [] : GROUPS.map((g) => g.id))}
+                  onPress={() => onSetGroupIds(allGroupsOn ? [] : groups.map((g) => g.id))}
                   hitSlop={8}
                 >
                   <Text style={[styles.drawerAction, { color: t.brandGreen }]}>
@@ -689,7 +722,7 @@ export default function GroupsScreen({
                 </Pressable>
               </View>
 
-              {GROUPS.map((g) =>
+              {groups.map((g) =>
                 checkRow(
                   g.id,
                   groupIds.includes(g.id),
@@ -782,9 +815,12 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
-  searchText: {
+  searchInput: {
+    flex: 1,
+    height: '100%',
     fontFamily: sans(400),
     fontSize: 13,
+    padding: 0,
   },
   chipRow: {
     flexDirection: 'row',
@@ -855,10 +891,10 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     marginTop: 11,
-    fontFamily: sans(600),
-    fontSize: 15.5,
-    lineHeight: 20.5,
-    letterSpacing: -0.33,
+    fontFamily: sans(700),
+    fontSize: 18,
+    lineHeight: 23,
+    letterSpacing: trackDisplay(18),
   },
   cardBody: {
     marginTop: 7,
@@ -913,6 +949,37 @@ const styles = StyleSheet.create({
   feedActionText: {
     fontFamily: sans(500),
     fontSize: 12,
+  },
+  empty: {
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: sans(400),
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  fabText: {
+    fontFamily: sans(600),
+    fontSize: 14,
+    color: '#fff',
   },
   feedDisclaimer: {
     paddingTop: 8,

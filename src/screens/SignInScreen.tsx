@@ -1,18 +1,35 @@
 import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Moon, Sun } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DisplayHead, Eyebrow, Input, RadialWash } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad } from '../ds/tokens';
+import { useAuth } from '../auth/AuthProvider';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
-export default function SignInScreen({ onSignIn }: { onSignIn: () => void }) {
+export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
+  const { signIn, busy, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const submit = async () => {
+    if (busy) return;
+    if (await signIn(email.trim(), password)) onSignedIn();
+  };
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfaceAnchor }]}>
@@ -75,18 +92,26 @@ export default function SignInScreen({ onSignIn }: { onSignIn: () => void }) {
                 secureTextEntry
                 autoCapitalize="none"
                 autoComplete="password"
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
                 style={styles.field}
               />
               <Pressable
-                onPress={onSignIn}
+                onPress={() => void submit()}
+                disabled={busy}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  { backgroundColor: t.brandGreenOnDark },
+                  { backgroundColor: t.brandGreenOnDark, opacity: busy ? 0.7 : 1 },
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.primaryBtnText}>Sign in</Text>
+                {busy ? (
+                  <ActivityIndicator color="#07171b" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Sign in</Text>
+                )}
               </Pressable>
+              {!!error && <Text style={[styles.error, { color: t.brandBrickInk }]}>{error}</Text>}
             </View>
 
             <Pressable hitSlop={8}>
@@ -154,6 +179,11 @@ const styles = StyleSheet.create({
     color: '#07171b',
   },
   pressed: { transform: [{ translateY: 1 }], opacity: 0.9 },
+  error: {
+    fontFamily: sans(500),
+    fontSize: 12.5,
+    textAlign: 'center',
+  },
   forgot: {
     marginTop: 18,
     textAlign: 'center',

@@ -14,7 +14,7 @@ import {
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from './ThemeProvider';
 import { alpha, mono, sans, trackDisplay, trackEyebrow } from './tokens';
-import type { Relevance } from '../data/portal';
+import type { Relevance } from '../api/types';
 
 /* ── motion ──────────────────────────────────────────────────────────────── */
 
