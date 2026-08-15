@@ -240,3 +240,34 @@ export const wgRule = (t: Theme, cls: WgRuleClass): string =>
 export const FRAME_STATUS_BAR = 62;
 export const topPad = (insetTop: number, designTop: number): number =>
   Math.max(insetTop, 0) + (designTop - FRAME_STATUS_BAR);
+
+/**
+ * Per library type: chip ink, fill and border.
+ *
+ * Mirrors postTypeStyle, so the dark theme's remapped brand colours carry
+ * through. Same assignment as the web portal's TYPE_META, except Template,
+ * Explainer and Event Notes, which have no mobile token equivalent and take
+ * plum, leaf and amber.
+ */
+export const resourceTypeStyle = (
+  t: Theme,
+  type:
+    | 'Working Paper'
+    | 'Podcast'
+    | 'Briefing'
+    | 'Template'
+    | 'External Link'
+    | 'Explainer'
+    | 'Event Notes'
+): PostTypeStyle => {
+  const base = {
+    'Working Paper': { c: t.brandGreen, bd: 0.4 },
+    Podcast: { c: t.brandRed, bd: 0.4 },
+    Briefing: { c: t.brandBlue, bd: 0.35 },
+    Template: { c: t.brandGreenStrong, bd: 0.35 },
+    'External Link': { c: t.brandBlue, bd: 0.35 },
+    Explainer: { c: t.brandLeaf, bd: 0.4 },
+    'Event Notes': { c: t.brandAmber, bd: 0.4 },
+  }[type];
+  return { ink: base.c, chipBg: alpha(base.c, 0.1), chipBd: alpha(base.c, base.bd), label: type };
+};

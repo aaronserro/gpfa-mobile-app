@@ -12,10 +12,14 @@
  * suffix, so the suffixed exports are aliased back to the short names here.
  */
 export { ArrowBendUpLeftIcon as ArrowBendUpLeft } from 'phosphor-react-native/lib/commonjs/icons/ArrowBendUpLeft';
+export { ArrowClockwiseIcon as ArrowClockwise } from 'phosphor-react-native/lib/commonjs/icons/ArrowClockwise';
+export { ArrowCounterClockwiseIcon as ArrowCounterClockwise } from 'phosphor-react-native/lib/commonjs/icons/ArrowCounterClockwise';
 export { ArrowFatUpIcon as ArrowFatUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowFatUp';
 export { ArrowRightIcon as ArrowRight } from 'phosphor-react-native/lib/commonjs/icons/ArrowRight';
 export { ArrowUpIcon as ArrowUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowUp';
+export { ArticleIcon as Article } from 'phosphor-react-native/lib/commonjs/icons/Article';
 export { BellIcon as Bell } from 'phosphor-react-native/lib/commonjs/icons/Bell';
+export { BookOpenIcon as BookOpen } from 'phosphor-react-native/lib/commonjs/icons/BookOpen';
 export { BookmarkSimpleIcon as BookmarkSimple } from 'phosphor-react-native/lib/commonjs/icons/BookmarkSimple';
 export { CalendarDotsIcon as CalendarDots } from 'phosphor-react-native/lib/commonjs/icons/CalendarDots';
 export { CaretDownIcon as CaretDown } from 'phosphor-react-native/lib/commonjs/icons/CaretDown';
@@ -36,6 +40,8 @@ export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/i
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
 export { PaperPlaneTiltIcon as PaperPlaneTilt } from 'phosphor-react-native/lib/commonjs/icons/PaperPlaneTilt';
 export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
+export { PauseIcon as Pause } from 'phosphor-react-native/lib/commonjs/icons/Pause';
+export { PlayIcon as Play } from 'phosphor-react-native/lib/commonjs/icons/Play';
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SlidersHorizontalIcon as SlidersHorizontal } from 'phosphor-react-native/lib/commonjs/icons/SlidersHorizontal';

@@ -144,3 +144,59 @@ export interface CalendarEvent {
   meta: string;
   tags: EventTag[];
 }
+
+/** Library type; drives the type chip colour and the corner glyph. */
+export type ResourceType =
+  | 'Working Paper'
+  | 'Podcast'
+  | 'Briefing'
+  | 'Template'
+  | 'External Link'
+  | 'Explainer'
+  | 'Event Notes';
+
+/** A document in the member library. */
+export interface LibraryResource {
+  id: string;
+  title: string;
+  type: ResourceType;
+  summary: string;
+  /** Byline, e.g. "Collateral & Liquidity WG". */
+  authors: string;
+  /** Display string, e.g. "Aug 12". The app never parses it. */
+  updatedAt: string;
+  /** Age in minutes — the Newest/Oldest sort key. Send it or ordering is undefined. */
+  mins?: number;
+  pages?: number;
+  tags: string[];
+  /** Where Open goes. Absent hides the action. */
+  href?: string;
+}
+
+/** A guest or host on an episode. */
+export interface PodcastPerson {
+  name: string;
+  role: string;
+  /** Avatar fallback; derived from `name` when absent. */
+  initials?: string;
+}
+
+export interface PodcastEpisode {
+  slug: string;
+  title: string;
+  /** Display string, e.g. "Aug 11". */
+  date: string;
+  /** Age in minutes — the Newest/Oldest sort key. */
+  mins?: number;
+  /** Display duration, e.g. "38 min". */
+  duration: string;
+  /** Duration in seconds — drives the transport, resume label and waveform fill. */
+  durationSeconds: number;
+  summary: string;
+  hasTranscript: boolean;
+  transcriptUrl?: string;
+  audioUrl?: string;
+  /** 0–1 amplitudes, 24–32 of them. Absent falls back to seeded peaks. */
+  peaks?: number[];
+  people: PodcastPerson[];
+}

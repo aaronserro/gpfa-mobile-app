@@ -1,11 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Icon } from '../ds/icons';
-import { ChatCircleDots, House, UsersThree } from '../ds/icons';
+import { BookOpen, ChatCircleDots, House, UsersThree } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans } from '../ds/tokens';
 
-export type TabId = 'home' | 'ask' | 'groups';
+export type TabId = 'home' | 'ask' | 'resources' | 'groups';
 
 interface TabDef {
   id: TabId;
@@ -17,6 +17,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'home', label: 'Home', Icon: House },
   { id: 'ask', label: 'Ask GPFA', Icon: ChatCircleDots },
+  { id: 'resources', label: 'Resources', Icon: BookOpen },
   { id: 'groups', label: 'Groups', Icon: UsersThree, badge: 22 },
 ];
 

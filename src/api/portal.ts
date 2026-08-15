@@ -5,14 +5,25 @@ import type {
   CalendarEvent,
   FeedEntry,
   Group,
+  LibraryResource,
   NewPostInput,
   Member,
   NewsItem,
+  PodcastEpisode,
   Reply,
   RsvpChoice,
   Thread,
 } from './types';
-import { findAnswer, GROUPS, MEMBER, NEWS, NEXT_EVENT, SUGGESTIONS } from '../data/fixtures';
+import {
+  findAnswer,
+  GROUPS,
+  LIBRARY,
+  MEMBER,
+  NEWS,
+  NEXT_EVENT,
+  PODCASTS,
+  SUGGESTIONS,
+} from '../data/fixtures';
 
 /**
  * The one place that decides where portal data comes from.
@@ -60,6 +71,17 @@ export function getFeed(): Promise<FeedEntry[]> {
 export function getNews(): Promise<NewsItem[]> {
   if (!USING_REMOTE_API) return local(NEWS);
   return request<NewsItem[]>(ROUTES.news);
+}
+
+export function getLibrary(): Promise<LibraryResource[]> {
+  if (!USING_REMOTE_API) return local(LIBRARY);
+  return request<LibraryResource[]>(ROUTES.library);
+}
+
+/** Newest first — the screen features the first entry and never re-sorts it. */
+export function getPodcasts(): Promise<PodcastEpisode[]> {
+  if (!USING_REMOTE_API) return local(PODCASTS);
+  return request<PodcastEpisode[]>(ROUTES.podcasts);
 }
 
 export function getAskSuggestions(): Promise<string[]> {

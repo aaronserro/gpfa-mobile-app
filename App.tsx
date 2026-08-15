@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -15,10 +15,13 @@ import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600Semi
 
 import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
+import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar';
+import { PodcastPlayerProvider } from './src/components/podcast/PlayerProvider';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import ResourcesScreen from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import {
   castVote,
@@ -26,9 +29,11 @@ import {
   createReply,
   getFeed,
   getGroups,
+  getLibrary,
   getMe,
   getNews,
   getNextEvent,
+  getPodcasts,
   setRsvp as setRsvpRequest,
   setUpvote,
 } from './src/api/portal';
@@ -66,6 +71,13 @@ function Portal() {
   const groupsQuery = useQuery(getGroups, []);
   const feedQuery = useQuery(getFeed, []);
   const newsQuery = useQuery(getNews, []);
+  const libraryQuery = useQuery(getLibrary, []);
+  const podcastQuery = useQuery(getPodcasts, []);
+
+  // Episode the now-playing bar asked to open. `n` counts the requests so
+  // asking for the same episode twice still remounts the screen and reopens
+  // the sheet — the slug alone would leave the key unchanged.
+  const [episodeRequest, setEpisodeRequest] = useState<{ slug: string; n: number } | null>(null);
 
   // DataGate blocks these screens until the member resolves, so the fallback
   // only exists to satisfy the type before the first response lands.
@@ -206,6 +218,28 @@ function Portal() {
               </DataGate>
             )}
             {tab === 'ask' && <AskScreen />}
+            {tab === 'resources' && (
+              <DataGate
+                loading={libraryQuery.loading || podcastQuery.loading}
+                error={libraryQuery.error ?? podcastQuery.error}
+                onRetry={() => {
+                  libraryQuery.refetch();
+                  podcastQuery.refetch();
+                }}
+              >
+                <ResourcesScreen
+                  // Remounts on the bar's Episode action so the sheet opens on
+                  // that episode.
+                  key={episodeRequest ? `${episodeRequest.slug}-${episodeRequest.n}` : 'resources'}
+                  resources={libraryQuery.data ?? []}
+                  episodes={podcastQuery.data ?? []}
+                  initialView={episodeRequest ? 'podcasts' : 'hub'}
+                  initialEpisodeSlug={episodeRequest?.slug ?? null}
+                  onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
+                  onOpenTranscript={(e) => e.transcriptUrl && void Linking.openURL(e.transcriptUrl)}
+                />
+              </DataGate>
+            )}
             {tab === 'groups' && (
               <DataGate
                 loading={meQuery.loading || groupsQuery.loading || feedQuery.loading}
@@ -239,6 +273,12 @@ function Portal() {
               </DataGate>
             )}
           </View>
+          <PodcastNowPlayingBar
+            onOpenEpisode={(slug) => {
+              setEpisodeRequest((prev) => ({ slug, n: (prev?.n ?? 0) + 1 }));
+              setTab('resources');
+            }}
+          />
           <PortalTabBar tab={tab} onSelect={selectTab} showBadges={SHOW_BADGES} />
           {composerOpen && (
             <PostComposer
@@ -272,7 +312,10 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider initialDark={DARK_MODE}>
         <AuthProvider>
-          <Portal />
+          {/* Above Portal so the now-playing bar survives tab switches. */}
+          <PodcastPlayerProvider>
+            <Portal />
+          </PodcastPlayerProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

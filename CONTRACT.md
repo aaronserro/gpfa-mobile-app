@@ -138,6 +138,9 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
 | `GET` | `/news` | Home News Radar | `NewsItem[]` |
+| `GET` | `/library` | Resources → Library | `LibraryResource[]` |
+| `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
+| `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
 | `GET` | `/ask/suggestions` | Ask GPFA empty state | `string[]` |
 | `POST` | `/ask` | Ask GPFA | `AskAnswer` |
 | `POST` | `/posts` | Composer | `Thread` |
@@ -356,6 +359,37 @@ EventTag      { label: string; tone: 'green' | 'default' }
 ```
 
 `month` ("Sep") and `day` ("17") are display strings, not a parsed date.
+
+### `ResourceType`, `LibraryResource`
+
+```ts
+ResourceType    'Working Paper' | 'Podcast' | 'Briefing' | 'Template'
+              | 'External Link' | 'Explainer' | 'Event Notes'
+LibraryResource { id, title, type: ResourceType, summary, authors,
+                  updatedAt, mins?, pages?, tags: string[], href? }
+```
+
+`updatedAt` ("Aug 12") is a display string. `mins` is the age in minutes and is
+the **only** sort key the Newest/Oldest toggle uses — omit it and ordering is
+undefined. `type` drives the chip colour and the corner glyph, so send one of
+the seven values above. `href` is where the sheet's Open button goes; without
+it the button does nothing.
+
+### `PodcastPerson`, `PodcastEpisode`
+
+```ts
+PodcastPerson  { name: string; role: string; initials? }
+PodcastEpisode { slug, title, date, mins?, duration, durationSeconds,
+                 summary, hasTranscript, transcriptUrl?, audioUrl?,
+                 peaks?: number[], people: PodcastPerson[] }
+```
+
+Return `/podcasts` **newest first** — the screen features `[0]` as the New
+episode and never re-sorts it. `duration` is display ("38 min");
+`durationSeconds` is what the transport, the resume label and the waveform fill
+read, so both are required. `peaks` are 24–32 amplitudes in 0–1; when absent the
+app draws a stable set seeded from `slug`. `initials` is derived from `name`
+when omitted.
 
 ### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
 

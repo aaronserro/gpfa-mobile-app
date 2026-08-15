@@ -5,7 +5,16 @@
  * outside src/api/ should import this — screens read through the repository in
  * src/api/portal.ts so the source can change without touching the UI.
  */
-import type { AskAnswer, Answer, CalendarEvent, Group, Member, NewsItem } from '../api/types';
+import type {
+  AskAnswer,
+  Answer,
+  CalendarEvent,
+  Group,
+  LibraryResource,
+  Member,
+  NewsItem,
+  PodcastEpisode,
+} from '../api/types';
 
 export const GROUPS: Group[] = [
   {
@@ -386,3 +395,177 @@ export const NEXT_EVENT: CalendarEvent = {
     { label: 'Conference', tone: 'default' },
   ],
 };
+
+/**
+ * Resources tab seed content. The titles below are placeholders in the working
+ * groups' voice, not published GPFA material — swap them for the real library
+ * and episode list.
+ */
+export const LIBRARY: LibraryResource[] = [
+  {
+    id: 'r1',
+    type: 'Working Paper',
+    title: 'Indemnification comparison matrix v3',
+    authors: 'Collateral & Liquidity WG',
+    updatedAt: 'Aug 12',
+    mins: 4320,
+    pages: 24,
+    summary:
+      'Indemnification terms normalized across 24 member lending programs: agent-provided vs third-party wrap, collateral haircut bands, and the two sovereign-fund respondents added in v3.',
+    tags: ['Indemnification', 'Securities lending', 'Collateral'],
+  },
+  {
+    id: 'r2',
+    type: 'Template',
+    title: 'GMSLA 2018 annex — jurisdiction carve-out language',
+    authors: 'Legal & Documentation WG',
+    updatedAt: 'Aug 9',
+    mins: 8640,
+    pages: 11,
+    summary:
+      'Consolidated carve-out language members have negotiated into the 2018 annex. Netherlands and Singapore versions are current; the Dutch text predates the 2025 securities law amendment.',
+    tags: ['GMSLA', 'Documentation', 'Legal'],
+  },
+  {
+    id: 'r3',
+    type: 'Working Paper',
+    title: 'Counterparty scoring methodology v2',
+    authors: 'Risk WG',
+    updatedAt: 'Aug 4',
+    mins: 15840,
+    pages: 18,
+    summary:
+      'Shared scoring methodology with liquidity and wrong-way risk split into separate factors, on a quarterly refresh cadence. Feedback window closes end of month.',
+    tags: ['Counterparty risk', 'Methodology'],
+  },
+  {
+    id: 'r4',
+    type: 'Briefing',
+    title: 'Basel recalibration — counsel memo on shifted indemnification cost',
+    authors: 'OTPP counsel, shared with members',
+    updatedAt: 'Jul 28',
+    mins: 27360,
+    pages: 6,
+    summary:
+      'Redacted memo behind the counter-proposal to accept a fee-adjustment mechanism rather than language shifting capital-driven costs to the lender.',
+    tags: ['Basel', 'Indemnification', 'Legal'],
+  },
+  {
+    id: 'r5',
+    type: 'Briefing',
+    title: '2026 Member Practices Survey — aggregated results',
+    authors: 'GPFA secretariat',
+    updatedAt: 'Jul 21',
+    mins: 37440,
+    pages: 32,
+    summary:
+      'Responses from 41 organizations on indemnification, collateral mix, reinvestment guidelines and connectivity. One response per organization; results feed the working-group agendas.',
+    tags: ['Survey', 'Benchmarking'],
+  },
+  {
+    id: 'r6',
+    type: 'Event Notes',
+    title: 'T+1 readiness one quarter in — European member call notes',
+    authors: 'Regional WG',
+    updatedAt: 'Jul 14',
+    mins: 47520,
+    pages: 4,
+    summary:
+      'Fails rates back to pre-transition levels, funding cut-offs tighter than modelled, and the list of steps members still run manually.',
+    tags: ['T+1', 'Europe', 'Settlement'],
+  },
+  {
+    id: 'r7',
+    type: 'Explainer',
+    title: 'Tri-party interoperability, explained for asset owners',
+    authors: 'Technology WG',
+    updatedAt: 'Jun 30',
+    mins: 67680,
+    pages: 8,
+    summary:
+      'What the interoperability pilot changes for collateral mobility, which custodians are in, and the reconciliation work members should expect internally.',
+    tags: ['Tri-party', 'Collateral'],
+  },
+  {
+    id: 'r8',
+    type: 'Template',
+    title: 'Connectivity survey 2026 — questionnaire',
+    authors: 'Technology WG',
+    updatedAt: 'Jun 18',
+    mins: 84960,
+    pages: 5,
+    summary:
+      'The fifteen-minute questionnaire covering platforms, messaging standards and post-trade integrations, published so members can circulate it internally first.',
+    tags: ['Connectivity', 'Survey'],
+  },
+];
+
+/** Newest first — the screen features PODCASTS[0] and never re-sorts it. */
+export const PODCASTS: PodcastEpisode[] = [
+  {
+    slug: 'indemnification-after-basel',
+    title: 'Indemnification after the Basel recalibration',
+    date: 'Aug 11',
+    mins: 5760,
+    duration: '38 min',
+    durationSeconds: 2280,
+    hasTranscript: true,
+    summary:
+      'Two heads of securities finance on what agent lenders are proposing, what their boards asked first, and where the comparison matrix changed their negotiating position.',
+    people: [
+      { name: 'Elena Rossi', role: 'Head of Securities Finance, APG', initials: 'ER' },
+      { name: 'Amara Okafor', role: 'Director, Capital Markets, OTPP', initials: 'AO' },
+    ],
+  },
+  {
+    slug: 'cash-versus-non-cash',
+    title: 'Cash versus non-cash: how members repriced reinvestment',
+    date: 'Aug 4',
+    mins: 15840,
+    duration: '31 min',
+    durationSeconds: 1860,
+    hasTranscript: true,
+    summary:
+      'Non-cash shares crossing 60% changed eligible-collateral schedules more than reinvestment guidelines. A practitioner walkthrough of both.',
+    people: [{ name: 'Priya Nair', role: 'Senior Portfolio Manager, GIC', initials: 'PN' }],
+  },
+  {
+    slug: 'tri-party-pilot-custodian-side',
+    title: 'The tri-party pilot, from the custodian side',
+    date: 'Jul 22',
+    mins: 34560,
+    duration: '44 min',
+    durationSeconds: 2640,
+    hasTranscript: true,
+    summary:
+      'What broke first in production was reconciliation with the legacy custodian feed, not the ledger. The fix, and what the next pilot phase targets.',
+    people: [
+      { name: 'Marcus Chen', role: 'Head of Collateral, CPP Investments', initials: 'MC' },
+      { name: 'Jonas Weber', role: 'Securities Finance, Allianz IM', initials: 'JW' },
+    ],
+  },
+  {
+    slug: 't-plus-one-one-quarter-later',
+    title: 'T+1, one quarter later',
+    date: 'Jul 8',
+    mins: 54720,
+    duration: '27 min',
+    durationSeconds: 1620,
+    hasTranscript: false,
+    summary:
+      'Funding cut-offs, not fails, turned out to be the constraint. Three European members compare what they changed operationally.',
+    people: [{ name: 'Sofia Lindqvist', role: 'Head of Trading, AP4', initials: 'SL' }],
+  },
+  {
+    slug: 'private-credit-disclosure',
+    title: 'Private credit disclosure asset owners actually receive',
+    date: 'Jun 24',
+    mins: 74880,
+    duration: '35 min',
+    durationSeconds: 2100,
+    hasTranscript: true,
+    summary:
+      'Fund-level leverage reported quarterly, defined differently by every manager. What members have negotiated at subscription.',
+    people: [{ name: 'David Park', role: 'Head of Private Markets, NPS', initials: 'DP' }],
+  },
+];

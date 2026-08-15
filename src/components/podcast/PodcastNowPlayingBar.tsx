@@ -1,0 +1,155 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { Article, ArrowClockwise, ArrowCounterClockwise, Pause, Play } from '../../ds/icons';
+import { useTheme } from '../../ds/ThemeProvider';
+import { alpha, mono, sans } from '../../ds/tokens';
+import { formatTime, usePodcastPlayer } from './PlayerProvider';
+
+/**
+ * Dense transport docked above the tab bar, from the portal's
+ * podcast-now-playing-bar: 15s jumps either side of play/pause, title, mono
+ * time readout, a 2px progress strip on the anchor surface, and an action that
+ * opens the episode.
+ *
+ * Renders nothing when no episode is loaded, so App can mount it
+ * unconditionally between the screen and the tab bar.
+ */
+export default function PodcastNowPlayingBar({
+  onOpenEpisode,
+}: {
+  onOpenEpisode: (slug: string) => void;
+}) {
+  const { t } = useTheme();
+  const { episode, isPlaying, position, toggle, skip } = usePodcastPlayer();
+
+  if (!episode) return null;
+
+  const progress = episode.durationSeconds > 0 ? Math.min(1, position / episode.durationSeconds) : 0;
+
+  return (
+    <View
+      accessibilityRole="toolbar"
+      accessibilityLabel="Podcast player"
+      style={[styles.bar, { backgroundColor: t.surfaceAnchor, borderTopColor: t.ruleOnAnchor }]}
+    >
+      <View style={[styles.track, { backgroundColor: 'rgba(255,255,255,.15)' }]}>
+        <View
+          style={[styles.fill, { width: `${progress * 100}%`, backgroundColor: t.brandGreenOnDark }]}
+        />
+      </View>
+
+      <View style={styles.row}>
+        <Pressable
+          onPress={() => skip(-15)}
+          accessibilityLabel="Rewind 15 seconds"
+          style={styles.jump}
+          hitSlop={6}
+        >
+          <ArrowCounterClockwise size={19} color={t.inkInverse} />
+          <Text style={[styles.jumpLabel, { color: t.inkInverse }]}>15</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={toggle}
+          accessibilityLabel={isPlaying ? 'Pause episode' : 'Play episode'}
+          style={({ pressed }) => [styles.play, { backgroundColor: pressed ? t.surfaceSoft : '#fff' }]}
+        >
+          {isPlaying ? (
+            <Pause size={17} weight="fill" color={t.inkStrong} />
+          ) : (
+            <Play size={17} weight="fill" color={t.inkStrong} />
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={() => skip(15)}
+          accessibilityLabel="Forward 15 seconds"
+          style={styles.jump}
+          hitSlop={6}
+        >
+          <ArrowClockwise size={19} color={t.inkInverse} />
+          <Text style={[styles.jumpLabel, { color: t.inkInverse }]}>15</Text>
+        </Pressable>
+
+        <View style={styles.meta}>
+          <Text numberOfLines={1} style={[styles.title, { color: '#fff' }]}>
+            {episode.title}
+          </Text>
+          <Text style={[styles.time, { color: alpha(t.inkInverse, 0.7) }]}>
+            {formatTime(position)} / {formatTime(episode.durationSeconds)}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => onOpenEpisode(episode.slug)}
+          style={({ pressed }) => [
+            styles.action,
+            {
+              borderColor: 'rgba(255,255,255,.3)',
+              backgroundColor: pressed ? 'rgba(255,255,255,.1)' : 'transparent',
+            },
+          ]}
+        >
+          <Article size={14} color={t.inkInverse} />
+          <Text style={[styles.actionText, { color: t.inkInverse }]}>Episode</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: { borderTopWidth: 1 },
+  track: { position: 'absolute', left: 0, right: 0, top: 0, height: 2 },
+  fill: { height: '100%' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 11,
+  },
+  jump: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jumpLabel: {
+    position: 'absolute',
+    fontFamily: mono(600),
+    fontSize: 6.5,
+  },
+  play: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  meta: { flex: 1, minWidth: 0 },
+  title: {
+    fontFamily: sans(500),
+    fontSize: 12.5,
+  },
+  time: {
+    marginTop: 2,
+    fontFamily: mono(400),
+    fontSize: 10,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 30,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  actionText: {
+    fontFamily: sans(400),
+    fontSize: 11.5,
+  },
+});
