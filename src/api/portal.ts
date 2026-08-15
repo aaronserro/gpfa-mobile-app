@@ -5,6 +5,7 @@ import type {
   CalendarEvent,
   FeedEntry,
   Group,
+  JobListing,
   LibraryResource,
   NewPostInput,
   Member,
@@ -17,6 +18,7 @@ import type {
 import {
   findAnswer,
   GROUPS,
+  JOBS,
   LIBRARY,
   MEMBER,
   NEWS,
@@ -82,6 +84,12 @@ export function getLibrary(): Promise<LibraryResource[]> {
 export function getPodcasts(): Promise<PodcastEpisode[]> {
   if (!USING_REMOTE_API) return local(PODCASTS);
   return request<PodcastEpisode[]>(ROUTES.podcasts);
+}
+
+/** Open roles on the member job board. The screen sorts and filters them. */
+export function getJobs(): Promise<JobListing[]> {
+  if (!USING_REMOTE_API) return local(JOBS);
+  return request<JobListing[]>(ROUTES.jobs);
 }
 
 export function getAskSuggestions(): Promise<string[]> {

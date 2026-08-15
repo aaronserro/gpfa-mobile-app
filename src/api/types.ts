@@ -6,7 +6,7 @@
  * shapes that differ from these should be mapped in src/api/portal.ts rather
  * than leaking into screens.
  */
-import type { WgRuleClass } from '../ds/tokens';
+import type { JobFunctionKey, WgRuleClass } from '../ds/tokens';
 
 export interface Reply {
   a: string;
@@ -179,6 +179,51 @@ export interface PodcastPerson {
   role: string;
   /** Avatar fallback; derived from `name` when absent. */
   initials?: string;
+}
+
+/** Who published a job listing: a member organization, or the secretariat. */
+export type JobSource = 'member' | 'curated';
+
+/** A labelled fact in a posting's organization strip, e.g. { label: 'AUM', value: '$112B' }. */
+export interface JobStat {
+  label: string;
+  value: string;
+}
+
+/** An open role on the member job board. */
+export interface JobListing {
+  id: string;
+  title: string;
+  org: string;
+  /** Avatar fallback, e.g. "HP". Derived from `org` when absent. */
+  initials?: string;
+  /** Second line under the org, e.g. "MEMBER ORG · TORONTO". Rendered as sent. */
+  orgMeta: string;
+  source: JobSource;
+  /** Display label for the function, e.g. "Collateral & liquidity". */
+  fn: string;
+  /** Filter key; also picks the listing's left rule colour. */
+  fnKey: JobFunctionKey;
+  /** Display string, e.g. "Toronto, hybrid". */
+  loc: string;
+  /** Display string, e.g. "CAD 280–340k + bonus". Never parsed. */
+  comp: string;
+  /** Display string, e.g. "12 Aug". */
+  posted: string;
+  /** Display string including the verb, e.g. "Closes 30 Sep". */
+  closes: string;
+  /** Age in minutes — the board's newest-first sort key. Send it or ordering is undefined. */
+  mins?: number;
+  /** One-paragraph summary shown on the card and above the bullets. */
+  blurb: string;
+  /** What the role covers, one line each. */
+  bullets: string[];
+  /** A paragraph about the posting organization. */
+  about: string;
+  /** Up to three facts shown as a strip under `about`. */
+  stats: JobStat[];
+  /** Where Apply goes — the employer's own posting. Absent makes Apply inert. */
+  applyUrl?: string;
 }
 
 export interface PodcastEpisode {

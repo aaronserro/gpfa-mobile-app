@@ -232,6 +232,43 @@ export const wgRule = (t: Theme, cls: WgRuleClass): string =>
     'wg-rule-general': t.ruleStrong,
   })[cls];
 
+/** The job board's function filter. Also picks a listing's left rule colour. */
+export type JobFunctionKey = 'collateral' | 'risk' | 'legal' | 'tech' | 'ops';
+
+/**
+ * A job function borrows the working group rule of the same subject, so a role
+ * and the WG that would discuss it read as the same colour across screens.
+ * Operations has no working group and takes the neutral rule.
+ */
+const JOB_FUNCTION_RULE: Record<JobFunctionKey, WgRuleClass> = {
+  collateral: 'wg-rule-collateral-liquidity',
+  risk: 'wg-rule-risk',
+  legal: 'wg-rule-legal',
+  tech: 'wg-rule-technology',
+  ops: 'wg-rule-general',
+};
+
+export const jobFunctionRule = (t: Theme, fn: JobFunctionKey): string =>
+  wgRule(t, JOB_FUNCTION_RULE[fn]);
+
+/**
+ * Per listing source: the provenance chip. Member-org roles take plum, the
+ * secretariat's curated listings blue — derived from tokens so the dark theme's
+ * remapped brand colours carry through.
+ */
+export const jobSourceStyle = (t: Theme, source: 'member' | 'curated'): PostTypeStyle => {
+  const base =
+    source === 'member'
+      ? { c: t.brandGreenStrong, label: 'Member org' }
+      : { c: t.brandBlue, label: 'GPFA curated' };
+  return {
+    ink: base.c,
+    chipBg: alpha(base.c, 0.1),
+    chipBd: alpha(base.c, 0.35),
+    label: base.label,
+  };
+};
+
 /**
  * The iOS device frame in the design puts 62px of status bar above the content,
  * so a screen's `padding-top` already includes it. On a real device the inset

@@ -36,6 +36,7 @@ export const ROUTES = {
   ask: '/ask',
   library: '/library',
   podcasts: '/podcasts',
+  jobs: '/jobs',
   podcastTranscript: (slug: string) => `/podcasts/${slug}/transcript`,
   post: (id: string) => `/posts/${id}`,
   replies: (id: string) => `/posts/${id}/replies`,

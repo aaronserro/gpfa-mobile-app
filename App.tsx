@@ -29,6 +29,7 @@ import {
   createReply,
   getFeed,
   getGroups,
+  getJobs,
   getLibrary,
   getMe,
   getNews,
@@ -73,6 +74,7 @@ function Portal() {
   const newsQuery = useQuery(getNews, []);
   const libraryQuery = useQuery(getLibrary, []);
   const podcastQuery = useQuery(getPodcasts, []);
+  const jobsQuery = useQuery(getJobs, []);
 
   // Episode the now-playing bar asked to open. `n` counts the requests so
   // asking for the same episode twice still remounts the screen and reopens
@@ -220,23 +222,35 @@ function Portal() {
             {tab === 'ask' && <AskScreen />}
             {tab === 'resources' && (
               <DataGate
-                loading={libraryQuery.loading || podcastQuery.loading}
-                error={libraryQuery.error ?? podcastQuery.error}
+                loading={
+                  meQuery.loading ||
+                  libraryQuery.loading ||
+                  podcastQuery.loading ||
+                  jobsQuery.loading
+                }
+                error={
+                  meQuery.error ?? libraryQuery.error ?? podcastQuery.error ?? jobsQuery.error
+                }
                 onRetry={() => {
+                  meQuery.refetch();
                   libraryQuery.refetch();
                   podcastQuery.refetch();
+                  jobsQuery.refetch();
                 }}
               >
                 <ResourcesScreen
                   // Remounts on the bar's Episode action so the sheet opens on
                   // that episode.
                   key={episodeRequest ? `${episodeRequest.slug}-${episodeRequest.n}` : 'resources'}
+                  member={member}
                   resources={libraryQuery.data ?? []}
                   episodes={podcastQuery.data ?? []}
+                  jobs={jobsQuery.data ?? []}
                   initialView={episodeRequest ? 'podcasts' : 'hub'}
                   initialEpisodeSlug={episodeRequest?.slug ?? null}
                   onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
                   onOpenTranscript={(e) => e.transcriptUrl && void Linking.openURL(e.transcriptUrl)}
+                  onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
                 />
               </DataGate>
             )}

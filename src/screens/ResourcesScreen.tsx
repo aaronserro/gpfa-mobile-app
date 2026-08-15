@@ -22,8 +22,10 @@ import {
   remainingLabel,
   usePodcastPlayer,
 } from '../components/podcast/PlayerProvider';
+import JobBoard, { filterJobs, type JobFilterId } from '../components/jobs/JobBoard';
+import JobPosting from '../components/jobs/JobPosting';
 import { initials } from '../lib/format';
-import type { LibraryResource, PodcastEpisode, ResourceType } from '../api/types';
+import type { JobListing, LibraryResource, Member, PodcastEpisode, ResourceType } from '../api/types';
 
 /** Typographic corner mark per type — the colour comes from resourceTypeStyle. */
 const TYPE_GLYPH: Record<ResourceType, string> = {
@@ -36,13 +38,15 @@ const TYPE_GLYPH: Record<ResourceType, string> = {
   'Event Notes': '✎',
 };
 
-type View_ = 'hub' | 'library' | 'podcasts';
+type View_ = 'hub' | 'library' | 'podcasts' | 'jobs';
 type SortId = 'newest' | 'oldest';
 type Sheet = { kind: 'resource'; id: string } | { kind: 'episode'; slug: string } | null;
 
 export interface ResourcesScreenProps {
+  member: Member;
   resources: LibraryResource[];
   episodes: PodcastEpisode[];
+  jobs: JobListing[];
   /** Set to open the screen straight on a sub-view — the now-playing bar uses it. */
   initialView?: View_;
   /** Episode to show on mount, e.g. from the now-playing bar's Episode action. */
@@ -51,15 +55,20 @@ export interface ResourcesScreenProps {
   onOpenResource?: (resource: LibraryResource) => void;
   /** Called when the member asks for an episode transcript. */
   onOpenTranscript?: (episode: PodcastEpisode) => void;
+  /** Called when the member taps Apply on a job listing. */
+  onApplyToJob?: (job: JobListing) => void;
 }
 
 export default function ResourcesScreen({
+  member,
   resources,
   episodes,
+  jobs,
   initialView = 'hub',
   initialEpisodeSlug = null,
   onOpenResource,
   onOpenTranscript,
+  onApplyToJob,
 }: ResourcesScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -71,6 +80,11 @@ export default function ResourcesScreen({
   const [sheet, setSheet] = useState<Sheet>(
     initialEpisodeSlug ? { kind: 'episode', slug: initialEpisodeSlug } : null
   );
+  // Job board state lives here, not in JobBoard, so a trip into a posting and
+  // back doesn't reset the search and the filter.
+  const [jobQuery, setJobQuery] = useState('');
+  const [jobFilter, setJobFilter] = useState<JobFilterId>('all');
+  const [jobId, setJobId] = useState<string | null>(null);
 
   const dir = sortId === 'newest' ? 1 : -1;
 
@@ -91,6 +105,12 @@ export default function ResourcesScreen({
     const rest = episodes.slice(1);
     return sortId === 'newest' ? rest : [...rest].reverse();
   }, [episodes, sortId]);
+
+  const visibleJobs = useMemo(
+    () => filterJobs(jobs, jobQuery, jobFilter),
+    [jobFilter, jobQuery, jobs]
+  );
+  const openJob = jobId ? jobs.find((j) => j.id === jobId) ?? null : null;
 
   const sheetResource =
     sheet?.kind === 'resource' ? resources.find((r) => r.id === sheet.id) ?? null : null;
@@ -129,7 +149,7 @@ export default function ResourcesScreen({
           Resources<Text style={{ color: t.brandGreen }}>.</Text>
         </Text>
         <MastheadMeta size={11} style={styles.pageMeta}>
-          MEMBER LIBRARY · PODCASTS
+          MEMBER LIBRARY · PODCASTS · JOB BOARD
         </MastheadMeta>
       </View>
 
@@ -151,6 +171,15 @@ export default function ResourcesScreen({
           body="Practitioner conversations recorded with members. Transcripts included."
           meta={`${episodes.length} EPISODES`}
           onPress={() => setView('podcasts')}
+        />
+        <HubCard
+          label="Jobs"
+          glyph="◆"
+          color={t.brandBlue}
+          title="Job board"
+          body="Open roles at member organizations, plus listings the secretariat curates from outside the membership."
+          meta={`${jobs.length} OPEN ROLE${jobs.length === 1 ? '' : 'S'}`}
+          onPress={() => setView('jobs')}
         />
       </View>
     </ScrollView>
@@ -456,11 +485,28 @@ export default function ResourcesScreen({
     </Sheet_>
   );
 
+  /* ── job board ────────────────────────────────────────────────────────── */
+  const jobBoard = openJob ? (
+    <JobPosting job={openJob} onBack={() => setJobId(null)} onApply={onApplyToJob} />
+  ) : (
+    <JobBoard
+      jobs={visibleJobs}
+      query={jobQuery}
+      onQuery={setJobQuery}
+      filter={jobFilter}
+      onFilter={setJobFilter}
+      memberInitials={member.initials ?? initials(member.name)}
+      onBack={() => setView('hub')}
+      onOpen={setJobId}
+    />
+  );
+
   return (
     <View style={styles.fill}>
       {view === 'hub' && hub}
       {view === 'library' && library}
       {view === 'podcasts' && podcasts}
+      {view === 'jobs' && jobBoard}
       {resourceSheet}
       {episodeSheet}
     </View>

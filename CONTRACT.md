@@ -141,6 +141,7 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `GET` | `/library` | Resources → Library | `LibraryResource[]` |
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
+| `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
 | `GET` | `/ask/suggestions` | Ask GPFA empty state | `string[]` |
 | `POST` | `/ask` | Ask GPFA | `AskAnswer` |
 | `POST` | `/posts` | Composer | `Thread` |
@@ -391,6 +392,33 @@ read, so both are required. `peaks` are 24–32 amplitudes in 0–1; when absent
 app draws a stable set seeded from `slug`. `initials` is derived from `name`
 when omitted.
 
+### `JobSource`, `JobStat`, `JobListing`
+
+```ts
+JobSource   'member' | 'curated'
+JobStat     { label: string; value: string }
+JobListing  { id, title, org, initials?, orgMeta, source: JobSource,
+              fn, fnKey, loc, comp, posted, closes, mins?, blurb,
+              bullets: string[], about, stats: JobStat[], applyUrl? }
+```
+
+Everything the card shows is a display string the app never parses: `orgMeta`
+("MEMBER ORG · TORONTO"), `posted` ("12 Aug"), `closes` — **include the verb**,
+as in "Closes 30 Sep" — and `comp` ("CAD 280–340k + bonus"). `mins` is the age
+in minutes and is the only ordering key the board has; omit it and the listing
+sorts as if posted today.
+
+`fn` is the display label ("Collateral & liquidity"); `fnKey` is the semantic
+one and must be `'collateral' | 'risk' | 'legal' | 'tech' | 'ops'` — it drives
+both the function filter and the listing's left rule colour, and an unknown
+value renders no rule. `source` picks the provenance chip: member-org listings
+plum, secretariat-curated ones blue. `initials` is derived from `org` when
+omitted. `stats` renders as a strip of up to three facts; more will fit but get
+cramped. `applyUrl` is where Apply goes — without it the button does nothing.
+
+Search and the function filter are client-side over the full list (§6), so
+return every listing the member may see.
+
 ### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
 
 ```ts
@@ -413,9 +441,11 @@ These are **client-side over the already-loaded feed**:
 | Sort: Newest (`mins`), Most upvoted, Most replies | `GroupsScreen.tsx` |
 | Poll percentages | computed from `options[].votes` |
 | Reply counts, stacked avatars | derived from `replies[]` |
+| Job search (title, org, location, function, blurb) | `jobs/JobBoard.tsx` |
+| Job function filter, member-orgs filter, newest-first order | `jobs/JobBoard.tsx` |
 
-Consequence: **`GET /posts` must return the full corpus.** This is fine for
-hundreds of posts and wrong for thousands — see §8.
+Consequence: **`GET /posts` and `GET /jobs` must return the full corpus.** This
+is fine for hundreds of rows and wrong for thousands — see §8.
 
 ---
 
