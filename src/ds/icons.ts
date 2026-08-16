@@ -49,6 +49,7 @@ export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus'
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';
+export { UserIcon as User } from 'phosphor-react-native/lib/commonjs/icons/User';
 export { UsersThreeIcon as UsersThree } from 'phosphor-react-native/lib/commonjs/icons/UsersThree';
 export { XIcon as X } from 'phosphor-react-native/lib/commonjs/icons/X';
 

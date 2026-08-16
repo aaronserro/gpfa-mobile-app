@@ -7,13 +7,11 @@
  */
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ArrowRight, CaretLeft } from '../../ds/icons';
-import { Avatar, Eyebrow, MastheadMeta, OrgMark } from '../../ds/primitives';
+import { ArrowRight } from '../../ds/icons';
+import { Avatar, OrgMark, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { alpha, jobFunctionRule, sans, topPad, trackDisplay } from '../../ds/tokens';
+import { alpha, jobFunctionRule, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf, orgInitials } from '../../lib/format';
 import type { DirectoryPerson, JobListing, MemberOrg } from '../../api/types';
 
@@ -31,8 +29,7 @@ export interface OrgProfileProps {
 }
 
 export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: OrgProfileProps) {
-  const { t, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { t } = useTheme();
   const [tab, setTab] = useState<ProfileTab>('members');
 
   const stats: { value: number; label: string }[] = [
@@ -43,42 +40,21 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      {/* The index behind this is the anchor surface; the profile's masthead is
-          paper, so the glyphs flip back while it's mounted. */}
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <View
-        style={[
-          styles.masthead,
-          {
-            backgroundColor: t.surfacePaper,
-            borderBottomColor: t.ruleHairline,
-            paddingTop: topPad(insets.top, 54),
-          },
-        ]}
+      <ScreenHeader
+        title={org.fullName ?? org.name}
+        onBack={onBack}
+        backLabel="Back to directory"
       >
-        <Pressable
-          onPress={onBack}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Back to directory"
-          style={styles.backRow}
-        >
-          <CaretLeft size={15} color={t.inkMuted} />
-          <Text style={[styles.backLabel, { color: t.inkMuted }]}>Directory</Text>
-        </Pressable>
-
         <View style={styles.orgRow}>
-          <OrgMark initials={orgInitials(org.short)} logoUrl={org.logoUrl} size={52} />
+          <OrgMark initials={orgInitials(org.short)} logoUrl={org.logoUrl} size={44} />
           <View style={styles.flex}>
-            <Text style={[styles.orgName, { color: t.inkStrong }]}>{org.fullName ?? org.name}</Text>
-            <MastheadMeta size={10.5} style={styles.orgMeta}>
-              {`${org.short} · ${org.city}, ${org.country}`.toUpperCase()}
-            </MastheadMeta>
+            <Text style={[styles.orgMeta, { color: t.inkMuted }]}>
+              {`${org.short} · ${org.city}, ${org.country}`}
+            </Text>
+            <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
           </View>
         </View>
-
-        <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
-      </View>
+      </ScreenHeader>
 
       <View
         style={[
@@ -92,9 +68,7 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
             style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline }]}
           >
             <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
-            <Eyebrow size={9} style={styles.statLabel}>
-              {s.label}
-            </Eyebrow>
+            <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
           </View>
         ))}
       </View>
@@ -188,9 +162,9 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
                 >
                   <View style={styles.flex}>
                     <Text style={[styles.jobTitle, { color: t.inkStrong }]}>{j.title}</Text>
-                    <MastheadMeta size={10.5} style={styles.jobMeta}>
-                      {`${j.loc} · ${j.closes}`.toUpperCase()}
-                    </MastheadMeta>
+                    <Text style={[styles.jobMeta, { color: t.inkMuted }]}>
+                      {`${j.loc} · ${j.closes}`}
+                    </Text>
                   </View>
                   <ArrowRight size={14} color={t.ruleStrong} />
                 </Pressable>
@@ -208,15 +182,13 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
   );
 }
 
-/** The eyebrow-and-count line above either list. */
+/** The heading above either list. */
 function SectionHead({ label, count }: { label: string; count: string }) {
   const { t } = useTheme();
   return (
     <View style={styles.sectionHead}>
-      <Eyebrow size={11.5}>{label}</Eyebrow>
-      <MastheadMeta size={11} color={t.inkFaint}>
-        {count}
-      </MastheadMeta>
+      <Text style={[styles.sectionLabel, { color: t.inkStrong }]}>{label}</Text>
+      <Text style={[styles.sectionCount, { color: t.inkMuted }]}>{count}</Text>
     </View>
   );
 }
@@ -225,18 +197,9 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
 
-  masthead: { borderBottomWidth: 1, paddingHorizontal: 20, paddingBottom: 16 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  backLabel: { fontFamily: sans(400), fontSize: 12.5 },
-  orgRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 14 },
-  orgName: {
-    fontFamily: sans(600),
-    fontSize: 19,
-    lineHeight: 20.9,
-    letterSpacing: trackDisplay(19),
-  },
-  orgMeta: { marginTop: 5 },
-  blurb: { marginTop: 12, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
+  orgRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 13, paddingTop: 12 },
+  orgMeta: { fontFamily: sans(400), fontSize: 12 },
+  blurb: { marginTop: 6, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
 
   stats: { flexDirection: 'row', borderBottomWidth: 1 },
   stat: { flex: 1, gap: 2.4, paddingVertical: 13.6, paddingHorizontal: 16 },
@@ -246,7 +209,7 @@ const styles = StyleSheet.create({
     letterSpacing: trackDisplay(20),
     fontVariant: ['tabular-nums'],
   },
-  statLabel: { letterSpacing: 1.44 },
+  statLabel: { fontFamily: sans(400), fontSize: 11.5 },
 
   tabs: { flexDirection: 'row', gap: 22, paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 1 },
   tab: { paddingBottom: 9, borderBottomWidth: 2 },
@@ -261,6 +224,8 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     paddingHorizontal: 20,
   },
+  sectionLabel: { fontFamily: sans(600), fontSize: 13, letterSpacing: trackDisplay(13) },
+  sectionCount: { fontFamily: sans(400), fontSize: 12 },
   rows: { borderTopWidth: 1, borderBottomWidth: 1 },
 
   personRow: {
@@ -285,7 +250,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
   },
   jobTitle: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
-  jobMeta: { marginTop: 2 },
+  jobMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
 
   empty: {
     paddingVertical: 28,

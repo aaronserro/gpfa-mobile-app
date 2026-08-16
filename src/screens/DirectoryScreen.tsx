@@ -8,36 +8,13 @@
  */
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CaretRight, MagnifyingGlass } from '../ds/icons';
-import { DisplayHead, Eyebrow, MastheadMeta } from '../ds/primitives';
+import { ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, orgSectorRule, sans, topPad, trackDisplay } from '../ds/tokens';
+import { alpha, orgSectorRule, sans, trackDisplay } from '../ds/tokens';
 import OrgProfile from '../components/directory/OrgProfile';
 import type { DirectoryPerson, JobListing, MemberOrg } from '../api/types';
-
-/** A run of organizations sharing an initial letter. */
-interface LetterGroup {
-  letter: string;
-  items: MemberOrg[];
-}
-
-/**
- * Group consecutive organizations by initial letter. Consecutive, not sorted —
- * the list arrives alphabetical and the index never reorders it, so a server
- * that sends another order gets the headings its own order implies.
- */
-export function groupByLetter(orgs: MemberOrg[]): LetterGroup[] {
-  const groups: LetterGroup[] = [];
-  for (const org of orgs) {
-    const letter = (org.name[0] ?? '').toUpperCase();
-    const last = groups[groups.length - 1];
-    if (last && last.letter === letter) last.items.push(org);
-    else groups.push({ letter, items: [org] });
-  }
-  return groups;
-}
 
 /**
  * A listing belongs to an organization when its `org` matches any of the names
@@ -56,31 +33,44 @@ export interface DirectoryScreenProps {
   people: DirectoryPerson[];
   /** Open roles, for a profile's Jobs tab and its Open roles stat. */
   jobs: JobListing[];
+  /**
+   * Opens straight onto one organization's profile, for another screen linking
+   * in. Read once — remount the screen (a new `key`) to ask for a different one.
+   */
+  initialOrgId?: string | null;
   /** Opens a role on the job board. Absent leaves a profile's job rows inert. */
   onOpenJob?: (job: JobListing) => void;
 }
 
-export default function DirectoryScreen({ orgs, people, jobs, onOpenJob }: DirectoryScreenProps) {
+export default function DirectoryScreen({
+  orgs,
+  people,
+  jobs,
+  initialOrgId = null,
+  onOpenJob,
+}: DirectoryScreenProps) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const [query, setQuery] = useState('');
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(initialOrgId);
 
   const q = query.trim().toLowerCase();
   const openOrg = orgId ? orgs.find((o) => o.id === orgId) ?? null : null;
 
-  const groups = useMemo(() => {
-    const rows = q
-      ? orgs.filter(
-          (o) =>
-            o.name.toLowerCase().includes(q) ||
-            o.country.toLowerCase().includes(q) ||
-            (o.fullName ?? '').toLowerCase().includes(q)
-        )
-      : orgs;
-    return groupByLetter(rows);
-  }, [orgs, q]);
+  // Flat and in the order the API sent it — the index used to break this into
+  // A–Z runs, but the letter headings went with the rest of the eyebrows.
+  const matchedOrgs = useMemo(
+    () =>
+      q
+        ? orgs.filter(
+            (o) =>
+              o.name.toLowerCase().includes(q) ||
+              o.country.toLowerCase().includes(q) ||
+              (o.fullName ?? '').toLowerCase().includes(q)
+          )
+        : orgs,
+    [orgs, q]
+  );
 
   // People only enter the index once there is a query — otherwise the resting
   // view is organizations. Sorted by name; the flat list is in profile order.
@@ -97,7 +87,7 @@ export default function DirectoryScreen({ orgs, people, jobs, onOpenJob }: Direc
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [orgs, people, q]);
 
-  const orgCount = groups.reduce((n, g) => n + g.items.length, 0);
+  const orgCount = matchedOrgs.length;
 
   if (openOrg) {
     return (
@@ -113,44 +103,27 @@ export default function DirectoryScreen({ orgs, people, jobs, onOpenJob }: Direc
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
-      <View
-        style={[
-          styles.masthead,
-          { backgroundColor: t.surfaceAnchor, paddingTop: topPad(insets.top, 54) },
-        ]}
-      >
-        <MastheadMeta size={10} color={alpha(t.inkInverse, 0.7)}>
-          GPFA MEMBER INTELLIGENCE NETWORK
-        </MastheadMeta>
-        <View style={styles.mastheadRow}>
-          <DisplayHead size={24} onAnchor>
-            Directory
-          </DisplayHead>
-          <MastheadMeta size={11} color={alpha(t.inkInverse, 0.7)}>
-            {orgs.length} ORGS
-          </MastheadMeta>
+      <ScreenHeader title="Directory">
+        <View
+          style={[
+            styles.searchBar,
+            { backgroundColor: t.surfacePage, borderColor: t.ruleHairline },
+          ]}
+        >
+          <MagnifyingGlass size={15} color={t.inkMuted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search organizations or people"
+            placeholderTextColor={t.inkFaint}
+            style={[styles.searchInput, { color: t.inkStrong }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
         </View>
-      </View>
-
-      <View
-        style={[
-          styles.searchBar,
-          { backgroundColor: t.surfacePage, borderBottomColor: t.ruleHairline },
-        ]}
-      >
-        <MagnifyingGlass size={15} color={t.inkMuted} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search organizations or people"
-          placeholderTextColor={t.inkFaint}
-          style={[styles.searchInput, { color: t.inkStrong }]}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         style={{ backgroundColor: t.surfacePaper }}
@@ -158,47 +131,28 @@ export default function DirectoryScreen({ orgs, people, jobs, onOpenJob }: Direc
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {groups.map((g) => (
-          <View key={g.letter}>
-            <View
-              style={[
-                styles.letterHead,
-                { backgroundColor: t.surfacePage, borderBottomColor: t.ruleHairline },
-              ]}
-            >
-              <Eyebrow size={10}>{`${g.letter} · ${g.items.length}`}</Eyebrow>
+        {matchedOrgs.map((o) => (
+          <Pressable
+            key={o.id}
+            onPress={() => setOrgId(o.id)}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.row,
+              {
+                borderBottomColor: t.ruleHairline,
+                borderLeftColor: orgSectorRule(t, o.sector),
+                backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
+              },
+            ]}
+          >
+            <View style={styles.rowMain}>
+              <Text numberOfLines={1} style={[styles.rowName, { color: t.inkStrong }]}>
+                {o.name}
+              </Text>
+              <Text style={[styles.rowSub, { color: t.inkMuted }]}>{o.sector}</Text>
             </View>
-            {g.items.map((o) => (
-              <Pressable
-                key={o.id}
-                onPress={() => setOrgId(o.id)}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.row,
-                  {
-                    borderBottomColor: t.ruleHairline,
-                    borderLeftColor: orgSectorRule(t, o.sector),
-                    backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
-                  },
-                ]}
-              >
-                <View style={styles.rowMain}>
-                  <Text numberOfLines={1} style={[styles.rowName, { color: t.inkStrong }]}>
-                    {o.name}
-                  </Text>
-                  <Text style={[styles.rowSub, { color: t.inkMuted }]}>{o.sector}</Text>
-                </View>
-                <View style={styles.rowRail}>
-                  <MastheadMeta size={10.5} color={t.inkFaint}>
-                    {o.countryCode}
-                  </MastheadMeta>
-                  <MastheadMeta size={11} color={t.inkStrong} style={styles.rowCount}>
-                    {String(o.members)}
-                  </MastheadMeta>
-                </View>
-              </Pressable>
-            ))}
-          </View>
+            <Text style={[styles.rowCount, { color: t.inkMuted }]}>{o.members}</Text>
+          </Pressable>
         ))}
 
         {matchedPeople.map((p) => (
@@ -238,37 +192,25 @@ export default function DirectoryScreen({ orgs, people, jobs, onOpenJob }: Direc
 const styles = StyleSheet.create({
   fill: { flex: 1 },
 
-  masthead: { paddingHorizontal: 20, paddingBottom: 16 },
-  mastheadRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-  },
-
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 44,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    marginTop: 12,
   },
   searchInput: {
     flex: 1,
     height: '100%',
     padding: 0,
     fontFamily: sans(400),
-    fontSize: 13.5,
+    fontSize: 13,
   },
 
   list: { paddingBottom: 24 },
-  letterHead: {
-    paddingTop: 9,
-    paddingBottom: 5,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-  },
 
   row: {
     flexDirection: 'row',
@@ -283,8 +225,7 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, minWidth: 0 },
   rowName: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
   rowSub: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
-  rowRail: { alignItems: 'flex-end' },
-  rowCount: { marginTop: 2 },
+  rowCount: { fontFamily: sans(500), fontSize: 12, fontVariant: ['tabular-nums'] },
 
   empty: {
     paddingVertical: 40,

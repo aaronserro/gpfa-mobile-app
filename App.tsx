@@ -13,6 +13,7 @@ import JetBrainsMono_400Regular from '@expo-google-fonts/jetbrains-mono/400Regul
 import JetBrainsMono_500Medium from '@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf';
 import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf';
 
+import MemberSheet from './src/components/MemberSheet';
 import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
 import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar';
@@ -22,6 +23,7 @@ import AskScreen from './src/screens/AskScreen';
 import DirectoryScreen from './src/screens/DirectoryScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import MemberProfileScreen from './src/screens/MemberProfileScreen';
 import NewsScreen from './src/screens/NewsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
@@ -39,6 +41,7 @@ import {
   getNews,
   getNextEvent,
   getPodcasts,
+  getSavedResources,
   setReplyUpvote,
   setRsvp as setRsvpRequest,
   setSaved as setSavedRequest,
@@ -49,6 +52,7 @@ import { useQuery } from './src/api/useQuery';
 import type {
   FeedEntry,
   Member,
+  MemberOrg,
   NewPostInput,
   NewsStory,
   Reply,
@@ -56,6 +60,7 @@ import type {
   Thread,
 } from './src/api/types';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
+import { MemberProvider } from './src/auth/MemberProvider';
 import DataGate from './src/components/DataGate';
 
 // The design exposes these as editor props on the component.
@@ -64,7 +69,7 @@ const DARK_MODE = false;
 const SHOW_BADGES = true;
 
 function Portal() {
-  const { t, isDark } = useTheme();
+  const { t } = useTheme();
 
   const { isSignedIn, status, signOut } = useAuth();
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
@@ -88,6 +93,10 @@ function Portal() {
   // Posts composed this session, newest first. Kept out of the static data.
   const [newPosts, setNewPosts] = useState<FeedEntry[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  // The member's own profile, reached from the header avatar on any tab: the
+  // quick sheet first, then the full profile over whichever tab is underneath.
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Portal data. Resolves from fixtures until EXPO_PUBLIC_API_URL is set.
   const meQuery = useQuery(getMe, []);
@@ -100,6 +109,7 @@ function Portal() {
   const jobsQuery = useQuery(getJobs, []);
   const orgsQuery = useQuery(getMemberOrgs, []);
   const directoryPeopleQuery = useQuery(getDirectoryPeople, []);
+  const savedQuery = useQuery(getSavedResources, []);
 
   // What another screen asked Resources to open: an episode from the
   // now-playing bar, or a posting from an organization's directory profile.
@@ -116,6 +126,27 @@ function Portal() {
     setTab('resources');
   }, []);
 
+  // Which organization the Directory tab should open on when another screen
+  // links into it — the profile's Organization card. Counted like
+  // `resourcesRequest`, so asking for the same org twice still remounts.
+  const [directoryRequest, setDirectoryRequest] = useState<{ orgId: string; n: number } | null>(
+    null
+  );
+
+  // Handed to MemberProvider, so the header avatar on every screen opens it.
+  const openProfileSheet = useCallback(() => setProfileSheetOpen(true), []);
+
+  const openProfile = useCallback(() => {
+    setProfileSheetOpen(false);
+    setProfileOpen(true);
+  }, []);
+
+  const openOrgInDirectory = useCallback((org: MemberOrg) => {
+    setDirectoryRequest((prev) => ({ orgId: org.id, n: (prev?.n ?? 0) + 1 }));
+    setProfileOpen(false);
+    setTab('directory');
+  }, []);
+
   const openStory = useCallback((story: NewsStory) => {
     if (story.url) void Linking.openURL(story.url);
   }, []);
@@ -125,6 +156,23 @@ function Portal() {
   const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
+
+  /**
+   * The member's own organization, for their profile's Organization card.
+   * `orgId` is the join; the name match is the fallback for a backend that
+   * sends only `org`, and it holds only while the two strings agree.
+   */
+  const memberOrg = useMemo(() => {
+    const orgs = orgsQuery.data ?? [];
+    const named = member.org.trim().toLowerCase();
+    return (
+      orgs.find((o) => o.id === member.orgId) ??
+      orgs.find((o) =>
+        [o.name, o.short, o.fullName].some((n) => (n ?? '').trim().toLowerCase() === named)
+      ) ??
+      null
+    );
+  }, [orgsQuery.data, member.org, member.orgId]);
 
   // Tapping a group on Home opens that group's page.
   const pickGroup = useCallback((id: string) => {
@@ -253,22 +301,20 @@ function Portal() {
 
   const selectTab = useCallback((next: TabId) => {
     setTab(next);
+    // The profile sits over a tab, so any tab press returns to that tab.
+    setProfileOpen(false);
     if (next === 'groups') setThreadId(null);
     // Tapping a tab returns to its root, so Home lands on Home and not News.
     if (next === 'home') setNewsOpen(false);
     if (next === 'resources') setResourcesNewsOpen(false);
   }, []);
 
-  // `statusDark` in the design: light status-bar glyphs over the anchor surface.
-  // The directory index has one too; its profile is paper and overrides this
-  // from inside, since the tab alone can't tell the two apart. News is a paper
-  // header under the Home tab, so it takes dark glyphs.
-  const lightStatusBar =
-    isDark || !isSignedIn || (tab === 'home' && !newsOpen) || tab === 'directory';
-
   return (
+    <MemberProvider member={meQuery.data ?? null} onOpenProfile={openProfileSheet}>
     <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
-      <StatusBar style={lightStatusBar ? 'light' : 'dark'} />
+      {/* Every header is the anchor surface, and sign-in is darker still, so
+          the glyphs are light on every screen in both themes. */}
+      <StatusBar style="light" />
 
       {status === 'restoring' ? (
         <View style={styles.blank} />
@@ -423,16 +469,58 @@ function Portal() {
                 }}
               >
                 <DirectoryScreen
+                  // Remounts when another screen asks for a specific
+                  // organization, so it opens on that profile.
+                  key={
+                    directoryRequest
+                      ? `org-${directoryRequest.orgId}-${directoryRequest.n}`
+                      : 'directory'
+                  }
                   orgs={orgsQuery.data ?? []}
                   people={directoryPeopleQuery.data ?? []}
                   jobs={jobsQuery.data ?? []}
+                  initialOrgId={directoryRequest?.orgId ?? null}
                   onOpenJob={(job) => openInResources('job', job.id)}
                 />
               </DataGate>
             )}
+
+            {/* Over the tab rather than in place of it, so the tab underneath
+                keeps its scroll position while the profile is open. */}
+            {profileOpen && (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+                <DataGate
+                  loading={meQuery.loading || savedQuery.loading || orgsQuery.loading}
+                  error={meQuery.error ?? savedQuery.error ?? orgsQuery.error}
+                  onRetry={() => {
+                    meQuery.refetch();
+                    savedQuery.refetch();
+                    orgsQuery.refetch();
+                  }}
+                >
+                  <MemberProfileScreen
+                    member={member}
+                    saved={savedQuery.data ?? []}
+                    workingGroups={groups.filter((g) => subscribed[g.id] ?? g.joined).length}
+                    org={memberOrg}
+                    onBack={() => setProfileOpen(false)}
+                    onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
+                    onOpenOrg={openOrgInDirectory}
+                  />
+                </DataGate>
+              </View>
+            )}
           </View>
           <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
           <PortalTabBar tab={tab} onSelect={selectTab} showBadges={SHOW_BADGES} />
+          {profileSheetOpen && !!meQuery.data && (
+            <MemberSheet
+              member={meQuery.data}
+              savedCount={(savedQuery.data ?? []).length}
+              onClose={() => setProfileSheetOpen(false)}
+              onOpenProfile={openProfile}
+            />
+          )}
           {composerOpen && (
             <PostComposer
               groups={groups}
@@ -445,6 +533,7 @@ function Portal() {
         </>
       )}
     </View>
+    </MemberProvider>
   );
 }
 

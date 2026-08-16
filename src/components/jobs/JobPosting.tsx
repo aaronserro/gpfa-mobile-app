@@ -5,21 +5,19 @@
  * saved-roles endpoint yet, the same as the resource sheet's bookmark.
  */
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ArrowSquareOut,
   BookmarkSimple,
   Briefcase,
   CalendarDots,
-  CaretLeft,
   CurrencyCircleDollar,
   MapPin,
   ShareFat,
 } from '../../ds/icons';
-import { MastheadMeta, OrgMark } from '../../ds/primitives';
+import { MastheadMeta, OrgMark, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { jobFunctionRule, sans, topPad, trackDisplay } from '../../ds/tokens';
+import { jobFunctionRule, sans, trackDisplay } from '../../ds/tokens';
 import { FactChip, SourceChip } from './parts';
 import { orgInitials } from '../../lib/format';
 import type { JobListing } from '../../api/types';
@@ -33,40 +31,23 @@ export interface JobPostingProps {
 
 export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.fill}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            backgroundColor: t.surfacePaper,
-            borderBottomColor: t.ruleHairline,
-            paddingTop: topPad(insets.top, 54),
-          },
-        ]}
-      >
-        <View style={styles.topRow}>
-          <Pressable
-            onPress={onBack}
-            accessibilityLabel="Back to the job board"
-            style={styles.backBtn}
-            hitSlop={8}
-          >
-            <CaretLeft size={17} color={t.brandGreen} />
-            <Text style={[styles.backText, { color: t.brandGreen }]}>Job board</Text>
-          </Pressable>
+      <ScreenHeader
+        onBack={onBack}
+        backLabel="Back to the job board"
+        actions={
           <View style={styles.topActions}>
             <Pressable accessibilityLabel="Save role" hitSlop={8}>
-              <BookmarkSimple size={18} color={t.inkMuted} />
+              <BookmarkSimple size={18} color="#fff" />
             </Pressable>
             <Pressable accessibilityLabel="Share role" hitSlop={8}>
-              <ShareFat size={18} color={t.inkMuted} />
+              <ShareFat size={18} color="#fff" />
             </Pressable>
           </View>
-        </View>
-      </View>
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View
@@ -81,9 +62,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
         >
           <View style={styles.heroTop}>
             <SourceChip source={job.source} size={10} />
-            <MastheadMeta size={10} color={t.inkFaint} style={styles.postedTrack}>
-              POSTED {job.posted.toUpperCase()}
-            </MastheadMeta>
+            <Text style={[styles.posted, { color: t.inkMuted }]}>Posted {job.posted}</Text>
           </View>
 
           <Text style={[styles.title, { color: t.inkStrong }]}>{job.title}</Text>
@@ -108,9 +87,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           </View>
         </View>
 
-        <MastheadMeta size={9.5} color={t.inkFaint} style={styles.sectionHead}>
-          THE ROLE
-        </MastheadMeta>
+        <Text style={[styles.sectionHead, { color: t.inkStrong }]}>The role</Text>
         <Text style={[styles.body, { color: t.inkBody }]}>{job.blurb}</Text>
 
         <View style={styles.bullets}>
@@ -122,9 +99,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           ))}
         </View>
 
-        <MastheadMeta size={9.5} color={t.inkFaint} style={styles.sectionHead}>
-          THE ORGANIZATION
-        </MastheadMeta>
+        <Text style={[styles.sectionHead, { color: t.inkStrong }]}>The organization</Text>
         <Text style={[styles.body, { color: t.inkBody }]}>{job.about}</Text>
 
         {!!job.stats.length && (
@@ -136,7 +111,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
                 key={s.label}
                 style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline }]}
               >
-                <MastheadMeta size={9.5}>{s.label}</MastheadMeta>
+                <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
                 <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
               </View>
             ))}
@@ -157,9 +132,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
       >
         <View style={styles.flex}>
           <Text style={[styles.footComp, { color: t.inkStrong }]}>{job.comp}</Text>
-          <MastheadMeta size={9.5} color={t.inkFaint}>
-            {job.closes.toUpperCase()}
-          </MastheadMeta>
+          <Text style={[styles.posted, { color: t.inkMuted }]}>{job.closes}</Text>
         </View>
         <Pressable
           onPress={() => onApply?.(job)}
@@ -181,17 +154,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1 },
 
-  topBar: { borderBottomWidth: 1, paddingBottom: 6, paddingHorizontal: 12 },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 44,
-    paddingHorizontal: 8,
-  },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  backText: { fontFamily: sans(500), fontSize: 14 },
   topActions: {
-    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -212,7 +175,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  postedTrack: { textTransform: 'uppercase', letterSpacing: 0.5 },
+  posted: { fontFamily: sans(400), fontSize: 11.5 },
   title: {
     marginTop: 12,
     fontFamily: sans(600),
@@ -237,8 +200,11 @@ const styles = StyleSheet.create({
   sectionHead: {
     marginTop: 18,
     paddingHorizontal: 20,
-    letterSpacing: 1.7,
+    fontFamily: sans(600),
+    fontSize: 13,
+    letterSpacing: trackDisplay(13),
   },
+  statLabel: { fontFamily: sans(400), fontSize: 11.5 },
   body: {
     marginTop: 8,
     paddingHorizontal: 20,

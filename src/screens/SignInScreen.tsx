@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Moon, Sun } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DisplayHead, Eyebrow, Input, RadialWash } from '../ds/primitives';
+import { DisplayHead, Input, RadialWash } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad } from '../ds/tokens';
 import { useAuth } from '../auth/AuthProvider';
@@ -59,10 +59,6 @@ export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void })
 
           <View style={styles.center}>
             <Image source={bannerLogo} style={styles.logo} resizeMode="contain" />
-
-            <Eyebrow size={10} onAnchor style={styles.eyebrow}>
-              Member Intelligence Network
-            </Eyebrow>
 
             <DisplayHead size={28} onAnchor em="sign-in." style={styles.head}>
               Member{' '}
@@ -154,7 +150,6 @@ const styles = StyleSheet.create({
     width: 150,
     height: 40,
   },
-  eyebrow: { marginTop: 28 },
   head: { marginTop: 8 },
   lede: {
     marginTop: 8,

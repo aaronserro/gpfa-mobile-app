@@ -3,6 +3,7 @@ import {
   Animated,
   Easing,
   Image,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -12,10 +13,15 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { useMember } from '../auth/MemberProvider';
+import { Bell, CaretLeft, Moon, Sun } from './icons';
 import { useTheme } from './ThemeProvider';
-import { alpha, mono, sans, trackDisplay, trackEyebrow } from './tokens';
+import { alpha, mono, sans, topPad, trackDisplay, HEADER_TOP } from './tokens';
 import type { Relevance } from '../api/types';
+
+import markLogo from '../../assets/logo-no-txt.png';
 
 /* ── motion ──────────────────────────────────────────────────────────────── */
 
@@ -52,37 +58,6 @@ export function FadeUp({ delay = 0, style, children }: FadeUpProps) {
 }
 
 /* ── editorial type (base.css) ───────────────────────────────────────────── */
-
-/** .eyebrow — uppercase, 600, .18em tracking. `onAnchor` applies the anchor-surface override. */
-export function Eyebrow({
-  children,
-  size = 11.5,
-  onAnchor = false,
-  style,
-}: {
-  children: ReactNode;
-  size?: number;
-  onAnchor?: boolean;
-  style?: StyleProp<TextStyle>;
-}) {
-  const { t } = useTheme();
-  return (
-    <Text
-      style={[
-        {
-          fontFamily: sans(600),
-          fontSize: size,
-          letterSpacing: trackEyebrow(size),
-          textTransform: 'uppercase',
-          color: onAnchor ? alpha(t.inkInverse, 0.7) : t.inkMuted,
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Text>
-  );
-}
 
 /** .masthead-meta — mono, .04em tracking, muted. */
 export function MastheadMeta({
@@ -153,6 +128,141 @@ export function DisplayHead({
     </Text>
   );
 }
+
+/**
+ * The one page header. Every screen and sub-screen uses it, so the back
+ * control, the profile avatar and the title land at the same height on every
+ * tab.
+ *
+ * The band is the anchor surface in both themes. The right of the top row is
+ * fixed in the same order on every screen — screen `actions`, then the theme
+ * toggle, the notification bell and the profile avatar. Those last three are
+ * built in rather than passed, so no screen can be missing one or put them in
+ * a different order. The avatar comes from `MemberProvider`, since sub-screens
+ * three levels deep draw it too, and it opens the profile sheet when that
+ * provider carries a handler.
+ *
+ * `children` are the controls that belong to the header but not on it — a
+ * search field, a filter strip, a tab row. They render on the page surface
+ * below the band, where the existing chip and tab contrast still works.
+ *
+ * The band closes with the association lockup, so the mark and the full name
+ * sit under the title on every screen. It is the sign-in lockup relaid for a
+ * small strip: the mark is the same art, the name is live text rather than the
+ * three-line wordmark image, which is illegible below ~40px tall.
+ */
+export function ScreenHeader({
+  title,
+  accent,
+  onBack,
+  backLabel = 'Back',
+  actions,
+  children,
+}: {
+  title?: string;
+  /** Trailing fragment recoloured to the brand accent, e.g. the '.' in 'Resources.'. */
+  accent?: string;
+  onBack?: () => void;
+  backLabel?: string;
+  /** Screen-specific controls, drawn left of the standard three. Tint for the anchor. */
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  const { t, isDark, toggle } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { initials, openProfile } = useMember();
+
+  return (
+    <View>
+      <View
+        style={[
+          headerStyles.band,
+          {
+            backgroundColor: t.surfaceAnchor,
+            paddingTop: topPad(insets.top, HEADER_TOP),
+          },
+        ]}
+      >
+        <View style={headerStyles.topRow}>
+          {!!onBack && (
+            <Pressable onPress={onBack} accessibilityLabel={backLabel} hitSlop={8}>
+              <CaretLeft size={19} color={t.brandGreenOnDark} />
+            </Pressable>
+          )}
+          <View style={headerStyles.spacer} />
+          {actions}
+          <Pressable onPress={toggle} accessibilityLabel="Toggle dark mode" hitSlop={8}>
+            {isDark ? <Sun size={20} color="#fff" /> : <Moon size={20} color="#fff" />}
+          </Pressable>
+          {/* Inert, as it has always been — see CONTRACT.md §8. Deliberately not
+              a Pressable, so it isn't a tappable dead zone. */}
+          <Bell size={20} color="#fff" />
+          {!!initials &&
+            (openProfile ? (
+              <Pressable
+                onPress={openProfile}
+                accessibilityRole="button"
+                accessibilityLabel="Your profile"
+                hitSlop={6}
+                style={({ pressed }) => (pressed ? { opacity: 0.7 } : null)}
+              >
+                <Avatar initials={initials} size={32} onAnchor />
+              </Pressable>
+            ) : (
+              <Avatar initials={initials} size={32} onAnchor />
+            ))}
+        </View>
+
+        {!!title && (
+          <Text style={headerStyles.title} numberOfLines={2}>
+            {title}
+            {!!accent && <Text style={{ color: t.brandGreenOnDark }}>{accent}</Text>}
+          </Text>
+        )}
+
+        <View style={headerStyles.lockup} accessible accessibilityRole="image">
+          <Image source={markLogo} style={headerStyles.mark} resizeMode="contain" />
+          <Text style={[headerStyles.lockupName, { color: alpha(t.inkInverse, 0.72) }]}>
+            Global Peer Financing Association
+          </Text>
+        </View>
+      </View>
+
+      {!!children && (
+        <View
+          style={[
+            headerStyles.below,
+            { backgroundColor: t.surfacePage, borderBottomColor: t.ruleHairline },
+          ]}
+        >
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const headerStyles = StyleSheet.create({
+  band: { paddingHorizontal: 20, paddingBottom: 14 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 12 },
+  spacer: { flex: 1 },
+  title: {
+    fontFamily: sans(600),
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: trackDisplay(22),
+    color: '#fff',
+  },
+  lockup: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 },
+  // 724×630 art, kept on ratio so the knot doesn't squash.
+  mark: { width: 20, height: 17.4 },
+  lockupName: {
+    fontFamily: sans(500),
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+  below: { borderBottomWidth: 1, paddingHorizontal: 20, paddingBottom: 12 },
+});
 
 /* ── components.css ──────────────────────────────────────────────────────── */
 
@@ -252,12 +362,15 @@ export function Avatar({
   initials,
   photoUrl,
   size = 32,
+  onAnchor = false,
   style,
 }: {
   initials: string;
   /** Portrait to show instead of the initials. Raster only — RN's Image can't decode SVG. */
   photoUrl?: string;
   size?: number;
+  /** Anchor-surface override: translucent fill and light text, for the header. */
+  onAnchor?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const { t } = useTheme();
@@ -268,9 +381,9 @@ export function Avatar({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: t.muted,
+          backgroundColor: onAnchor ? alpha(t.inkInverse, 0.16) : t.muted,
           borderWidth: 1,
-          borderColor: t.border,
+          borderColor: onAnchor ? t.ruleOnAnchor : t.border,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
@@ -281,7 +394,13 @@ export function Avatar({
       {photoUrl ? (
         <Image source={{ uri: photoUrl }} style={styles.fill} resizeMode="cover" accessibilityIgnoresInvertColors />
       ) : (
-        <Text style={{ fontFamily: sans(600), fontSize: size <= 24 ? 9 : 12, color: t.mutedForeground }}>
+        <Text
+          style={{
+            fontFamily: sans(600),
+            fontSize: size <= 24 ? 9 : 12,
+            color: onAnchor ? '#fff' : t.mutedForeground,
+          }}
+        >
           {initials}
         </Text>
       )}

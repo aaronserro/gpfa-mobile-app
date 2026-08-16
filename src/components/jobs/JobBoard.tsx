@@ -6,21 +6,18 @@
  * in as props so the state survives a trip into a posting and back.
  */
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ArrowRight,
-  Bell,
   Briefcase,
   CalendarDots,
-  CaretLeft,
   CurrencyCircleDollar,
   MagnifyingGlass,
   MapPin,
 } from '../../ds/icons';
-import { Avatar, MastheadMeta, OrgMark } from '../../ds/primitives';
+import { MastheadMeta, OrgMark, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { jobFunctionRule, mono, sans, topPad, trackDisplay } from '../../ds/tokens';
+import { jobFunctionRule, mono, sans, trackDisplay } from '../../ds/tokens';
 import type { JobFunctionKey } from '../../ds/tokens';
 import { FactChip, SourceChip } from './parts';
 import { orgInitials } from '../../lib/format';
@@ -64,8 +61,6 @@ export interface JobBoardProps {
   onQuery: (query: string) => void;
   filter: JobFilterId;
   onFilter: (filter: JobFilterId) => void;
-  /** The signed-in member's initials, for the top-bar avatar. */
-  memberInitials: string;
   onBack: () => void;
   onOpen: (id: string) => void;
 }
@@ -76,48 +71,34 @@ export default function JobBoard({
   onQuery,
   filter,
   onFilter,
-  memberInitials,
   onBack,
   onOpen,
 }: JobBoardProps) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
   const q = query.trim();
 
   return (
     <View style={styles.fill}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            backgroundColor: t.surfacePaper,
-            borderBottomColor: t.ruleHairline,
-            paddingTop: topPad(insets.top, 54),
-          },
-        ]}
+      {/* The design has no back control — it previews the board as a tab of its
+          own. Here it opens from the Resources hub, so it needs one. */}
+      <ScreenHeader
+        title="Job board"
+        onBack={onBack}
+        backLabel="Back to resources"
       >
-        <View style={styles.searchRow}>
-          {/* The design has no back control — it previews the board as a tab of
-              its own. Here it opens from the Resources hub, so it needs one. */}
-          <Pressable onPress={onBack} accessibilityLabel="Back to resources" hitSlop={8}>
-            <CaretLeft size={19} color={t.brandGreen} />
-          </Pressable>
-          <Avatar initials={memberInitials} size={32} />
-          <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
-            <MagnifyingGlass size={15} color={t.inkMuted} />
-            <TextInput
-              value={query}
-              onChangeText={onQuery}
-              placeholder="Search roles, orgs, locations"
-              placeholderTextColor={t.inkFaint}
-              style={[styles.searchInput, { color: t.inkStrong }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
-          </View>
-          <Bell size={21} color={t.inkMuted} />
+        <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+          <MagnifyingGlass size={15} color={t.inkMuted} />
+          <TextInput
+            value={query}
+            onChangeText={onQuery}
+            placeholder="Search roles, orgs, locations"
+            placeholderTextColor={t.inkFaint}
+            style={[styles.searchInput, { color: t.inkStrong }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
         </View>
 
         <ScrollView
@@ -146,16 +127,13 @@ export default function JobBoard({
             );
           })}
         </ScrollView>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         <View style={styles.countRow}>
-          <MastheadMeta size={9.5} color={t.inkFaint} style={styles.eyebrowTrack}>
-            {jobs.length} OPEN ROLE{jobs.length === 1 ? '' : 'S'}
-          </MastheadMeta>
-          <MastheadMeta size={9.5} color={t.inkFaint} style={styles.eyebrowTrack}>
-            NEWEST FIRST
-          </MastheadMeta>
+          <Text style={[styles.count, { color: t.inkMuted }]}>
+            {jobs.length} open role{jobs.length === 1 ? '' : 's'}
+          </Text>
         </View>
 
         {jobs.map((j) => (
@@ -176,7 +154,7 @@ export default function JobBoard({
             <View style={styles.cardTop}>
               <SourceChip source={j.source} />
               <MastheadMeta size={9.5} color={t.inkFaint} style={styles.flex}>
-                POSTED {j.posted.toUpperCase()}
+                Posted {j.posted}
               </MastheadMeta>
             </View>
 
@@ -200,7 +178,7 @@ export default function JobBoard({
 
             <View style={[styles.closesRow, { borderBottomColor: t.ruleHairline }]}>
               <CalendarDots size={12} color={t.brandAmber} />
-              <MastheadMeta size={10}>{j.closes.toUpperCase()}</MastheadMeta>
+              <MastheadMeta size={10}>{j.closes}</MastheadMeta>
             </View>
 
             <View style={styles.cardFoot}>
@@ -235,17 +213,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1 },
 
-  topBar: { borderBottomWidth: 1, paddingBottom: 10 },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 10,
-    paddingHorizontal: 16,
-  },
   search: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -253,6 +221,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderWidth: 1,
     paddingHorizontal: 12,
+    marginTop: 12,
   },
   searchInput: {
     flex: 1,
@@ -265,7 +234,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   filterChip: {
     height: 30,
@@ -290,7 +259,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 16,
   },
-  eyebrowTrack: { letterSpacing: 1.7 },
+  count: { fontFamily: sans(400), fontSize: 12 },
 
   card: {
     borderTopWidth: 1,

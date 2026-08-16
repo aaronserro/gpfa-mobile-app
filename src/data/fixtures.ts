@@ -522,6 +522,8 @@ export const MEMBER: Member = {
   firstName: 'Robert',
   initials: 'RG',
   org: 'HOOPP',
+  role: 'Assistant VP, Treasury & Liquidity',
+  orgId: 'hoopp',
 };
 
 export const NEXT_EVENT: CalendarEvent = {
@@ -639,6 +641,15 @@ export const LIBRARY: LibraryResource[] = [
     tags: ['Connectivity', 'Survey'],
   },
 ];
+
+/**
+ * What the member has bookmarked, newest first — the three the profile design
+ * lists. Held as ids rather than copies so a saved row and its library entry
+ * can't drift apart.
+ */
+const SAVED_IDS = ['r1', 'r2', 'r4'];
+
+export const SAVED_RESOURCES: LibraryResource[] = LIBRARY.filter((r) => SAVED_IDS.includes(r.id));
 
 /**
  * Job board seed content. Placeholder roles in the members' voice, not real

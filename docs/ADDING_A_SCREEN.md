@@ -102,37 +102,41 @@ Never reshape a screen to match a server. The type is the contract.
 
 ```tsx
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Eyebrow, MastheadMeta } from '../ds/primitives';
+import { MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { sans, topPad, trackDisplay } from '../ds/tokens';
+import { sans, trackDisplay } from '../ds/tokens';
 import type { LibraryDoc } from '../api/types';
 
 export default function LibraryScreen({
   docs,
   onOpen,
+  onBack,
 }: {
   docs: LibraryDoc[];
   onOpen: (id: string) => void;
+  onBack: () => void;
 }) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
 
   return (
-    <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: topPad(insets.top, 66) }]}>
-      <Eyebrow size={10}>Member library</Eyebrow>
-      {docs.map((d) => (
-        <View key={d.id} style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-          <Text style={[styles.title, { color: t.inkStrong }]}>{d.title}</Text>
-          <MastheadMeta size={10}>{d.date.toUpperCase()}</MastheadMeta>
-        </View>
-      ))}
-    </ScrollView>
+    <View style={styles.fill}>
+      <ScreenHeader title="Library" onBack={onBack} backLabel="Back to resources" />
+
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {docs.map((d) => (
+          <View key={d.id} style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+            <Text style={[styles.title, { color: t.inkStrong }]}>{d.title}</Text>
+            <MastheadMeta size={10}>{d.date}</MastheadMeta>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 20, paddingBottom: 24, gap: 12 },
+  fill: { flex: 1 },
+  scroll: { paddingHorizontal: 20, paddingVertical: 24, gap: 12 },
   card: { borderWidth: 1, borderRadius: 8, padding: 14 },
   title: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
 });
@@ -145,11 +149,16 @@ Rules inside a screen:
 - **Fonts come from `sans(weight)` / `mono(weight)`.** Never `fontWeight` —
   RN picks a face by family name, and only the loaded weights exist
   (sans 400/500/600/700, mono 400/500/600).
-- **Top padding is `topPad(insets.top, N)`**, where `N` is the design's
-  `padding-top`. It swaps the mock's 62px status bar for the real inset.
-- **Reuse primitives** before writing new markup: `Eyebrow`, `MastheadMeta`,
-  `DisplayHead`, `Badge`, `Card`, `Avatar`, `Input`, `RelevanceDot`, `LiveDot`,
-  `FadeUp`, `RadialWash` in `src/ds/primitives.tsx`.
+- **The header is always `ScreenHeader`.** It owns the safe-area inset, the
+  back caret, the title and the hairline, so every screen's first row lands at
+  the same height. Pass a search field or filter strip as its `children`; never
+  hand-roll a masthead or call `topPad` in a screen.
+- **No eyebrows or kicker text.** No uppercase mono labels above a heading, no
+  page standfirsts, no `TITLE · N ITEMS` stat lines in a header. A section
+  heading is sentence-case `sans(600)`.
+- **Reuse primitives** before writing new markup: `ScreenHeader`,
+  `MastheadMeta`, `DisplayHead`, `Badge`, `Card`, `Avatar`, `Input`,
+  `RelevanceDot`, `LiveDot`, `FadeUp`, `RadialWash` in `src/ds/primitives.tsx`.
 - **Static styles go in `StyleSheet.create`**; only theme-dependent values go
   inline as a second array entry: `style={[styles.card, { borderColor: t.ruleHairline }]}`.
 
@@ -277,7 +286,7 @@ Most screens here come from `claude.ai/design` docs. What that involves:
 | `color: '#33565f'` | `color: t.surfaceAnchor` |
 | `fontWeight: '600'` | `fontFamily: sans(600)` |
 | `import { House } from 'phosphor-react-native'` | Add to `src/ds/icons.ts`, import from there |
-| `paddingTop: 66` | `topPad(insets.top, 66)` |
+| `paddingTop: 66` | `ScreenHeader` (owns it; `topPad(insets.top, N)` only outside a header) |
 | Custom spinner / error view | `DataGate` |
 | `any`, `as unknown as` | Type it; strict mode is on |
 | A new endpoint left out of `CONTRACT.md` | Document it in the same change |

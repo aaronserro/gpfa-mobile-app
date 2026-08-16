@@ -28,6 +28,7 @@ import {
   NEWS_STORIES,
   NEXT_EVENT,
   PODCASTS,
+  SAVED_RESOURCES,
   SUGGESTIONS,
 } from '../data/fixtures';
 
@@ -50,6 +51,15 @@ const local = <T>(value: T): Promise<T> => Promise.resolve(value);
 export function getMe(): Promise<Member> {
   if (!USING_REMOTE_API) return local(MEMBER);
   return request<Member>(ROUTES.me);
+}
+
+/**
+ * What the member has bookmarked from the library, newest first — the profile's
+ * Saved list. The screen does not re-sort it.
+ */
+export function getSavedResources(): Promise<LibraryResource[]> {
+  if (!USING_REMOTE_API) return local(SAVED_RESOURCES);
+  return request<LibraryResource[]>(ROUTES.savedResources);
 }
 
 /** The Home calendar card. Resolve null to hide it. */

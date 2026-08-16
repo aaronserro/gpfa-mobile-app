@@ -1,12 +1,8 @@
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Moon, Sun } from '../ds/icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Badge, Card, DisplayHead, Eyebrow, LiveDot, MastheadMeta, RadialWash, RelevanceDot } from '../ds/primitives';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Badge, Card, LiveDot, MastheadMeta, RelevanceDot, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
+import { alpha, sans, trackDisplay, wgRule } from '../ds/tokens';
 import type { CalendarEvent, Group, Member, NewsStory } from '../api/types';
-
-import bannerLogo from '../../assets/banner-logo-white.png';
 
 export default function HomeScreen({
   member,
@@ -28,32 +24,17 @@ export default function HomeScreen({
   onPickGroup: (groupId: string) => void;
   showBadges: boolean;
 }) {
-  const { t, isDark, toggle } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { t } = useTheme();
 
   // GPFA's own material has its own place on the News screen; the digest here
   // is the industry read.
   const digest = news.filter((n) => n.kind === 'radar');
 
   return (
-    <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={[styles.masthead, { backgroundColor: t.surfaceAnchor, paddingTop: topPad(insets.top, 72) }]}>
-        <RadialWash washes={[{ color: t.brandBlue, o: 0.14, cx: '0.88', cy: '0', rx: '1.2', ry: '1.3', stop: '0.55' }]} />
-        <View style={styles.mastheadRow}>
-          <Image source={bannerLogo} style={styles.logo} resizeMode="contain" />
-          <Pressable
-            onPress={toggle}
-            accessibilityLabel="Toggle dark mode"
-            style={[styles.iconBtn, { borderColor: t.ruleOnAnchor }]}
-          >
-            {isDark ? <Sun size={18} color="#fff" /> : <Moon size={18} color="#fff" />}
-          </Pressable>
-        </View>
-        <DisplayHead size={26} onAnchor em={`${member.firstName}.`} style={styles.greeting}>
-          Good morning,{' '}
-        </DisplayHead>
-      </View>
+    <View style={styles.fill}>
+      <ScreenHeader title="Good morning, " accent={`${member.firstName}.`} />
 
+      <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.sectionHead}>
         <View style={styles.sectionTitleRow}>
           <LiveDot />
@@ -116,7 +97,7 @@ export default function HomeScreen({
           <Text style={[styles.h3, styles.calendarHead, { color: t.inkStrong }]}>Next on the calendar</Text>
           <Card style={styles.eventCard}>
             <View style={[styles.dateChip, { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft }]}>
-              <Eyebrow size={9}>{event.month}</Eyebrow>
+              <Text style={[styles.dateMonth, { color: t.inkMuted }]}>{event.month}</Text>
               <Text style={[styles.dateNum, { color: t.inkStrong }]}>{event.day}</Text>
             </View>
             <View style={styles.eventBody}>
@@ -135,34 +116,14 @@ export default function HomeScreen({
           </Card>
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { paddingBottom: 8 },
-  masthead: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    overflow: 'hidden',
-  },
-  mastheadRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  logo: { width: 112, height: 30 },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  greeting: { marginTop: 18 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -249,6 +210,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 7,
     alignItems: 'center',
+  },
+  dateMonth: {
+    fontFamily: sans(500),
+    fontSize: 11,
   },
   dateNum: {
     fontFamily: sans(600),

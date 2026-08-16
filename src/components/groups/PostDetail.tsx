@@ -23,7 +23,6 @@ import {
   ArrowFatUp,
   ArrowUp,
   BookmarkSimple,
-  CaretLeft,
   ChartBar,
   ChatCircle,
   CheckCircle,
@@ -32,9 +31,9 @@ import {
   ShareFat,
   X,
 } from '../../ds/icons';
-import { Avatar, Input, MastheadMeta } from '../../ds/primitives';
+import { Avatar, Input, MastheadMeta, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { alpha, mono, postTypeStyle, sans, topPad, trackDisplay, FRAME_STATUS_BAR } from '../../ds/tokens';
+import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
 import type { Reply, RsvpChoice, Thread } from '../../api/types';
@@ -129,33 +128,23 @@ export default function PostDetail({
       style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View
-        style={[
-          styles.topBar,
-          {
-            backgroundColor: t.surfacePaper,
-            borderBottomColor: t.ruleHairline,
-            paddingTop: topPad(insets.top, FRAME_STATUS_BAR),
-          },
-        ]}
-      >
-        <Pressable onPress={onBack} style={styles.backRow} accessibilityRole="button" hitSlop={6}>
-          <CaretLeft size={17} color={t.brandGreen} />
-          <Text numberOfLines={1} style={[styles.backText, { color: t.brandGreen }]}>
-            {groupName}
-          </Text>
-        </Pressable>
-        <View style={styles.topActions}>
-          <Pressable onPress={onToggleSave} accessibilityRole="button" hitSlop={8}>
-            <BookmarkSimple
-              size={19}
-              weight={saved ? 'fill' : 'regular'}
-              color={saved ? t.brandGreenStrong : t.inkMuted}
-            />
-          </Pressable>
-          <ShareFat size={19} color={t.inkMuted} />
-        </View>
-      </View>
+      <ScreenHeader
+        title={groupName}
+        onBack={onBack}
+        backLabel={`Back to ${groupName}`}
+        actions={
+          <View style={styles.topActions}>
+            <Pressable onPress={onToggleSave} accessibilityRole="button" hitSlop={8}>
+              <BookmarkSimple
+                size={19}
+                weight={saved ? 'fill' : 'regular'}
+                color={saved ? t.brandGreenOnDark : '#fff'}
+              />
+            </Pressable>
+            <ShareFat size={19} color="#fff" />
+          </View>
+        }
+      />
 
       <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
         {/* The left rule and chip take the post type's colour, not the group's. */}
@@ -176,7 +165,7 @@ export default function PostDetail({
             </View>
             {!!post.state && (
               <Text style={[styles.kindState, { color: t.inkFaint }]}>
-                {post.state.toUpperCase()}
+                {post.state}
               </Text>
             )}
           </View>
@@ -191,7 +180,7 @@ export default function PostDetail({
                 <RoleBadge>Author</RoleBadge>
               </View>
               <MastheadMeta size={10} style={styles.bylineMeta}>
-                {`${post.org.toUpperCase()} · ${post.time.toUpperCase()}`}
+                {`${post.org} · ${post.time}`}
               </MastheadMeta>
             </View>
           </View>
@@ -325,7 +314,7 @@ export default function PostDetail({
                   })}
                 </View>
                 <MastheadMeta size={9.5} style={styles.pollMeta}>
-                  {(voted ? `${total} VOTES · ` : '') + post.poll.closes.toUpperCase()}
+                  {(voted ? `${total} votes · ` : '') + post.poll.closes}
                 </MastheadMeta>
               </View>
 
@@ -342,7 +331,7 @@ export default function PostDetail({
                       i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline },
                     ]}
                   >
-                    <MastheadMeta size={9.5}>{stat.k.toUpperCase()}</MastheadMeta>
+                    <MastheadMeta size={9.5}>{stat.k}</MastheadMeta>
                     <Text style={[styles.pollStatValue, { color: t.inkStrong }]}>{stat.v}</Text>
                   </View>
                 ))}
@@ -537,7 +526,7 @@ function ReplyBody({
           {r.a}
         </Text>
         <MastheadMeta size={9.5}>
-          {`${r.org.toUpperCase()} · ${r.time.toUpperCase()}`}
+          {`${r.org} · ${r.time}`}
         </MastheadMeta>
       </View>
       <Text style={[nested ? styles.childText : styles.replyText, { color: t.inkBody }]}>
@@ -570,23 +559,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
 
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    paddingHorizontal: 12,
-  },
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    paddingHorizontal: 8,
-    flexShrink: 1,
-  },
-  backText: { fontFamily: sans(500), fontSize: 14 },
   topActions: {
-    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,

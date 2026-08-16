@@ -6,15 +6,14 @@ import {
   ArrowRight,
   Article,
   BookmarkSimple,
-  CaretLeft,
   MagnifyingGlass,
   Pause,
   Play,
   X,
 } from '../ds/icons';
-import { Avatar, Eyebrow, MastheadMeta } from '../ds/primitives';
+import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, resourceTypeStyle, sans, topPad, trackDisplay } from '../ds/tokens';
+import { alpha, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import Waveform, { fallbackPeaks } from '../components/podcast/Waveform';
 import {
   formatTime,
@@ -160,14 +159,7 @@ export default function ResourcesScreen({
   /* ── hub ──────────────────────────────────────────────────────────────── */
   const hub = (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={[styles.head, { paddingTop: topPad(insets.top, 66) }]}>
-        <Text style={[styles.pageTitle, { color: t.inkStrong }]}>
-          Resources<Text style={{ color: t.brandGreen }}>.</Text>
-        </Text>
-        <MastheadMeta size={11} style={styles.pageMeta}>
-          MEMBER LIBRARY · PODCASTS · JOB BOARD · NEWS
-        </MastheadMeta>
-      </View>
+      <ScreenHeader title="Resources" accent="." />
 
       <View style={styles.hubCards}>
         <HubCard
@@ -213,7 +205,7 @@ export default function ResourcesScreen({
   /* ── library ──────────────────────────────────────────────────────────── */
   const library = (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <SubHead title="Resource library" onBack={() => setView('hub')} top={topPad(insets.top, 66)} />
+      <SubHead title="Resource library" onBack={() => setView('hub')} />
 
       <View style={styles.controls}>
         <View
@@ -268,7 +260,7 @@ export default function ResourcesScreen({
                     <Text style={[styles.typeChipText, { color: skin.ink }]}>{r.type}</Text>
                   </View>
                   <MastheadMeta size={10}>
-                    {r.updatedAt.toUpperCase()}
+                    {r.updatedAt}
                     {r.pages ? ` · ${r.pages}P` : ''}
                   </MastheadMeta>
                 </View>
@@ -294,7 +286,7 @@ export default function ResourcesScreen({
   /* ── podcasts ─────────────────────────────────────────────────────────── */
   const podcasts = (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <SubHead title="Podcasts" onBack={() => setView('hub')} top={topPad(insets.top, 66)} />
+      <SubHead title="Podcasts" onBack={() => setView('hub')} />
 
       {!!featured && (
         <View style={styles.featuredWrap}>
@@ -393,7 +385,7 @@ export default function ResourcesScreen({
 
   /* ── sheets ───────────────────────────────────────────────────────────── */
   const resourceSheet = !!sheetResource && (
-    <Sheet_ kicker="Resource library" onClose={() => setSheet(null)}>
+    <Sheet_ onClose={() => setSheet(null)}>
       {(() => {
         const skin = resourceTypeStyle(t, sheetResource.type);
         return (
@@ -406,8 +398,8 @@ export default function ResourcesScreen({
             <Text style={[styles.sheetTitle, { color: t.inkStrong }]}>{sheetResource.title}</Text>
             <MastheadMeta size={11} style={styles.sheetMeta}>
               {[
-                sheetResource.authors.toUpperCase(),
-                sheetResource.updatedAt.toUpperCase(),
+                sheetResource.authors,
+                sheetResource.updatedAt,
                 sheetResource.pages ? `${sheetResource.pages} PAGES` : null,
               ]
                 .filter(Boolean)
@@ -450,7 +442,7 @@ export default function ResourcesScreen({
   );
 
   const episodeSheet = !!sheetEpisode && (
-    <Sheet_ kicker="Podcast episode" onClose={() => setSheet(null)}>
+    <Sheet_ onClose={() => setSheet(null)}>
       <View
         style={[
           styles.typeChip,
@@ -467,7 +459,6 @@ export default function ResourcesScreen({
 
       {!!sheetEpisode.people.length && (
         <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
-          <Eyebrow size={10}>On this episode</Eyebrow>
           <View style={styles.peopleList}>
             {sheetEpisode.people.map((p) => (
               <View key={p.name} style={styles.person}>
@@ -520,7 +511,6 @@ export default function ResourcesScreen({
       onQuery={setJobQuery}
       filter={jobFilter}
       onFilter={setJobFilter}
-      memberInitials={member.initials ?? initials(member.name)}
       onBack={() => setView('hub')}
       onOpen={setJobId}
     />
@@ -586,29 +576,14 @@ function HubCard({
   );
 }
 
-function SubHead({ title, onBack, top }: { title: string; onBack: () => void; top: number }) {
-  const { t } = useTheme();
-  return (
-    <View style={[styles.subHead, { paddingTop: top }]}>
-      <Pressable
-        onPress={onBack}
-        accessibilityLabel="Back to resources"
-        style={styles.backBtn}
-        hitSlop={6}
-      >
-        <CaretLeft size={19} color={t.brandGreen} />
-      </Pressable>
-      <Text style={[styles.subTitle, { color: t.inkStrong }]}>{title}</Text>
-    </View>
-  );
+function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
+  return <ScreenHeader title={title} onBack={onBack} backLabel="Back to resources" />;
 }
 
 function Sheet_({
-  kicker,
   onClose,
   children,
 }: {
-  kicker: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -619,9 +594,6 @@ function Sheet_({
       <Pressable style={styles.scrim} onPress={onClose} />
       <View style={[styles.sheet, { backgroundColor: t.surfacePaper }]}>
         <View style={[styles.sheetHead, { borderBottomColor: t.ruleHairline }]}>
-          <MastheadMeta size={10} style={styles.sheetKicker}>
-            {kicker.toUpperCase()}
-          </MastheadMeta>
           <Pressable onPress={onClose} accessibilityLabel="Close" hitSlop={10}>
             <X size={16} color={t.inkMuted} />
           </Pressable>
@@ -645,9 +617,9 @@ function Sheet_({
 /** Meta chips only from real fields, as on the web portal — never invented. */
 function episodeMeta(e: PodcastEpisode): string {
   return [
-    e.date.toUpperCase(),
-    e.duration.toUpperCase(),
-    e.hasTranscript ? 'TRANSCRIPT' : null,
+    e.date,
+    e.duration,
+    e.hasTranscript ? 'Transcript' : null,
     e.people.length ? `${e.people.length} ${e.people.length === 1 ? 'GUEST' : 'GUESTS'}` : null,
   ]
     .filter(Boolean)
@@ -666,15 +638,6 @@ function playLabel(player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisod
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { paddingBottom: 28 },
-
-  head: { paddingHorizontal: 20, paddingBottom: 10 },
-  pageTitle: {
-    fontFamily: sans(600),
-    fontSize: 28,
-    lineHeight: 31,
-    letterSpacing: trackDisplay(28),
-  },
-  pageMeta: { marginTop: 6 },
 
   hubCards: { paddingHorizontal: 20, paddingTop: 12, gap: 14 },
   hubCard: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
@@ -722,26 +685,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-
-  subHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingBottom: 4,
-  },
-  backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subTitle: {
-    fontFamily: sans(600),
-    fontSize: 20,
-    letterSpacing: trackDisplay(20),
   },
 
   controls: { paddingHorizontal: 20, paddingTop: 12, gap: 10 },
@@ -933,7 +876,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
   },
-  sheetKicker: { letterSpacing: 0.8 },
   sheetBodyWrap: { paddingHorizontal: 18, paddingTop: 16 },
   sheetTitle: {
     marginTop: 10,

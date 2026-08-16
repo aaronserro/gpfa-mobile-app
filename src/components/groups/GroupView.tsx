@@ -5,19 +5,17 @@
  * type filter are held by the caller so a trip into a post and back keeps them.
  */
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ArrowFatUp,
   BookmarkSimple,
-  CaretLeft,
   ChatCircle,
   CheckCircle,
   Plus,
 } from '../../ds/icons';
-import { Avatar, MastheadMeta } from '../../ds/primitives';
+import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { alpha, mono, sans, topPad, trackDisplay, FRAME_STATUS_BAR } from '../../ds/tokens';
+import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, TYPE_ICON, ROW_ICON } from './parts';
 import type { Group, PostType, Thread } from '../../api/types';
@@ -83,7 +81,6 @@ export default function GroupView({
   onCompose,
 }: GroupViewProps) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const coLeads = group.members.filter((m) => m.isLead);
   const topics: string[] = [];
@@ -91,55 +88,34 @@ export default function GroupView({
 
   return (
     <View style={styles.fill}>
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: t.surfacePaper,
-            borderBottomColor: t.ruleHairline,
-            paddingTop: topPad(insets.top, FRAME_STATUS_BAR),
-          },
-        ]}
-      >
-        <Pressable
-          onPress={onBack}
-          style={styles.backRow}
-          accessibilityRole="button"
-          accessibilityLabel="Back to working groups"
-        >
-          <CaretLeft size={16} color={t.brandGreen} />
-          <Text style={[styles.backText, { color: t.brandGreen }]}>Groups</Text>
-        </Pressable>
-
-        <View style={styles.headerBody}>
-          <View style={styles.nameRow}>
-            <Text style={[styles.groupName, { color: t.inkStrong }]}>{group.n}</Text>
-            <Pressable
-              onPress={onToggleSubscribe}
-              accessibilityRole="button"
-              accessibilityState={{ selected: subscribed }}
+      <ScreenHeader
+        title={group.n}
+        onBack={onBack}
+        backLabel="Back to working groups"
+        actions={
+          <Pressable
+            onPress={onToggleSubscribe}
+            accessibilityRole="button"
+            accessibilityState={{ selected: subscribed }}
+            style={[
+              subscribed ? styles.subBtnOn : styles.subBtnOff,
+              subscribed
+                ? { borderColor: t.ruleOnAnchor }
+                : { backgroundColor: t.brandGreenOnDark },
+            ]}
+          >
+            {subscribed && <CheckCircle size={12} weight="fill" color={t.brandGreenOnDark} />}
+            <Text
               style={[
-                subscribed ? styles.subBtnOn : styles.subBtnOff,
-                subscribed
-                  ? { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }
-                  : { backgroundColor: t.surfaceAnchor },
+                subscribed ? styles.subTextOn : styles.subTextOff,
+                { color: subscribed ? '#fff' : '#07171b' },
               ]}
             >
-              {subscribed && <CheckCircle size={12} weight="fill" color={t.brandLeaf} />}
-              <Text
-                style={[
-                  subscribed ? styles.subTextOn : styles.subTextOff,
-                  { color: subscribed ? t.inkMuted : '#fff' },
-                ]}
-              >
-                {subscribed ? 'Subscribed' : 'Subscribe'}
-              </Text>
-            </Pressable>
-          </View>
-          <MastheadMeta size={9.5} style={styles.groupMeta}>
-            {`${group.members.length} MEMBERS · ${totalPosts} ACTIVE POSTS · ${group.meta.toUpperCase()}`}
-          </MastheadMeta>
-        </View>
+              {subscribed ? 'Subscribed' : 'Subscribe'}
+            </Text>
+          </Pressable>
+        }
+      >
 
         <View style={styles.tabs}>
           {(
@@ -163,7 +139,7 @@ export default function GroupView({
             );
           })}
         </View>
-      </View>
+      </ScreenHeader>
 
       <View style={styles.fill}>
         {tab === 'posts' && (
@@ -267,7 +243,7 @@ export default function GroupView({
                     },
                   ]}
                 >
-                  <MastheadMeta size={9.5}>{k.toUpperCase()}</MastheadMeta>
+                  <MastheadMeta size={9.5}>{k}</MastheadMeta>
                   <Text style={[styles.statValue, { color: t.inkStrong }]}>{String(v)}</Text>
                 </View>
               ))}
@@ -506,24 +482,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
 
-  header: { borderBottomWidth: 1 },
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 40,
-    paddingHorizontal: 12,
-  },
-  backText: { fontFamily: sans(500), fontSize: 14 },
-  headerBody: { paddingHorizontal: 16, paddingBottom: 12 },
-  nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  groupName: {
-    flex: 1,
-    fontFamily: sans(600),
-    fontSize: 21,
-    lineHeight: 24.15,
-    letterSpacing: trackDisplay(21),
-  },
   subBtnOn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,8 +500,7 @@ const styles = StyleSheet.create({
   },
   subTextOn: { fontFamily: sans(500), fontSize: 11.5 },
   subTextOff: { fontFamily: sans(600), fontSize: 11.5 },
-  groupMeta: { marginTop: 7 },
-  tabs: { flexDirection: 'row', paddingHorizontal: 16 },
+  tabs: { flexDirection: 'row' },
   tab: { paddingTop: 9, paddingBottom: 10, paddingHorizontal: 14, borderBottomWidth: 2 },
   tabLabel: { fontFamily: sans(600), fontSize: 12.5 },
 

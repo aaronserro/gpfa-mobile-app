@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, ArrowUp, FileText } from '../ds/icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DisplayHead, Eyebrow, Input, MastheadMeta } from '../ds/primitives';
+import { Input, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { sans, topPad } from '../ds/tokens';
+import { sans } from '../ds/tokens';
 import { askGpfa, getAskSuggestions } from '../api/portal';
 import { useQuery } from '../api/useQuery';
 
@@ -49,7 +48,6 @@ function Dot({ delay, color }: { delay: number; color: string }) {
 
 export default function AskScreen() {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
@@ -91,25 +89,19 @@ export default function AskScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScreenHeader title="Ask " accent="GPFA." />
+
       <ScrollView
         ref={scroller}
         style={styles.fill}
-        contentContainerStyle={[styles.chat, { paddingTop: topPad(insets.top, 66) }]}
+        contentContainerStyle={styles.chat}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollDown}
       >
         {empty && (
           <View>
-            {/* The page carries no header bar, so the title lives with the
-                empty state and clears once the conversation starts. */}
-            <DisplayHead size={38} em="GPFA." style={styles.title}>
-              Ask{' '}
-            </DisplayHead>
             <Image source={markLogo} style={styles.mark} resizeMode="contain" />
-            <Eyebrow size={10} style={styles.tryHead}>
-              Try asking
-            </Eyebrow>
             <View style={styles.suggestions}>
               {(suggestions ?? []).map((q) => (
                 <Pressable
@@ -142,7 +134,6 @@ export default function AskScreen() {
                 <Text style={[styles.bubbleText, { color: m.user ? t.inkInverse : t.inkBody }]}>{m.text}</Text>
                 {!!m.sources?.length && (
                   <View style={[styles.sources, { borderTopColor: t.ruleHairline }]}>
-                    <Eyebrow size={9}>Sources</Eyebrow>
                     {m.sources.map((src) => (
                       <View key={src} style={styles.sourceRow}>
                         <FileText size={11} color={t.brandGreen} />
@@ -205,20 +196,17 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   chat: {
     paddingHorizontal: 20,
+    paddingTop: 24,
     paddingBottom: 24,
-  },
-  title: {
-    textAlign: 'center',
-    marginTop: 32,
   },
   mark: {
     width: 56,
     height: 56,
     alignSelf: 'center',
     marginTop: 20,
+    marginBottom: 30,
     opacity: 0.85,
   },
-  tryHead: { marginTop: 34, marginBottom: 10 },
   suggestions: { gap: 8 },
   suggestion: {
     flexDirection: 'row',

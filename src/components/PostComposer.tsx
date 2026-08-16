@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarDots, ChartBar, ChatCircle, Megaphone, X, type Icon } from '../ds/icons';
-import { Eyebrow, Input } from '../ds/primitives';
+import { Input } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import type { Group, NewPostInput, PostType } from '../api/types';
@@ -81,7 +81,7 @@ export default function PostComposer({
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
-            <Eyebrow size={10}>Working group</Eyebrow>
+            <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Working group</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
               {groups.map((g) => {
                 const on = g.id === groupId;
@@ -103,9 +103,7 @@ export default function PostComposer({
               })}
             </ScrollView>
 
-            <Eyebrow size={10} style={styles.label}>
-              Post type
-            </Eyebrow>
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Post type</Text>
             <View style={styles.typeGrid}>
               {TYPES.map((k) => {
                 const kind = postTypeStyle(t, k);
@@ -131,9 +129,7 @@ export default function PostComposer({
             </View>
             <Text style={[styles.hint, { color: t.inkFaint }]}>{TYPE_HINT[type]}</Text>
 
-            <Eyebrow size={10} style={styles.label}>
-              Title
-            </Eyebrow>
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Title</Text>
             <Input
               value={title}
               onChangeText={setTitle}
@@ -141,9 +137,7 @@ export default function PostComposer({
               style={styles.field}
             />
 
-            <Eyebrow size={10} style={styles.label}>
-              Body
-            </Eyebrow>
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Body</Text>
             <Input
               value={body}
               onChangeText={setBody}
@@ -210,6 +204,7 @@ const styles = StyleSheet.create({
   },
   body: { paddingBottom: 14 },
   label: { marginTop: 16 },
+  fieldLabel: { fontFamily: sans(500), fontSize: 12.5 },
   chips: {
     gap: 8,
     paddingVertical: 10,

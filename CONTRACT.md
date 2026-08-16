@@ -134,6 +134,7 @@ Base URL is prefixed to every path. All bodies are JSON.
 | --- | --- | --- | --- |
 | `POST` | `/auth/login` | Sign-in | `{ accessToken, refreshToken? }` |
 | `GET` | `/me` | Greeting, avatars, authorship | `Member` |
+| `GET` | `/me/saved` | Member profile → Saved | `LibraryResource[]`, newest first |
 | `GET` | `/groups` | Home, Groups drawer | `Group[]` |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
@@ -171,10 +172,32 @@ spinner until it resolves, because the greeting, top-bar avatar, and the author
 of anything the member posts all come from it.
 
 ```json
-{ "id": "rg", "name": "Robert Goobie", "firstName": "Robert", "initials": "RG", "org": "HOOPP" }
+{
+  "id": "rg",
+  "name": "Robert Goobie",
+  "firstName": "Robert",
+  "initials": "RG",
+  "org": "HOOPP",
+  "role": "Assistant VP, Treasury & Liquidity",
+  "orgId": "hoopp"
+}
 ```
 
-`initials` is optional — derived from `name` when absent.
+`initials` is optional — derived from `name` when absent. `role` and `orgId`
+are read by the member profile: without `role` the title line is omitted, and
+without `orgId` the profile falls back to matching `org` against every
+`MemberOrg`'s `name`, `short` and `fullName` — send `orgId` and the join is
+exact.
+
+**`GET /me/saved` → `LibraryResource[]`**
+
+What the signed-in member has bookmarked from the library, in the order the
+profile should list them (newest first) — the screen does not re-sort. Same
+shape as `/library`; return the same records, so a saved row and its library
+entry can't disagree. An empty array renders the profile's empty state.
+
+There is no mutation for this yet: `POST`/`DELETE /posts/:id/save` bookmarks a
+**post**, and nothing in the app writes to `/me/saved`. See §8.
 
 **`GET /events/next` → `CalendarEvent | null`**
 
@@ -446,6 +469,8 @@ soft-fill fallback until a backend supplies images.
   firstName: string;   // "Robert" — Home greeting
   initials?: string;   // "RG" — derived from name if omitted
   org: string;         // "HOOPP"
+  role?: string;       // "Assistant VP, Treasury & Liquidity" — profile only
+  orgId?: string;      // MemberOrg.id — joins the profile to the directory
 }
 ```
 
@@ -646,11 +671,17 @@ Honest list of what is *not* handled, in rough priority order:
    its consumers.
 5. **Search is client-side** (§6). Server-side search means a new endpoint and
    moving the query out of `GroupsScreen`.
-6. **Not wired to anything:** the notification bell, the per-card `⋯` menu,
-   "Forgot password?", and Share / send on feed cards.
+6. **Not wired to anything:** the notification bell — now drawn by
+   `ScreenHeader` on *every* screen, so wiring it means one endpoint and one
+   change in `src/ds/primitives.tsx` — plus the per-card `⋯` menu, "Forgot
+   password?", and Share / send on feed cards.
 7. **Composer captures only** group, type, title, body. A poll created in-app
    has no options; an event has no date rows.
-8. **Session data is memory-only.** Optimistic state (`votes`, `upvoted`,
+8. **Saved is read-only.** The member profile lists `GET /me/saved`, but nothing
+   adds to or removes from it — the library has no bookmark control, and the
+   post bookmark writes to `/posts/:id/save`, a different list. Wiring it means
+   a `POST`/`DELETE /me/saved/:id` pair and a toggle on the profile row.
+9. **Session data is memory-only.** Optimistic state (`votes`, `upvoted`,
    `rsvps`, `extraReplies`, `newPosts`) lives in `App.tsx` and resets on reload.
    Server state is the source of truth after a refetch.
 

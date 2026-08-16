@@ -209,9 +209,6 @@ export default function GroupsScreen({
         subscribed={matches.filter(isSubscribed)}
         rest={matches.filter((g) => !isSubscribed(g))}
         postCounts={Object.fromEntries(groups.map((g) => [g.id, (byGroup.get(g.id) ?? []).length]))}
-        unreadTotal={groups.reduce((n, g) => n + g.unread, 0)}
-        totalGroups={groups.length}
-        memberInitials={member.initials ?? initials(member.name)}
         query={query}
         onQuery={setQuery}
         onOpen={(id) => {

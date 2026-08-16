@@ -188,6 +188,14 @@ export interface Member {
   initials?: string;
   /** Member organization, e.g. "HOOPP". */
   org: string;
+  /** Job title, e.g. "Assistant VP, Treasury & Liquidity". The profile omits the line without it. */
+  role?: string;
+  /**
+   * `MemberOrg.id` — joins the member to their organization for the profile's
+   * Organization card. Absent falls back to matching `org` against the
+   * directory's names, which only works while the strings agree.
+   */
+  orgId?: string;
 }
 
 /** A badge on the calendar card. */

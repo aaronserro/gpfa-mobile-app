@@ -13,12 +13,11 @@
 import { useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ArrowRight, ArrowSquareOut, CaretLeft, LockSimple, Tray } from '../ds/icons';
-import { DisplayHead, MastheadMeta } from '../ds/primitives';
+import { ArrowRight, ArrowSquareOut, LockSimple, Tray } from '../ds/icons';
+import { MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, mono, sans, topPad, trackDisplay } from '../ds/tokens';
+import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type { NewsStory } from '../api/types';
 
 /** The topic filter's "no filter" entry. Not a topic any story carries. */
@@ -43,7 +42,6 @@ export default function NewsScreen({
   onOpen: (story: NewsStory) => void;
 }) {
   const { t } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const [topic, setTopic] = useState<string>(ALL_TOPICS);
   const [source, setSource] = useState<SourceId>('all');
@@ -82,40 +80,10 @@ export default function NewsScreen({
   };
 
   return (
-    <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: t.ruleHairline, paddingTop: topPad(insets.top, 66) },
-        ]}
-      >
-        <View style={styles.crumbRow}>
-          <Pressable
-            onPress={onBack}
-            accessibilityLabel="Back to home"
-            hitSlop={8}
-            style={({ pressed }) => [
-              styles.backBtn,
-              pressed && { backgroundColor: alpha(t.surfaceSoft, 0.5) },
-            ]}
-          >
-            <CaretLeft size={19} color={t.brandGreen} />
-          </Pressable>
-          <MastheadMeta size={10.5} style={styles.crumb}>
-            Home · News
-          </MastheadMeta>
-        </View>
+    <View style={styles.fill}>
+      <ScreenHeader title="News Radar" onBack={onBack} backLabel="Back to home" />
 
-        <DisplayHead size={24} style={styles.head}>
-          What matters to <Text style={{ color: t.brandGreen }}>securities finance</Text>, today.
-        </DisplayHead>
-
-        <Text style={[styles.standfirst, { color: t.inkMuted }]}>
-          GPFA's own updates and announcements alongside industry coverage across regulation, market
-          structure, legal and clearing. Filter by source to see one or the other.
-        </Text>
-      </View>
-
+      <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.controlRow}>
         <MastheadMeta size={10.5} style={styles.countTrack}>
           {resultCount}
@@ -218,7 +186,8 @@ export default function NewsScreen({
           </View>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -358,33 +327,6 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { paddingBottom: 24 },
-
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-  },
-  crumbRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: -8,
-  },
-  backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crumb: { letterSpacing: 0.84, textTransform: 'uppercase' },
-  head: { marginTop: 12 },
-  standfirst: {
-    marginTop: 10,
-    fontFamily: sans(400),
-    fontSize: 12.5,
-    lineHeight: 19,
-  },
 
   controlRow: {
     flexDirection: 'row',

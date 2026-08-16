@@ -173,9 +173,8 @@ const MONO: Record<MonoWeight, string> = {
 export const sans = (w: SansWeight = 400): string => SANS[w];
 export const mono = (w: MonoWeight = 400): string => MONO[w];
 
-/** --tracking-display / --tracking-eyebrow, converted from em to points at a given size. */
+/** --tracking-display, converted from em to points at a given size. */
 export const trackDisplay = (size: number): number => size * -0.021;
-export const trackEyebrow = (size: number): number => size * 0.18;
 
 /** The .wg-rule-* left-border variants in base.css. */
 export type WgRuleClass =
@@ -299,6 +298,13 @@ export const orgSectorRule = (t: Theme, sector: OrgSector): string =>
 export const FRAME_STATUS_BAR = 62;
 export const topPad = (insetTop: number, designTop: number): number =>
   Math.max(insetTop, 0) + (designTop - FRAME_STATUS_BAR);
+
+/**
+ * The single design-top every screen header uses. Screens previously ran at 54,
+ * 66 and FRAME_STATUS_BAR, which put the first row at three different heights
+ * as you moved between tabs; `ScreenHeader` is now the only caller.
+ */
+export const HEADER_TOP = 66;
 
 /**
  * Per library type: chip ink, fill and border.

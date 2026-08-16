@@ -29,6 +29,7 @@ export const ROUTES = {
   logout: '/auth/logout',
   session: '/auth/session',
   me: '/me',
+  savedResources: '/me/saved',
   groups: '/groups',
   nextEvent: '/events/next',
   feed: '/posts',
