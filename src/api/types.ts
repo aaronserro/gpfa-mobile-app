@@ -108,11 +108,49 @@ export interface Answer {
 
 export type Relevance = 'high' | 'medium' | 'low';
 
-export interface NewsItem {
-  rel: Relevance;
-  tag: string;
-  t: string;
-  src: string;
+/** Who published a story: the industry radar, or GPFA itself. */
+export type NewsKind = 'radar' | 'gpfa';
+
+/**
+ * A story on the News Radar.
+ *
+ * One record serves both surfaces: the News screen renders the whole list, and
+ * the Home digest renders the `radar` ones using `rel` and `tag`. The fields
+ * below the divider apply to one kind only — a `radar` story has no `chip`, and
+ * a `gpfa` story has no `ticker`.
+ */
+export interface NewsStory {
+  id: string;
+  kind: NewsKind;
+  /** Full topic name, e.g. "Regulation & Policy". Drives the topic filter and its counts. */
+  topic: string;
+  title: string;
+  /** Provenance line, rendered as sent, e.g. "RISK.NET · 5H". The app never parses it. */
+  meta: string;
+  /** Standfirst paragraph. Clamped to three or four lines on the card. */
+  body: string;
+  /** Relevance dot on the Home digest. Absent reads as 'low'. */
+  rel?: Relevance;
+  /** Short label for the Home digest's chip, e.g. "Sec Finance". Falls back to `topic`. */
+  tag?: string;
+  /** Raster hero image. RN's Image can't decode SVG; absent falls back to the soft fill. */
+  imageUrl?: string;
+  /** Where Open / Read goes. Absent makes the action inert. */
+  url?: string;
+
+  /* ── radar only ── */
+  /** Issuer or regime shorthand above the headline, e.g. "CDCC". */
+  ticker?: string;
+  /** Member discussions referencing the story, shown in the card footer. Absent reads as 0. */
+  threads?: number;
+
+  /* ── gpfa only ── */
+  /** Type chip over the image, e.g. "Working Paper". A radar story shows its `topic` there. */
+  chip?: string;
+  /** Topic tags listed under the body. */
+  topics?: string[];
+  /** Gated to members: the card shows a lock and offers no action. */
+  memberOnly?: boolean;
 }
 
 

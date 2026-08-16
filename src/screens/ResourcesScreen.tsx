@@ -25,7 +25,14 @@ import {
 import JobBoard, { filterJobs, type JobFilterId } from '../components/jobs/JobBoard';
 import JobPosting from '../components/jobs/JobPosting';
 import { initials } from '../lib/format';
-import type { JobListing, LibraryResource, Member, PodcastEpisode, ResourceType } from '../api/types';
+import type {
+  JobListing,
+  LibraryResource,
+  Member,
+  NewsStory,
+  PodcastEpisode,
+  ResourceType,
+} from '../api/types';
 
 /** Typographic corner mark per type — the colour comes from resourceTypeStyle. */
 const TYPE_GLYPH: Record<ResourceType, string> = {
@@ -47,6 +54,8 @@ export interface ResourcesScreenProps {
   resources: LibraryResource[];
   episodes: PodcastEpisode[];
   jobs: JobListing[];
+  /** Only the count is shown here — the hub card hands the list off to News Radar. */
+  news: NewsStory[];
   /** Set to open the screen straight on a sub-view — the now-playing bar uses it. */
   initialView?: View_;
   /** Episode to show on mount, e.g. from the now-playing bar's Episode action. */
@@ -59,6 +68,8 @@ export interface ResourcesScreenProps {
   onOpenTranscript?: (episode: PodcastEpisode) => void;
   /** Called when the member taps Apply on a job listing. */
   onApplyToJob?: (job: JobListing) => void;
+  /** Opens News Radar. It renders outside this screen, as it does from Home. */
+  onGoNews?: () => void;
 }
 
 export default function ResourcesScreen({
@@ -66,12 +77,14 @@ export default function ResourcesScreen({
   resources,
   episodes,
   jobs,
+  news,
   initialView = 'hub',
   initialEpisodeSlug = null,
   initialJobId = null,
   onOpenResource,
   onOpenTranscript,
   onApplyToJob,
+  onGoNews,
 }: ResourcesScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -152,7 +165,7 @@ export default function ResourcesScreen({
           Resources<Text style={{ color: t.brandGreen }}>.</Text>
         </Text>
         <MastheadMeta size={11} style={styles.pageMeta}>
-          MEMBER LIBRARY · PODCASTS · JOB BOARD
+          MEMBER LIBRARY · PODCASTS · JOB BOARD · NEWS
         </MastheadMeta>
       </View>
 
@@ -183,6 +196,15 @@ export default function ResourcesScreen({
           body="Open roles at member organizations, plus listings the secretariat curates from outside the membership."
           meta={`${jobs.length} OPEN ROLE${jobs.length === 1 ? '' : 'S'}`}
           onPress={() => setView('jobs')}
+        />
+        <HubCard
+          label="News"
+          glyph="◉"
+          color={t.brandAmber}
+          title="News Radar"
+          body="Coverage the secretariat tracks across the membership, plus GPFA's own publications."
+          meta={`${news.length} STOR${news.length === 1 ? 'Y' : 'IES'}`}
+          onPress={() => onGoNews?.()}
         />
       </View>
     </ScrollView>

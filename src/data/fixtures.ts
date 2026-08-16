@@ -15,7 +15,7 @@ import type {
   LibraryResource,
   Member,
   MemberOrg,
-  NewsItem,
+  NewsStory,
   PodcastEpisode,
 } from '../api/types';
 
@@ -421,11 +421,86 @@ export const FALLBACK_ANSWER: Omit<Answer, 'k'> = {
   sources: ['Member library — search index'],
 };
 
-export const NEWS: NewsItem[] = [
-  { rel: 'high', tag: 'Sec Finance', t: 'CDCC expands cleared repo access for beneficial owners', src: 'SECURITIES FINANCE TIMES · 2H' },
-  { rel: 'high', tag: 'Regulation', t: 'Basel endgame recalibration: what changes for agency lending indemnification', src: 'RISK.NET · 5H' },
-  { rel: 'medium', tag: 'Collateral', t: 'Tri-party interoperability pilot adds two more custodians', src: 'GLOBAL INVESTOR · 9H' },
-  { rel: 'low', tag: 'Markets', t: 'Sovereign funds lift allocations to private credit', src: 'FT · 1D' },
+/**
+ * The News Radar. Industry coverage (`radar`) and GPFA's own material (`gpfa`)
+ * share the list; the Home digest shows the radar entries.
+ *
+ * `imageUrl` is left off deliberately — there is no image host in fixture mode,
+ * so the cards exercise the design's soft-fill fallback.
+ */
+export const NEWS_STORIES: NewsStory[] = [
+  {
+    id: 'n1',
+    kind: 'radar',
+    topic: 'Securities Finance',
+    tag: 'Sec Finance',
+    rel: 'high',
+    ticker: 'CDCC',
+    title: 'CDCC expands cleared repo access for beneficial owners',
+    meta: 'SECURITIES FINANCE TIMES · 2H',
+    body: 'CDCC opens its cleared repo service to buy-side accounts, with beneficial owners facing the CCP through a sponsoring clearing member. Onboarding runs through the fourth quarter.',
+    threads: 2,
+    url: 'https://www.securitiesfinancetimes.com/',
+  },
+  {
+    id: 'n2',
+    kind: 'radar',
+    topic: 'Regulation & Policy',
+    tag: 'Regulation',
+    rel: 'high',
+    ticker: 'BASEL',
+    title: 'Basel endgame recalibration: what changes for agency lending indemnification',
+    meta: 'RISK.NET · 5H',
+    body: 'The recalibration lowers the capital charge sitting behind agent indemnities. Agents are asking lenders to absorb part of the remaining cost through a fee-adjustment mechanism rather than new language.',
+    threads: 3,
+    url: 'https://www.risk.net/',
+  },
+  {
+    id: 'n3',
+    kind: 'radar',
+    topic: 'Market Infrastructure',
+    tag: 'Collateral',
+    rel: 'medium',
+    title: 'Tri-party interoperability pilot adds two more custodians',
+    meta: 'GLOBAL INVESTOR · 9H',
+    body: 'Two further triparty agents join the interoperability pilot, extending collateral mobility tests into a second settlement window.',
+    threads: 1,
+    url: 'https://www.globalinvestorgroup.com/',
+  },
+  {
+    id: 'n4',
+    kind: 'radar',
+    topic: 'Capital Markets',
+    tag: 'Markets',
+    rel: 'low',
+    title: 'Sovereign funds lift allocations to private credit',
+    meta: 'FT · 1D',
+    body: 'Sovereign investors continue to move allocation into private credit. Fund-level disclosure remains uneven across managers.',
+    threads: 0,
+    url: 'https://www.ft.com/',
+  },
+  {
+    id: 'g1',
+    kind: 'gpfa',
+    topic: 'Securities Finance',
+    chip: 'Working Paper',
+    title: 'Indemnification comparison matrix v3',
+    meta: 'COLLATERAL & LIQUIDITY WG · AUG 12',
+    body: 'Indemnification terms normalized across 24 member lending programs: agent-provided vs third-party wrap, collateral haircut bands, and the two sovereign-fund respondents added in v3.',
+    topics: ['Indemnification', 'Securities lending', 'Collateral'],
+    memberOnly: false,
+  },
+  {
+    id: 'g2',
+    kind: 'gpfa',
+    topic: 'Regulation & Policy',
+    chip: 'Briefing',
+    title: 'Basel recalibration — counsel memo on shifted indemnification cost',
+    meta: 'OTPP COUNSEL · JUL 28',
+    body: 'Redacted memo behind the counter-proposal to accept a fee-adjustment mechanism rather than language shifting capital-driven costs to the lender.',
+    topics: ['Basel', 'Indemnification', 'Legal'],
+    memberOnly: true,
+  },
 ];
 
 export const SUGGESTIONS: string[] = [

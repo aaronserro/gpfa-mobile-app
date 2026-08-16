@@ -38,6 +38,7 @@ export { FireIcon as Fire } from 'phosphor-react-native/lib/commonjs/icons/Fire'
 export { HashIcon as Hash } from 'phosphor-react-native/lib/commonjs/icons/Hash';
 export { FileXlsIcon as FileXls } from 'phosphor-react-native/lib/commonjs/icons/FileXls';
 export { HouseIcon as House } from 'phosphor-react-native/lib/commonjs/icons/House';
+export { LockSimpleIcon as LockSimple } from 'phosphor-react-native/lib/commonjs/icons/LockSimple';
 export { MagnifyingGlassIcon as MagnifyingGlass } from 'phosphor-react-native/lib/commonjs/icons/MagnifyingGlass';
 export { MapPinIcon as MapPin } from 'phosphor-react-native/lib/commonjs/icons/MapPin';
 export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/icons/Megaphone';
@@ -47,6 +48,7 @@ export { PlayIcon as Play } from 'phosphor-react-native/lib/commonjs/icons/Play'
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
+export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';
 export { UsersThreeIcon as UsersThree } from 'phosphor-react-native/lib/commonjs/icons/UsersThree';
 export { XIcon as X } from 'phosphor-react-native/lib/commonjs/icons/X';
 

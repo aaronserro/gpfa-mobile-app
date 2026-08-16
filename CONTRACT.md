@@ -137,7 +137,7 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `GET` | `/groups` | Home, Groups drawer | `Group[]` |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
-| `GET` | `/news` | Home News Radar | `NewsItem[]` |
+| `GET` | `/news` | News screen + Home digest + Resources → News | `NewsStory[]`, newest first |
 | `GET` | `/library` | Resources → Library | `LibraryResource[]` |
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
@@ -400,16 +400,42 @@ EventRow    { icon: 'calendar' | 'pin' | 'people'; text: string }
 Poll percentages are computed client-side from `options[].votes` plus the
 member's own vote. Send current tallies; the app does the arithmetic.
 
-### `NewsItem`
+### `NewsStory`
+
+One list serves two surfaces. The News screen renders all of it; the Home
+digest renders the `radar` entries and reads `rel` and `tag` off them.
 
 ```ts
 {
-  rel: 'high' | 'medium' | 'low';   // relevance dot
-  tag: string;                      // "Regulation"
-  t: string;                        // headline  ← terse key
-  src: string;                      // "RISK.NET · 5H"
+  id: string;
+  kind: 'radar' | 'gpfa';   // industry coverage, or GPFA's own material
+  topic: string;            // "Regulation & Policy" — drives the topic filter + its counts
+  title: string;
+  meta: string;             // "RISK.NET · 5H" / "COLLATERAL & LIQUIDITY WG · AUG 12"
+  body: string;             // standfirst; clamped to 3–4 lines on the card
+  rel?: 'high' | 'medium' | 'low';   // Home digest dot; absent reads as 'low'
+  tag?: string;             // Home digest chip, "Sec Finance"; falls back to `topic`
+  imageUrl?: string;        // raster hero; absent falls back to the soft fill
+  url?: string;             // where Open / Read goes; absent makes the action inert
+
+  // kind: 'radar'
+  ticker?: string;          // "CDCC" — shorthand above the headline
+  threads?: number;         // member discussions citing it; absent reads as 0
+
+  // kind: 'gpfa'
+  chip?: string;            // "Working Paper" — a radar story shows its `topic` there
+  topics?: string[];        // tags listed under the body
+  memberOnly?: boolean;     // shows a lock and offers no action
 }
 ```
+
+Send the list in the order it should read — neither surface re-sorts it. Topic
+filter chips are derived from the distinct `topic` values, sorted A–Z, and their
+counts are over the whole list rather than the current source filter.
+
+`imageUrl` must be a raster URL. RN's `Image` can't decode SVG, so an `.svg`
+renders nothing. The fixtures omit it, which is why the cards run on the
+soft-fill fallback until a backend supplies images.
 
 ### `Member`
 

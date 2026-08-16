@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Card, DisplayHead, Eyebrow, LiveDot, MastheadMeta, RadialWash, RelevanceDot } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad, trackDisplay, wgRule } from '../ds/tokens';
-import type { CalendarEvent, Group, Member, NewsItem } from '../api/types';
+import type { CalendarEvent, Group, Member, NewsStory } from '../api/types';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
@@ -13,7 +13,7 @@ export default function HomeScreen({
   event,
   groups,
   news,
-  onGoAsk,
+  onGoNews,
   onGoGroups,
   onPickGroup,
   showBadges,
@@ -21,14 +21,19 @@ export default function HomeScreen({
   member: Member;
   event: CalendarEvent | null;
   groups: Group[];
-  news: NewsItem[];
-  onGoAsk: () => void;
+  /** The whole radar; the digest shows the industry coverage from it. */
+  news: NewsStory[];
+  onGoNews: () => void;
   onGoGroups: () => void;
   onPickGroup: (groupId: string) => void;
   showBadges: boolean;
 }) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
+
+  // GPFA's own material has its own place on the News screen; the digest here
+  // is the industry read.
+  const digest = news.filter((n) => n.kind === 'radar');
 
   return (
     <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -54,22 +59,22 @@ export default function HomeScreen({
           <LiveDot />
           <Text style={[styles.h3, { color: t.inkStrong }]}>News Radar</Text>
         </View>
-        <Pressable onPress={onGoAsk} hitSlop={8}>
+        <Pressable onPress={onGoNews} hitSlop={8}>
           <Text style={[styles.link, { color: t.brandGreen }]}>All coverage →</Text>
         </Pressable>
       </View>
 
       <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-        {news.map((n, i) => (
-          <View key={n.t} style={[styles.newsRow, i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}>
-            <RelevanceDot level={n.rel} style={styles.newsDot} />
+        {digest.map((n, i) => (
+          <View key={n.id} style={[styles.newsRow, i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}>
+            <RelevanceDot level={n.rel ?? 'low'} style={styles.newsDot} />
             <View style={styles.newsBody}>
-              <Text style={[styles.newsTitle, { color: t.inkStrong }]}>{n.t}</Text>
+              <Text style={[styles.newsTitle, { color: t.inkStrong }]}>{n.title}</Text>
               <View style={styles.newsMetaRow}>
                 <Badge variant="tag-green" size={9.5} style={styles.newsTag}>
-                  {n.tag}
+                  {n.tag ?? n.topic}
                 </Badge>
-                <MastheadMeta size={10}>{n.src}</MastheadMeta>
+                <MastheadMeta size={10}>{n.meta}</MastheadMeta>
               </View>
             </View>
           </View>

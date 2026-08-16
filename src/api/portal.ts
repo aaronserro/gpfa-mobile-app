@@ -11,7 +11,7 @@ import type {
   NewPostInput,
   Member,
   MemberOrg,
-  NewsItem,
+  NewsStory,
   PodcastEpisode,
   Reply,
   RsvpChoice,
@@ -25,7 +25,7 @@ import {
   LIBRARY,
   MEMBER,
   MEMBER_ORGS,
-  NEWS,
+  NEWS_STORIES,
   NEXT_EVENT,
   PODCASTS,
   SUGGESTIONS,
@@ -74,9 +74,13 @@ export function getFeed(): Promise<FeedEntry[]> {
   return request<FeedEntry[]>(ROUTES.feed);
 }
 
-export function getNews(): Promise<NewsItem[]> {
-  if (!USING_REMOTE_API) return local(NEWS);
-  return request<NewsItem[]>(ROUTES.news);
+/**
+ * The News Radar, newest first. Serves both the News screen and the Home
+ * digest — the digest picks the `radar` entries out of the same list.
+ */
+export function getNews(): Promise<NewsStory[]> {
+  if (!USING_REMOTE_API) return local(NEWS_STORIES);
+  return request<NewsStory[]>(ROUTES.news);
 }
 
 export function getLibrary(): Promise<LibraryResource[]> {

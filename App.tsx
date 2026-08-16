@@ -22,6 +22,7 @@ import AskScreen from './src/screens/AskScreen';
 import DirectoryScreen from './src/screens/DirectoryScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import NewsScreen from './src/screens/NewsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import {
@@ -45,7 +46,15 @@ import {
   setUpvote,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
-import type { FeedEntry, Member, NewPostInput, Reply, RsvpChoice, Thread } from './src/api/types';
+import type {
+  FeedEntry,
+  Member,
+  NewPostInput,
+  NewsStory,
+  Reply,
+  RsvpChoice,
+  Thread,
+} from './src/api/types';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import DataGate from './src/components/DataGate';
 
@@ -59,6 +68,11 @@ function Portal() {
 
   const { isSignedIn, status, signOut } = useAuth();
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
+  // News Radar is a branch of Home, not a tab — the design's caret returns there.
+  const [newsOpen, setNewsOpen] = useState(false);
+  // The Resources hub links to it too. Tracked separately so the caret goes
+  // back to whichever hub opened it.
+  const [resourcesNewsOpen, setResourcesNewsOpen] = useState(false);
   // The Groups tab is a directory; this is the group whose page is open.
   const [groupId, setGroupId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -98,7 +112,12 @@ function Portal() {
 
   const openInResources = useCallback((kind: 'episode' | 'job', id: string) => {
     setResourcesRequest((prev) => ({ kind, id, n: (prev?.n ?? 0) + 1 }));
+    setResourcesNewsOpen(false);
     setTab('resources');
+  }, []);
+
+  const openStory = useCallback((story: NewsStory) => {
+    if (story.url) void Linking.openURL(story.url);
   }, []);
 
   // DataGate blocks these screens until the member resolves, so the fallback
@@ -235,12 +254,17 @@ function Portal() {
   const selectTab = useCallback((next: TabId) => {
     setTab(next);
     if (next === 'groups') setThreadId(null);
+    // Tapping a tab returns to its root, so Home lands on Home and not News.
+    if (next === 'home') setNewsOpen(false);
+    if (next === 'resources') setResourcesNewsOpen(false);
   }, []);
 
   // `statusDark` in the design: light status-bar glyphs over the anchor surface.
   // The directory index has one too; its profile is paper and overrides this
-  // from inside, since the tab alone can't tell the two apart.
-  const lightStatusBar = isDark || !isSignedIn || tab === 'home' || tab === 'directory';
+  // from inside, since the tab alone can't tell the two apart. News is a paper
+  // header under the Home tab, so it takes dark glyphs.
+  const lightStatusBar =
+    isDark || !isSignedIn || (tab === 'home' && !newsOpen) || tab === 'directory';
 
   return (
     <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
@@ -263,16 +287,24 @@ function Portal() {
                   newsQuery.refetch();
                 }}
               >
-                <HomeScreen
-                  member={member}
-                  event={eventQuery.data ?? null}
-                  groups={groups}
-                  news={newsQuery.data ?? []}
-                  showBadges={SHOW_BADGES}
-                  onGoAsk={() => setTab('ask')}
-                  onGoGroups={() => selectTab('groups')}
-                  onPickGroup={pickGroup}
-                />
+                {newsOpen ? (
+                  <NewsScreen
+                    stories={newsQuery.data ?? []}
+                    onBack={() => setNewsOpen(false)}
+                    onOpen={openStory}
+                  />
+                ) : (
+                  <HomeScreen
+                    member={member}
+                    event={eventQuery.data ?? null}
+                    groups={groups}
+                    news={newsQuery.data ?? []}
+                    showBadges={SHOW_BADGES}
+                    onGoNews={() => setNewsOpen(true)}
+                    onGoGroups={() => selectTab('groups')}
+                    onPickGroup={pickGroup}
+                  />
+                )}
               </DataGate>
             )}
             {tab === 'ask' && <AskScreen />}
@@ -282,45 +314,63 @@ function Portal() {
                   meQuery.loading ||
                   libraryQuery.loading ||
                   podcastQuery.loading ||
-                  jobsQuery.loading
+                  jobsQuery.loading ||
+                  newsQuery.loading
                 }
                 error={
-                  meQuery.error ?? libraryQuery.error ?? podcastQuery.error ?? jobsQuery.error
+                  meQuery.error ??
+                  libraryQuery.error ??
+                  podcastQuery.error ??
+                  jobsQuery.error ??
+                  newsQuery.error
                 }
                 onRetry={() => {
                   meQuery.refetch();
                   libraryQuery.refetch();
                   podcastQuery.refetch();
                   jobsQuery.refetch();
+                  newsQuery.refetch();
                 }}
               >
-                <ResourcesScreen
-                  // Remounts on a request from another screen, so it opens on
-                  // that episode or posting rather than the hub.
-                  key={
-                    resourcesRequest
-                      ? `${resourcesRequest.kind}-${resourcesRequest.id}-${resourcesRequest.n}`
-                      : 'resources'
-                  }
-                  member={member}
-                  resources={libraryQuery.data ?? []}
-                  episodes={podcastQuery.data ?? []}
-                  jobs={jobsQuery.data ?? []}
-                  initialView={
-                    resourcesRequest?.kind === 'episode'
-                      ? 'podcasts'
-                      : resourcesRequest?.kind === 'job'
-                        ? 'jobs'
-                        : 'hub'
-                  }
-                  initialEpisodeSlug={
-                    resourcesRequest?.kind === 'episode' ? resourcesRequest.id : null
-                  }
-                  initialJobId={resourcesRequest?.kind === 'job' ? resourcesRequest.id : null}
-                  onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
-                  onOpenTranscript={(e) => e.transcriptUrl && void Linking.openURL(e.transcriptUrl)}
-                  onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
-                />
+                {resourcesNewsOpen ? (
+                  <NewsScreen
+                    stories={newsQuery.data ?? []}
+                    onBack={() => setResourcesNewsOpen(false)}
+                    onOpen={openStory}
+                  />
+                ) : (
+                  <ResourcesScreen
+                    // Remounts on a request from another screen, so it opens on
+                    // that episode or posting rather than the hub.
+                    key={
+                      resourcesRequest
+                        ? `${resourcesRequest.kind}-${resourcesRequest.id}-${resourcesRequest.n}`
+                        : 'resources'
+                    }
+                    member={member}
+                    resources={libraryQuery.data ?? []}
+                    episodes={podcastQuery.data ?? []}
+                    jobs={jobsQuery.data ?? []}
+                    news={newsQuery.data ?? []}
+                    initialView={
+                      resourcesRequest?.kind === 'episode'
+                        ? 'podcasts'
+                        : resourcesRequest?.kind === 'job'
+                          ? 'jobs'
+                          : 'hub'
+                    }
+                    initialEpisodeSlug={
+                      resourcesRequest?.kind === 'episode' ? resourcesRequest.id : null
+                    }
+                    initialJobId={resourcesRequest?.kind === 'job' ? resourcesRequest.id : null}
+                    onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
+                    onOpenTranscript={(e) =>
+                      e.transcriptUrl && void Linking.openURL(e.transcriptUrl)
+                    }
+                    onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
+                    onGoNews={() => setResourcesNewsOpen(true)}
+                  />
+                )}
               </DataGate>
             )}
             {tab === 'groups' && (
