@@ -142,6 +142,8 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
 | `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
+| `GET` | `/directory/orgs` | Directory index + profile | `MemberOrg[]`, A–Z by `name` |
+| `GET` | `/directory/people` | Directory search + profile | `DirectoryPerson[]` |
 | `GET` | `/ask/suggestions` | Ask GPFA empty state | `string[]` |
 | `POST` | `/ask` | Ask GPFA | `AskAnswer` |
 | `POST` | `/posts` | Composer | `Thread` |
@@ -230,6 +232,41 @@ placeholder for your record so the real `id` and timestamps take effect.
 
 Body is `{ "text": "…" }`. The author is the authenticated member — do not trust
 a client-supplied author.
+
+**`GET /directory/orgs` → `MemberOrg[]`**
+
+**Send them sorted A–Z by `name`.** The index groups *consecutive* entries under
+their initial letter and never re-sorts, so an unsorted response produces
+repeated letter headings rather than an error.
+
+```json
+{
+  "id": "hoopp",
+  "name": "HOOPP",
+  "fullName": "Healthcare of Ontario Pension Plan",
+  "short": "HOOPP",
+  "sector": "Pension Fund",
+  "country": "Canada",
+  "countryCode": "CAN",
+  "city": "Toronto",
+  "members": 7,
+  "workingGroups": 4,
+  "blurb": "Ontario healthcare sector pension plan, and a founding participant…"
+}
+```
+
+**`GET /directory/people` → `DirectoryPerson[]`**
+
+Flat, not nested under the organization. `orgId` is a `MemberOrg.id`; a person
+whose `orgId` matches nothing is simply never shown.
+
+```json
+[{ "id": "p-rob-goobie", "orgId": "hoopp", "name": "Robert Goobie", "role": "Assistant VP, Treasury & Liquidity" }]
+```
+
+Order matters: a profile lists its people **in the order you send them**, so put
+the ones that should lead first. The index's people search sorts by name
+instead, and only runs once the member types something.
 
 **Upvote / vote / RSVP** — return anything; the app ignores the body and only
 checks for a non-error status.
@@ -419,6 +456,38 @@ cramped. `applyUrl` is where Apply goes — without it the button does nothing.
 Search and the function filter are client-side over the full list (§6), so
 return every listing the member may see.
 
+### `OrgSector`, `MemberOrg`, `DirectoryPerson`
+
+```ts
+OrgSector        'Pension Fund' | 'Sovereign Wealth Fund'
+               | 'Insurance Asset Manager' | 'Asset Manager'
+MemberOrg        { id, name, fullName?, short, sector: OrgSector, country,
+                   countryCode, city, members, workingGroups, blurb, logoUrl? }
+DirectoryPerson  { id, orgId, name, role, initials?, photoUrl? }
+```
+
+An organization carries three names, each with its own job: `name` is what the
+index lists and sorts by (however the membership writes it — "HOOPP", but "Abu
+Dhabi Investment Authority"); `fullName` is the formal one on the profile
+masthead and defaults to `name`; `short` is the acronym in the profile's meta
+line, `"HOOPP · TORONTO, CANADA"`. `countryCode` is ISO 3166-1 alpha-3 and is
+shown verbatim. `sector` must be one of the four literals — it picks the row's
+left rule colour, and an unknown value renders no rule.
+
+`members` is the headcount shown in the index row and the profile stat. It is
+**authoritative and independent of `/directory/people`** — send 7 while
+publishing 5 profiles and the screen shows both without contradicting itself.
+`workingGroups` is a stat only; nothing joins it to `/groups`.
+
+The profile's **Open roles** stat and its Jobs tab both come from `/jobs`,
+matched client-side: a listing belongs to an organization when its `org` equals
+that org's `name`, `short`, or `fullName`, case-insensitively. Keep those
+strings identical across the two endpoints or the roles will not appear.
+
+`logoUrl` and `photoUrl` must be **raster** (PNG/JPG) — React Native's `Image`
+cannot decode SVG, so an `.svg` URL renders as an empty box. Both are optional
+and fall back to initials.
+
 ### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
 
 ```ts
@@ -443,9 +512,13 @@ These are **client-side over the already-loaded feed**:
 | Reply counts, stacked avatars | derived from `replies[]` |
 | Job search (title, org, location, function, blurb) | `jobs/JobBoard.tsx` |
 | Job function filter, member-orgs filter, newest-first order | `jobs/JobBoard.tsx` |
+| Directory search (org name, country; person name and org) | `DirectoryScreen.tsx` |
+| A–Z letter grouping, per-letter counts | `DirectoryScreen.tsx` |
+| An org's open roles, matched from `/jobs` by name | `DirectoryScreen.tsx` |
 
-Consequence: **`GET /posts` and `GET /jobs` must return the full corpus.** This
-is fine for hundreds of rows and wrong for thousands — see §8.
+Consequence: **`GET /posts`, `GET /jobs` and both `/directory` endpoints must
+return the full corpus.** This is fine for hundreds of rows and wrong for
+thousands — see §8.
 
 ---
 

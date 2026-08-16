@@ -1,11 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Icon } from '../ds/icons';
-import { BookOpen, ChatCircleDots, House, UsersThree } from '../ds/icons';
+import { BookOpen, Buildings, ChatCircleDots, House, UsersThree } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans } from '../ds/tokens';
 
-export type TabId = 'home' | 'ask' | 'resources' | 'groups';
+export type TabId = 'home' | 'ask' | 'resources' | 'groups' | 'directory';
 
 interface TabDef {
   id: TabId;
@@ -19,6 +19,7 @@ const TABS: TabDef[] = [
   { id: 'ask', label: 'Ask GPFA', Icon: ChatCircleDots },
   { id: 'resources', label: 'Resources', Icon: BookOpen },
   { id: 'groups', label: 'Groups', Icon: UsersThree, badge: 22 },
+  { id: 'directory', label: 'Directory', Icon: Buildings },
 ];
 
 export default function PortalTabBar({

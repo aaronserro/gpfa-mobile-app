@@ -37,6 +37,8 @@ export const ROUTES = {
   library: '/library',
   podcasts: '/podcasts',
   jobs: '/jobs',
+  directoryOrgs: '/directory/orgs',
+  directoryPeople: '/directory/people',
   podcastTranscript: (slug: string) => `/podcasts/${slug}/transcript`,
   post: (id: string) => `/posts/${id}`,
   replies: (id: string) => `/posts/${id}/replies`,

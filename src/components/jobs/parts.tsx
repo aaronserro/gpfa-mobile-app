@@ -2,8 +2,8 @@
  * Pieces shared by the job board list and a single posting.
  *
  * Kept here rather than in ds/primitives because nothing outside the board
- * uses them — the square org mark in particular is deliberately not the round
- * `Avatar`, which stands for a person.
+ * uses them. The square org mark used to live here too; the member directory
+ * needs it as well, so it moved to `ds/primitives` as `OrgMark`.
  */
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -11,28 +11,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, jobSourceStyle, mono, sans } from '../../ds/tokens';
 import type { JobSource } from '../../api/types';
-
-/** The organization's initials, squared off so it reads as a logo slot. */
-export function OrgMark({ initials, size = 36 }: { initials: string; size?: number }) {
-  const { t } = useTheme();
-  return (
-    <View
-      style={[
-        styles.orgMark,
-        {
-          width: size,
-          height: size,
-          backgroundColor: t.surfaceSoft,
-          borderColor: t.ruleHairline,
-        },
-      ]}
-    >
-      <Text style={[styles.orgMarkText, { fontSize: size >= 40 ? 13 : 12, color: t.inkMuted }]}>
-        {initials}
-      </Text>
-    </View>
-  );
-}
 
 /** Where the listing came from — a member organization, or the secretariat. */
 export function SourceChip({ source, size = 9.5 }: { source: JobSource; size?: number }) {
@@ -74,14 +52,6 @@ export function FactChip({
 }
 
 const styles = StyleSheet.create({
-  orgMark: {
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orgMarkText: { fontFamily: sans(600) },
-
   chip: {
     alignSelf: 'flex-start',
     borderWidth: 1,

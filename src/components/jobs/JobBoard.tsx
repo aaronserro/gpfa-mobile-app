@@ -18,12 +18,12 @@ import {
   MagnifyingGlass,
   MapPin,
 } from '../../ds/icons';
-import { Avatar, MastheadMeta } from '../../ds/primitives';
+import { Avatar, MastheadMeta, OrgMark } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { jobFunctionRule, mono, sans, topPad, trackDisplay } from '../../ds/tokens';
 import type { JobFunctionKey } from '../../ds/tokens';
-import { FactChip, OrgMark, SourceChip } from './parts';
-import { initials as initialsOf } from '../../lib/format';
+import { FactChip, SourceChip } from './parts';
+import { orgInitials } from '../../lib/format';
 import type { JobListing } from '../../api/types';
 
 /** Function filters plus the two that cut across them. */
@@ -181,7 +181,7 @@ export default function JobBoard({
             </View>
 
             <View style={styles.orgRow}>
-              <OrgMark initials={j.initials ?? initialsOf(j.org)} />
+              <OrgMark initials={j.initials ?? orgInitials(j.org)} />
               <View style={styles.flex}>
                 <Text style={[styles.org, { color: t.inkStrong }]}>{j.org}</Text>
                 <MastheadMeta size={10}>{j.orgMeta}</MastheadMeta>

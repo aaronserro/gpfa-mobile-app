@@ -3,12 +3,14 @@ import { ROUTES, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
   CalendarEvent,
+  DirectoryPerson,
   FeedEntry,
   Group,
   JobListing,
   LibraryResource,
   NewPostInput,
   Member,
+  MemberOrg,
   NewsItem,
   PodcastEpisode,
   Reply,
@@ -16,11 +18,13 @@ import type {
   Thread,
 } from './types';
 import {
+  DIRECTORY_PEOPLE,
   findAnswer,
   GROUPS,
   JOBS,
   LIBRARY,
   MEMBER,
+  MEMBER_ORGS,
   NEWS,
   NEXT_EVENT,
   PODCASTS,
@@ -90,6 +94,21 @@ export function getPodcasts(): Promise<PodcastEpisode[]> {
 export function getJobs(): Promise<JobListing[]> {
   if (!USING_REMOTE_API) return local(JOBS);
   return request<JobListing[]>(ROUTES.jobs);
+}
+
+/**
+ * Member institutions, alphabetical by `name` — the directory index groups
+ * consecutive entries by initial letter and never re-sorts them.
+ */
+export function getMemberOrgs(): Promise<MemberOrg[]> {
+  if (!USING_REMOTE_API) return local(MEMBER_ORGS);
+  return request<MemberOrg[]>(ROUTES.directoryOrgs);
+}
+
+/** Every named individual in the directory, flat. `orgId` joins to a MemberOrg. */
+export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
+  if (!USING_REMOTE_API) return local(DIRECTORY_PEOPLE);
+  return request<DirectoryPerson[]>(ROUTES.directoryPeople);
 }
 
 export function getAskSuggestions(): Promise<string[]> {

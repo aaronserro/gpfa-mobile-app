@@ -17,11 +17,11 @@ import {
   MapPin,
   ShareFat,
 } from '../../ds/icons';
-import { MastheadMeta } from '../../ds/primitives';
+import { MastheadMeta, OrgMark } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { jobFunctionRule, sans, topPad, trackDisplay } from '../../ds/tokens';
-import { FactChip, OrgMark, SourceChip } from './parts';
-import { initials as initialsOf } from '../../lib/format';
+import { FactChip, SourceChip } from './parts';
+import { orgInitials } from '../../lib/format';
 import type { JobListing } from '../../api/types';
 
 export interface JobPostingProps {
@@ -89,7 +89,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           <Text style={[styles.title, { color: t.inkStrong }]}>{job.title}</Text>
 
           <View style={styles.orgRow}>
-            <OrgMark initials={job.initials ?? initialsOf(job.org)} size={40} />
+            <OrgMark initials={job.initials ?? orgInitials(job.org)} size={40} />
             <View style={styles.flex}>
               <Text style={[styles.org, { color: t.inkStrong }]}>{job.org}</Text>
               <MastheadMeta size={10}>{job.orgMeta}</MastheadMeta>

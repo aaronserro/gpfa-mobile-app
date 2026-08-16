@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
+  Image,
   StyleSheet,
   Text,
   TextInput,
@@ -249,10 +250,13 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
 /** .gpfa-avatar + __fallback — round, inset hairline ring, muted fill. */
 export function Avatar({
   initials,
+  photoUrl,
   size = 32,
   style,
 }: {
   initials: string;
+  /** Portrait to show instead of the initials. Raster only — RN's Image can't decode SVG. */
+  photoUrl?: string;
   size?: number;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -269,13 +273,62 @@ export function Avatar({
           borderColor: t.border,
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
         },
         style,
       ]}
     >
-      <Text style={{ fontFamily: sans(600), fontSize: size <= 24 ? 9 : 12, color: t.mutedForeground }}>
-        {initials}
-      </Text>
+      {photoUrl ? (
+        <Image source={{ uri: photoUrl }} style={styles.fill} resizeMode="cover" accessibilityIgnoresInvertColors />
+      ) : (
+        <Text style={{ fontFamily: sans(600), fontSize: size <= 24 ? 9 : 12, color: t.mutedForeground }}>
+          {initials}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * An organization's mark — squared off so it never reads as a person the way
+ * the round `Avatar` does. Falls back to initials when there is no logo.
+ */
+export function OrgMark({
+  initials,
+  logoUrl,
+  size = 36,
+}: {
+  initials: string;
+  /** Raster logo. RN's Image can't decode SVG, so an .svg URL renders nothing. */
+  logoUrl?: string;
+  size?: number;
+}) {
+  const { t } = useTheme();
+  return (
+    <View
+      style={[
+        styles.orgMark,
+        {
+          width: size,
+          height: size,
+          // A logo sits on paper so its own colours read; initials take the soft fill.
+          backgroundColor: logoUrl ? t.surfacePaper : t.surfaceSoft,
+          borderColor: t.ruleHairline,
+        },
+      ]}
+    >
+      {logoUrl ? (
+        <Image
+          source={{ uri: logoUrl }}
+          style={{ width: size * 0.77, height: size * 0.62 }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      ) : (
+        <Text style={[styles.orgMarkText, { fontSize: size >= 40 ? 13 : 12, color: t.inkMuted }]}>
+          {initials}
+        </Text>
+      )}
     </View>
   );
 }
@@ -388,6 +441,16 @@ export function RadialWash({ washes, style }: { washes: Wash[]; style?: StylePro
 }
 
 const styles = StyleSheet.create({
+  fill: { width: '100%', height: '100%' },
+  orgMark: {
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  orgMarkText: { fontFamily: sans(600) },
+
   liveWrap: {
     width: 7.2,
     height: 7.2,

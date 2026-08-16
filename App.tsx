@@ -19,6 +19,7 @@ import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar'
 import { PodcastPlayerProvider } from './src/components/podcast/PlayerProvider';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
+import DirectoryScreen from './src/screens/DirectoryScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
@@ -27,9 +28,11 @@ import {
   castVote,
   createPost as createPostRequest,
   createReply,
+  getDirectoryPeople,
   getFeed,
   getGroups,
   getJobs,
+  getMemberOrgs,
   getLibrary,
   getMe,
   getNews,
@@ -75,11 +78,22 @@ function Portal() {
   const libraryQuery = useQuery(getLibrary, []);
   const podcastQuery = useQuery(getPodcasts, []);
   const jobsQuery = useQuery(getJobs, []);
+  const orgsQuery = useQuery(getMemberOrgs, []);
+  const directoryPeopleQuery = useQuery(getDirectoryPeople, []);
 
-  // Episode the now-playing bar asked to open. `n` counts the requests so
-  // asking for the same episode twice still remounts the screen and reopens
-  // the sheet — the slug alone would leave the key unchanged.
-  const [episodeRequest, setEpisodeRequest] = useState<{ slug: string; n: number } | null>(null);
+  // What another screen asked Resources to open: an episode from the
+  // now-playing bar, or a posting from an organization's directory profile.
+  // `n` counts the requests so asking for the same one twice still remounts the
+  // screen — the id alone would leave the key unchanged. One slot, not two, so
+  // a later request always supersedes the earlier one.
+  const [resourcesRequest, setResourcesRequest] = useState<
+    { kind: 'episode'; id: string; n: number } | { kind: 'job'; id: string; n: number } | null
+  >(null);
+
+  const openInResources = useCallback((kind: 'episode' | 'job', id: string) => {
+    setResourcesRequest((prev) => ({ kind, id, n: (prev?.n ?? 0) + 1 }));
+    setTab('resources');
+  }, []);
 
   // DataGate blocks these screens until the member resolves, so the fallback
   // only exists to satisfy the type before the first response lands.
@@ -184,7 +198,9 @@ function Portal() {
   }, []);
 
   // `statusDark` in the design: light status-bar glyphs over the anchor surface.
-  const lightStatusBar = isDark || !isSignedIn || tab === 'home';
+  // The directory index has one too; its profile is paper and overrides this
+  // from inside, since the tab alone can't tell the two apart.
+  const lightStatusBar = isDark || !isSignedIn || tab === 'home' || tab === 'directory';
 
   return (
     <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
@@ -239,15 +255,28 @@ function Portal() {
                 }}
               >
                 <ResourcesScreen
-                  // Remounts on the bar's Episode action so the sheet opens on
-                  // that episode.
-                  key={episodeRequest ? `${episodeRequest.slug}-${episodeRequest.n}` : 'resources'}
+                  // Remounts on a request from another screen, so it opens on
+                  // that episode or posting rather than the hub.
+                  key={
+                    resourcesRequest
+                      ? `${resourcesRequest.kind}-${resourcesRequest.id}-${resourcesRequest.n}`
+                      : 'resources'
+                  }
                   member={member}
                   resources={libraryQuery.data ?? []}
                   episodes={podcastQuery.data ?? []}
                   jobs={jobsQuery.data ?? []}
-                  initialView={episodeRequest ? 'podcasts' : 'hub'}
-                  initialEpisodeSlug={episodeRequest?.slug ?? null}
+                  initialView={
+                    resourcesRequest?.kind === 'episode'
+                      ? 'podcasts'
+                      : resourcesRequest?.kind === 'job'
+                        ? 'jobs'
+                        : 'hub'
+                  }
+                  initialEpisodeSlug={
+                    resourcesRequest?.kind === 'episode' ? resourcesRequest.id : null
+                  }
+                  initialJobId={resourcesRequest?.kind === 'job' ? resourcesRequest.id : null}
                   onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
                   onOpenTranscript={(e) => e.transcriptUrl && void Linking.openURL(e.transcriptUrl)}
                   onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
@@ -286,13 +315,26 @@ function Portal() {
               />
               </DataGate>
             )}
+            {tab === 'directory' && (
+              <DataGate
+                loading={orgsQuery.loading || directoryPeopleQuery.loading || jobsQuery.loading}
+                error={orgsQuery.error ?? directoryPeopleQuery.error ?? jobsQuery.error}
+                onRetry={() => {
+                  orgsQuery.refetch();
+                  directoryPeopleQuery.refetch();
+                  jobsQuery.refetch();
+                }}
+              >
+                <DirectoryScreen
+                  orgs={orgsQuery.data ?? []}
+                  people={directoryPeopleQuery.data ?? []}
+                  jobs={jobsQuery.data ?? []}
+                  onOpenJob={(job) => openInResources('job', job.id)}
+                />
+              </DataGate>
+            )}
           </View>
-          <PodcastNowPlayingBar
-            onOpenEpisode={(slug) => {
-              setEpisodeRequest((prev) => ({ slug, n: (prev?.n ?? 0) + 1 }));
-              setTab('resources');
-            }}
-          />
+          <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
           <PortalTabBar tab={tab} onSelect={selectTab} showBadges={SHOW_BADGES} />
           {composerOpen && (
             <PostComposer

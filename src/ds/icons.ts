@@ -23,10 +23,12 @@ export { BellIcon as Bell } from 'phosphor-react-native/lib/commonjs/icons/Bell'
 export { BookOpenIcon as BookOpen } from 'phosphor-react-native/lib/commonjs/icons/BookOpen';
 export { BookmarkSimpleIcon as BookmarkSimple } from 'phosphor-react-native/lib/commonjs/icons/BookmarkSimple';
 export { BriefcaseIcon as Briefcase } from 'phosphor-react-native/lib/commonjs/icons/Briefcase';
+export { BuildingsIcon as Buildings } from 'phosphor-react-native/lib/commonjs/icons/Buildings';
 export { CurrencyCircleDollarIcon as CurrencyCircleDollar } from 'phosphor-react-native/lib/commonjs/icons/CurrencyCircleDollar';
 export { CalendarDotsIcon as CalendarDots } from 'phosphor-react-native/lib/commonjs/icons/CalendarDots';
 export { CaretDownIcon as CaretDown } from 'phosphor-react-native/lib/commonjs/icons/CaretDown';
 export { CaretLeftIcon as CaretLeft } from 'phosphor-react-native/lib/commonjs/icons/CaretLeft';
+export { CaretRightIcon as CaretRight } from 'phosphor-react-native/lib/commonjs/icons/CaretRight';
 export { ChartBarIcon as ChartBar } from 'phosphor-react-native/lib/commonjs/icons/ChartBar';
 export { ChatCircleIcon as ChatCircle } from 'phosphor-react-native/lib/commonjs/icons/ChatCircle';
 export { ChatCircleDotsIcon as ChatCircleDots } from 'phosphor-react-native/lib/commonjs/icons/ChatCircleDots';

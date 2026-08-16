@@ -269,6 +269,28 @@ export const jobSourceStyle = (t: Theme, source: 'member' | 'curated'): PostType
   };
 };
 
+/** What kind of institution a member organization is. Picks its directory rule. */
+export type OrgSector =
+  | 'Pension Fund'
+  | 'Sovereign Wealth Fund'
+  | 'Insurance Asset Manager'
+  | 'Asset Manager';
+
+/**
+ * The left rule on a directory row, one colour per sector.
+ *
+ * Derived from tokens so the dark theme's remapped brand colours carry through.
+ * Asset Manager takes the same green as `wg-rule-collateral-liquidity` — there
+ * is no token for it, and the two never appear on the same screen.
+ */
+export const orgSectorRule = (t: Theme, sector: OrgSector): string =>
+  ({
+    'Pension Fund': t.surfaceAnchor,
+    'Sovereign Wealth Fund': t.brandBlue,
+    'Insurance Asset Manager': t.brandRed,
+    'Asset Manager': '#5a8a6a',
+  })[sector];
+
 /**
  * The iOS device frame in the design puts 62px of status bar above the content,
  * so a screen's `padding-top` already includes it. On a real device the inset

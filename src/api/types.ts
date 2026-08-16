@@ -6,7 +6,7 @@
  * shapes that differ from these should be mapped in src/api/portal.ts rather
  * than leaking into screens.
  */
-import type { JobFunctionKey, WgRuleClass } from '../ds/tokens';
+import type { JobFunctionKey, OrgSector, WgRuleClass } from '../ds/tokens';
 
 export interface Reply {
   a: string;
@@ -224,6 +224,54 @@ export interface JobListing {
   stats: JobStat[];
   /** Where Apply goes — the employer's own posting. Absent makes Apply inert. */
   applyUrl?: string;
+}
+
+/**
+ * A member institution in the directory.
+ *
+ * The index lists these alphabetically by `name` and groups them under the
+ * initial letter, so send them sorted — the screen does not re-sort.
+ */
+export interface MemberOrg {
+  id: string;
+  /** The name the index lists and sorts by — however the membership writes it, e.g. "HOOPP". */
+  name: string;
+  /** Formal name for the profile masthead, e.g. "Healthcare of Ontario Pension Plan". Defaults to `name`. */
+  fullName?: string;
+  /** Acronym for the profile's meta line, e.g. "HOOPP". */
+  short: string;
+  sector: OrgSector;
+  /** Display country, e.g. "Canada". Searchable alongside the name. */
+  country: string;
+  /** ISO 3166-1 alpha-3, shown in the row's right rail, e.g. "CAN". */
+  countryCode: string;
+  /** Head office, e.g. "Toronto". Joined with `country` in the profile masthead. */
+  city: string;
+  /**
+   * Headcount for the row and the profile stat. Authoritative — `people` may
+   * carry fewer than this, and the profile shows both without contradiction.
+   */
+  members: number;
+  /** Working groups the organization sits on. Profile stat only. */
+  workingGroups: number;
+  /** One or two sentences on the profile masthead. */
+  blurb: string;
+  /** Raster logo. RN's Image can't decode SVG; absent falls back to initials. */
+  logoUrl?: string;
+}
+
+/** A named individual in the directory, belonging to exactly one member org. */
+export interface DirectoryPerson {
+  id: string;
+  /** `MemberOrg.id` — the profile's People list and the search meta both key off it. */
+  orgId: string;
+  name: string;
+  /** Job title, e.g. "Assistant VP, Treasury & Liquidity". */
+  role: string;
+  /** Avatar fallback; derived from `name` when absent. */
+  initials?: string;
+  /** Raster portrait. RN's Image can't decode SVG; absent falls back to initials. */
+  photoUrl?: string;
 }
 
 export interface PodcastEpisode {

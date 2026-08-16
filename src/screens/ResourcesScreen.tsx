@@ -51,6 +51,8 @@ export interface ResourcesScreenProps {
   initialView?: View_;
   /** Episode to show on mount, e.g. from the now-playing bar's Episode action. */
   initialEpisodeSlug?: string | null;
+  /** Posting to open on mount, e.g. from an organization's profile in the directory. */
+  initialJobId?: string | null;
   /** Called when the member taps Open on a resource. */
   onOpenResource?: (resource: LibraryResource) => void;
   /** Called when the member asks for an episode transcript. */
@@ -66,6 +68,7 @@ export default function ResourcesScreen({
   jobs,
   initialView = 'hub',
   initialEpisodeSlug = null,
+  initialJobId = null,
   onOpenResource,
   onOpenTranscript,
   onApplyToJob,
@@ -84,7 +87,7 @@ export default function ResourcesScreen({
   // back doesn't reset the search and the filter.
   const [jobQuery, setJobQuery] = useState('');
   const [jobFilter, setJobFilter] = useState<JobFilterId>('all');
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(initialJobId);
 
   const dir = sortId === 'newest' ? 1 : -1;
 
