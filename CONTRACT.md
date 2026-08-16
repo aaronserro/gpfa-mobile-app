@@ -149,6 +149,9 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `POST` | `/posts` | Composer | `Thread` |
 | `POST` | `/posts/:id/replies` | Post detail | `Reply` |
 | `POST`/`DELETE` | `/posts/:id/upvote` | Feed + detail | ignored |
+| `POST`/`DELETE` | `/posts/:id/save` | Feed + detail bookmark | ignored |
+| `POST`/`DELETE` | `/posts/:id/replies/:replyId/upvote` | Post detail | ignored |
+| `POST`/`DELETE` | `/groups/:id/subscribe` | Group header + About tab | ignored |
 | `POST` | `/posts/:id/vote` | Poll | ignored |
 | `POST` | `/posts/:id/rsvp` | Event post | ignored |
 
@@ -271,7 +274,10 @@ instead, and only runs once the member types something.
 **Upvote / vote / RSVP** — return anything; the app ignores the body and only
 checks for a non-error status.
 
-- Upvote: `POST` to set, `DELETE` to unset.
+- Upvote / save / subscribe: `POST` to set, `DELETE` to unset.
+- Reply upvote: `:replyId` is `Reply.id`. **A reply without an `id` is never
+  sent** — the member can still tap it, but the state stays on the device and is
+  lost on reload. Give every reply an id if you want them to persist.
 - Vote: `{ "option": 0 }` — zero-based index into `poll.options`. One vote per
   organization; the app blocks a second vote client-side, but **enforce it
   server-side**.
@@ -289,15 +295,31 @@ renaming across the UI.
 
 ```ts
 {
-  id: string;          // "cl" — stable key, used by the feed filter
+  id: string;          // "cl" — stable key, used throughout the Groups tab
   n: string;           // "Collateral & Liquidity" — display name
   short: string;       // "Collateral & Liq" — chips and composer
   cls: WgRuleClass;    // colour key, see below
-  unread: number;      // Home badge; 0 hides it
+  unread: number;      // Home badge and the About tab's Unread stat; 0 hides the badge
   meta: string;        // "12 new posts this week"
+  members: GroupMember[];  // the Members tab; its length is the members count
+  joined: boolean;     // subscribed → lands under "Your groups" in the directory
+  trending?: boolean;  // adds the Trending chip to the directory card
   threads: Thread[];   // see GET /groups above
 }
+
+GroupMember {
+  name: string;        // "Elena Rossi"
+  role: string;        // "Portfolio Manager, Securities Lending"
+  org: string;         // "APG"
+  initials?: string;   // derived from name if omitted
+  isLead?: boolean;    // co-lead: gets the badge and fills the About tab's list
+}
 ```
+
+`joined` is the **starting** state. Toggling it calls
+`/groups/:id/subscribe`; until the app is reloaded the member's choice takes
+precedence over whatever you send. Co-leads are not a separate list — mark them
+with `isLead` inside `members`, and the About tab derives the roster from that.
 
 `cls` must be exactly one of — anything else renders no colour:
 
@@ -329,9 +351,14 @@ hard-code the mapping from `id` in `portal.ts`.
   eventRows?: EventRow[];
   upvotes?: number;     // absent → 0
   mins?: number;        // age in MINUTES — the "Newest" sort key
+  tags?: string[];      // "Indemnification" — #chips, and the About tab's topics
   replies: Reply[];     // required; [] is fine
 }
 ```
+
+`tags` are display strings shown as `#chips` on a card and in the post detail.
+A group's **Topics** list on its About tab is the de-duplicated union of the
+tags on its posts, in first-seen order — there is no separate topics endpoint.
 
 Two fields deserve attention:
 
@@ -345,6 +372,7 @@ Two fields deserve attention:
 
 ```ts
 {
+  id?: string;        // needed to persist a reply upvote — see §4.1
   a: string;          // author name  ← note the terse key
   org: string;
   time: string;       // display string
@@ -354,6 +382,12 @@ Two fields deserve attention:
   up?: number;
 }
 ```
+
+**`mention` also decides nesting.** Replies come back flat, and the detail
+screen nests them one level: a reply whose `mention` names an earlier
+*top-level* replier is drawn underneath that reply. Anything else — including a
+mention of someone who is already nested, or of the post's author — stays at the
+top level. Send replies in chronological order or the nesting will not resolve.
 
 ### `Poll`, `PollOption`, `EventRow`
 
@@ -505,11 +539,13 @@ These are **client-side over the already-loaded feed**:
 
 | Behaviour | Where |
 | --- | --- |
-| Search (title, body, author, org, group name) | `GroupsScreen.tsx` |
-| Group filter, post-type filter | filter drawer |
-| Sort: Newest (`mins`), Most upvoted, Most replies | `GroupsScreen.tsx` |
+| Working group search (name) | `GroupsScreen.tsx` |
+| Splitting the directory into subscribed / not | `GroupsScreen.tsx` |
+| Per-group post-type filter, newest-first (`mins`) order | `groups/GroupView.tsx` |
+| A group's stats grid and topics list | `groups/GroupView.tsx` |
+| One-level reply nesting, from `mention` | `groups/PostDetail.tsx` |
 | Poll percentages | computed from `options[].votes` |
-| Reply counts, stacked avatars | derived from `replies[]` |
+| Reply counts | derived from `replies[]` |
 | Job search (title, org, location, function, blurb) | `jobs/JobBoard.tsx` |
 | Job function filter, member-orgs filter, newest-first order | `jobs/JobBoard.tsx` |
 | Directory search (org name, country; person name and org) | `DirectoryScreen.tsx` |
@@ -626,6 +662,9 @@ request fires, and the change reverts if it fails.
 | Create post | Prepended to feed, `mins: 0` | Removed |
 | Reply | Appended to thread | Removed |
 | Upvote | Count ±1, icon turns green | Reverted |
+| Reply upvote | Count ±1 | Reverted (no request when the reply has no `id`) |
+| Save | Bookmark fills, label becomes "Saved" | Reverted |
+| Subscribe | Group moves between directory sections | Reverted |
 | Vote | Option selected, percentages shown | Cleared |
 | RSVP | Button state changes | Reverted to previous |
 

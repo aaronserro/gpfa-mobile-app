@@ -43,6 +43,9 @@ export const ROUTES = {
   post: (id: string) => `/posts/${id}`,
   replies: (id: string) => `/posts/${id}/replies`,
   upvote: (id: string) => `/posts/${id}/upvote`,
+  save: (id: string) => `/posts/${id}/save`,
+  replyUpvote: (postId: string, replyId: string) => `/posts/${postId}/replies/${replyId}/upvote`,
+  subscribe: (groupId: string) => `/groups/${groupId}/subscribe`,
   vote: (id: string) => `/posts/${id}/vote`,
   rsvp: (id: string) => `/posts/${id}/rsvp`,
 } as const;

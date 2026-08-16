@@ -147,6 +147,33 @@ export function setUpvote(postId: string, upvoted: boolean): Promise<void> {
   return request<void>(ROUTES.upvote(postId), { method: upvoted ? 'POST' : 'DELETE' });
 }
 
+/** Bookmark a post to the member's saved list. */
+export function setSaved(postId: string, saved: boolean): Promise<void> {
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<void>(ROUTES.save(postId), { method: saved ? 'POST' : 'DELETE' });
+}
+
+/**
+ * Upvote a reply. Replies without an `id` have no address, so the toggle stays
+ * on the device and no request is made.
+ */
+export function setReplyUpvote(
+  postId: string,
+  replyId: string | undefined,
+  upvoted: boolean
+): Promise<void> {
+  if (!USING_REMOTE_API || !replyId) return local(undefined);
+  return request<void>(ROUTES.replyUpvote(postId, replyId), {
+    method: upvoted ? 'POST' : 'DELETE',
+  });
+}
+
+/** Subscribe to a working group's digest, or unsubscribe from it. */
+export function setSubscribed(groupId: string, subscribed: boolean): Promise<void> {
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<void>(ROUTES.subscribe(groupId), { method: subscribed ? 'POST' : 'DELETE' });
+}
+
 export function castVote(postId: string, option: number): Promise<void> {
   if (!USING_REMOTE_API) return local(undefined);
   return request<void>(ROUTES.vote(postId), { method: 'POST', body: { option } });

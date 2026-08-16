@@ -38,7 +38,10 @@ import {
   getNews,
   getNextEvent,
   getPodcasts,
+  setReplyUpvote,
   setRsvp as setRsvpRequest,
+  setSaved as setSavedRequest,
+  setSubscribed as setSubscribedRequest,
   setUpvote,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
@@ -56,14 +59,17 @@ function Portal() {
 
   const { isSignedIn, status, signOut } = useAuth();
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
-  // The Groups tab is a cross-group feed; this is the set of groups it shows.
-  // Empty until the groups load, then defaulted to all of them.
-  const [feedGroupIds, setFeedGroupIds] = useState<string[] | null>(null);
+  // The Groups tab is a directory; this is the group whose page is open.
+  const [groupId, setGroupId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // Replies the member posts are kept outside the static data, keyed by thread.
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
   const [votes, setVotes] = useState<Record<string, number | undefined>>({});
   const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
+  const [replyUpvoted, setReplyUpvoted] = useState<Record<string, boolean | undefined>>({});
+  const [saved, setSaved] = useState<Record<string, boolean | undefined>>({});
+  // Overrides on each group's own `joined`; absent means unchanged this session.
+  const [subscribed, setSubscribed] = useState<Record<string, boolean | undefined>>({});
   const [rsvps, setRsvps] = useState<Record<string, RsvpChoice | undefined>>({});
   // Posts composed this session, newest first. Kept out of the static data.
   const [newPosts, setNewPosts] = useState<FeedEntry[]>([]);
@@ -101,12 +107,9 @@ function Portal() {
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
 
-  // Default the feed to every group once they arrive.
-  const visibleGroupIds = feedGroupIds ?? groups.map((g) => g.id);
-
-  // Tapping a group on Home narrows the feed to just that group.
+  // Tapping a group on Home opens that group's page.
   const pickGroup = useCallback((id: string) => {
-    setFeedGroupIds([id]);
+    setGroupId(id);
     setThreadId(null);
     setTab('groups');
   }, []);
@@ -147,6 +150,43 @@ function Portal() {
       return { ...prev, [id]: next };
     });
   }, []);
+
+  const toggleReplyUpvote = useCallback(
+    (postId: string, key: string, replyId: string | undefined) => {
+      setReplyUpvoted((prev) => {
+        const next = !prev[key];
+        // A reply with no id has nowhere to send this; the repository resolves
+        // it as a no-op and the toggle stays on the device.
+        void setReplyUpvote(postId, replyId, next).catch(() => {
+          setReplyUpvoted((current) => ({ ...current, [key]: !next }));
+        });
+        return { ...prev, [key]: next };
+      });
+    },
+    []
+  );
+
+  const toggleSave = useCallback((id: string) => {
+    setSaved((prev) => {
+      const next = !prev[id];
+      void setSavedRequest(id, next).catch(() => {
+        setSaved((current) => ({ ...current, [id]: !next }));
+      });
+      return { ...prev, [id]: next };
+    });
+  }, []);
+
+  const toggleSubscribe = useCallback(
+    (id: string) => {
+      const current = subscribed[id] ?? groups.find((g) => g.id === id)?.joined ?? false;
+      const next = !current;
+      setSubscribed((prev) => ({ ...prev, [id]: next }));
+      void setSubscribedRequest(id, next).catch(() => {
+        setSubscribed((prev) => ({ ...prev, [id]: current }));
+      });
+    },
+    [groups, subscribed]
+  );
 
   const setRsvp = useCallback((id: string, choice: RsvpChoice) => {
     setRsvps((prev) => {
@@ -297,8 +337,10 @@ function Portal() {
                 member={member}
                 groups={groups}
                 posts={posts}
-                groupIds={visibleGroupIds}
-                onSetGroupIds={setFeedGroupIds}
+                newPosts={newPosts}
+                groupId={groupId}
+                onOpenGroup={setGroupId}
+                onCloseGroup={() => setGroupId(null)}
                 threadId={threadId}
                 onOpenThread={setThreadId}
                 onCloseThread={() => setThreadId(null)}
@@ -308,9 +350,14 @@ function Portal() {
                 onVote={vote}
                 upvoted={upvoted}
                 onToggleUpvote={toggleUpvote}
+                replyUpvoted={replyUpvoted}
+                onToggleReplyUpvote={toggleReplyUpvote}
+                saved={saved}
+                onToggleSave={toggleSave}
+                subscribed={subscribed}
+                onToggleSubscribe={toggleSubscribe}
                 rsvps={rsvps}
                 onRsvp={setRsvp}
-                newPosts={newPosts}
                 onCompose={() => setComposerOpen(true)}
               />
               </DataGate>
@@ -339,7 +386,8 @@ function Portal() {
           {composerOpen && (
             <PostComposer
               groups={groups}
-              initialGroupId={visibleGroupIds[0] ?? groups[0]?.id ?? ''}
+              // The composer opens from inside a group, so that group is the default.
+              initialGroupId={groupId ?? groups[0]?.id ?? ''}
               onClose={() => setComposerOpen(false)}
               onCreate={(draft) => createPost(draft, member)}
             />

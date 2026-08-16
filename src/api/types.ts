@@ -9,6 +9,11 @@
 import type { JobFunctionKey, OrgSector, WgRuleClass } from '../ds/tokens';
 
 export interface Reply {
+  /**
+   * Stable id. Without one a reply can still be upvoted, but the toggle stays
+   * on the device — there is no address to send it to.
+   */
+  id?: string;
   a: string;
   org: string;
   time: string;
@@ -60,7 +65,22 @@ export interface Thread {
   upvotes?: number;
   /** Age in minutes — the feed's "Newest" sort key. */
   mins?: number;
+  /** Topic labels, shown as #chips and collected into the group's About tab. */
+  tags?: string[];
   replies: Reply[];
+}
+
+/** Someone in a working group, listed on its Members and About tabs. */
+export interface GroupMember {
+  name: string;
+  /** Job title, e.g. "Portfolio Manager, Securities Lending". */
+  role: string;
+  /** Member organization, e.g. "APG". */
+  org: string;
+  /** Avatar fallback; derived from `name` when absent. */
+  initials?: string;
+  /** Co-leads carry a badge and fill the About tab's Co-leads list. */
+  isLead?: boolean;
 }
 
 export interface Group {
@@ -70,6 +90,12 @@ export interface Group {
   cls: WgRuleClass;
   unread: number;
   meta: string;
+  /** Roster for the Members tab; its length is the members count everywhere. */
+  members: GroupMember[];
+  /** Whether the signed-in member is subscribed. Drives which directory section it lands in. */
+  joined: boolean;
+  /** Flags the group as trending in the directory. */
+  trending?: boolean;
   threads: Thread[];
 }
 

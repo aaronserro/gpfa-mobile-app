@@ -27,9 +27,21 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-collateral-liquidity',
     unread: 12,
     meta: '12 new posts this week',
+    joined: true,
+    trending: true,
+    members: [
+      { name: 'Elena Rossi', role: 'Portfolio Manager, Securities Lending', org: 'APG', isLead: true },
+      { name: 'Amara Okafor', role: 'Senior Counsel, Securities Finance', org: 'OTPP', isLead: true },
+      { name: 'Marcus Chen', role: 'Managing Director, Financing', org: 'CPP Investments' },
+      { name: 'Priya Nair', role: 'Head of Securities Finance', org: 'GIC' },
+      { name: 'Jonas Weber', role: 'Director, Collateral Trading', org: 'Allianz IM' },
+      { name: 'Sofia Lindqvist', role: 'Head of Trading', org: 'AP4' },
+      { name: 'Robert Goobie', role: 'Assistant VP, Treasury & Liquidity', org: 'HOOPP' },
+    ],
     threads: [
       {
         id: 'cl1',
+        tags: ['Indemnification', 'Collateral', 'Securities lending'],
         type: 'discussion',
         title: 'Indemnification comparison matrix — draft v3 open for comment',
         author: 'Elena Rossi',
@@ -49,6 +61,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'cl2',
+        tags: ['Tri-party', 'Collateral'],
         type: 'poll',
         title: 'Preferred settlement window for the Q4 tri-party pilot',
         author: 'Marcus Chen',
@@ -75,6 +88,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'cl3',
+        tags: ['Collateral', 'Benchmarking'],
         type: 'discussion',
         title: 'Cash vs non-cash collateral mix — what peers are seeing',
         author: 'Priya Nair',
@@ -91,6 +105,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'an1',
+        tags: ['Indemnification', 'Library'],
         type: 'announcement',
         title: 'Matrix v3 becomes the October roundtable pre-read',
         author: 'Amara Okafor',
@@ -104,6 +119,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'ev1',
+        tags: ['Basel', 'Indemnification'],
         type: 'event',
         title: 'Members-only roundtable: indemnification under Basel recalibration',
         author: 'Amara Okafor',
@@ -132,9 +148,17 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-legal',
     unread: 3,
     meta: '3 new posts this week',
+    joined: false,
+    trending: true,
+    members: [
+      { name: 'Amara Okafor', role: 'Senior Counsel, Securities Finance', org: 'OTPP', isLead: true },
+      { name: 'David Park', role: 'Head of Collateral Management', org: 'NPS', isLead: true },
+      { name: 'Elena Rossi', role: 'Portfolio Manager, Securities Lending', org: 'APG' },
+    ],
     threads: [
       {
         id: 'ld1',
+        tags: ['GMSLA', 'Documentation', 'Legal'],
         title: 'GMSLA 2018 annex — jurisdiction carve-outs thread',
         author: 'Amara Okafor',
         org: 'OTPP',
@@ -149,6 +173,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'ld2',
+        tags: ['Basel', 'Indemnification', 'Legal'],
         title: 'Basel endgame: indemnification language your counsel is proposing',
         author: 'David Park',
         org: 'NPS',
@@ -169,9 +194,18 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-technology',
     unread: 5,
     meta: '5 new posts this week',
+    joined: false,
+    trending: true,
+    members: [
+      { name: 'Sofia Lindqvist', role: 'Head of Trading', org: 'AP4', isLead: true },
+      { name: 'Jonas Weber', role: 'Director, Collateral Trading', org: 'Allianz IM', isLead: true },
+      { name: 'Marcus Chen', role: 'Managing Director, Financing', org: 'CPP Investments' },
+      { name: 'Priya Nair', role: 'Head of Securities Finance', org: 'GIC' },
+    ],
     threads: [
       {
         id: 'te1',
+        tags: ['Connectivity', 'Survey'],
         title: 'Connectivity survey open until Aug 22 — please respond',
         author: 'Sofia Lindqvist',
         initials: 'SL',
@@ -186,6 +220,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'te2',
+        tags: ['Tri-party', 'Technology'],
         title: 'Anyone piloting DLT collateral records in production?',
         author: 'Jonas Weber',
         org: 'Allianz IM',
@@ -207,9 +242,16 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-risk',
     unread: 2,
     meta: '2 new posts this week',
+    joined: true,
+    members: [
+      { name: 'Robert Goobie', role: 'Assistant VP, Treasury & Liquidity', org: 'HOOPP', isLead: true },
+      { name: 'Amara Okafor', role: 'Senior Counsel, Securities Finance', org: 'OTPP', isLead: true },
+      { name: 'David Park', role: 'Head of Collateral Management', org: 'NPS' },
+    ],
     threads: [
       {
         id: 'ri1',
+        tags: ['Counterparty risk', 'Methodology'],
         title: 'Counterparty scoring methodology — v2 feedback window',
         author: 'Robert Goobie',
         org: 'HOOPP',
@@ -223,6 +265,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'ri2',
+        tags: ['Basel', 'Indemnification', 'Risk'],
         title: 'Stress scenarios for indemnification withdrawal',
         author: 'Amara Okafor',
         org: 'OTPP',
@@ -243,9 +286,15 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-private-credit',
     unread: 0,
     meta: '2 new posts this week',
+    joined: false,
+    members: [
+      { name: 'Sofia Lindqvist', role: 'Head of Trading', org: 'AP4', isLead: true },
+      { name: 'David Park', role: 'Head of Collateral Management', org: 'NPS', isLead: true },
+    ],
     threads: [
       {
         id: 'pc1',
+        tags: ['Private credit', 'Disclosure'],
         title: 'Fund-level leverage disclosure — what members receive today',
         author: 'Sofia Lindqvist',
         initials: 'SL',
@@ -258,6 +307,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'pc2',
+        tags: ['Private credit', 'Valuation'],
         title: 'Secondaries marks versus custodian valuations',
         author: 'David Park',
         initials: 'DP',
@@ -277,9 +327,15 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-regional',
     unread: 0,
     meta: '2 new posts this week',
+    joined: false,
+    members: [
+      { name: 'Priya Nair', role: 'Head of Securities Finance', org: 'GIC', isLead: true },
+      { name: 'Elena Rossi', role: 'Portfolio Manager, Securities Lending', org: 'APG', isLead: true },
+    ],
     threads: [
       {
         id: 'rg1',
+        tags: ['Collateral', 'Asia-Pacific'],
         type: 'event',
         title: 'Asia-Pacific member call: collateral eligibility under local rules',
         author: 'Priya Nair',
@@ -299,6 +355,7 @@ export const GROUPS: Group[] = [
       },
       {
         id: 'rg2',
+        tags: ['T+1', 'Europe', 'Settlement'],
         title: 'European members: T+1 readiness after the first quarter',
         author: 'Elena Rossi',
         initials: 'ER',
@@ -318,9 +375,14 @@ export const GROUPS: Group[] = [
     cls: 'wg-rule-general',
     unread: 0,
     meta: '1 new post this week',
+    joined: true,
+    members: [
+      { name: 'Robert Goobie', role: 'Assistant VP, Treasury & Liquidity', org: 'HOOPP', isLead: true },
+    ],
     threads: [
       {
         id: 'gn1',
+        tags: ['Survey', 'Benchmarking'],
         type: 'announcement',
         title: '2026 Member Practices Survey opens next Monday',
         author: 'Robert Goobie',
