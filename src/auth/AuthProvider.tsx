@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ApiError, request, setUnauthorizedHandler } from '../api/client';
-import { ROUTES, USING_REMOTE_API } from '../api/config';
+import { AUTH_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_REMOTE_API } from '../api/config';
 import { clearTokens, getAccessToken, saveTokens } from '../api/tokens';
 
 interface LoginResponse {
@@ -10,6 +10,13 @@ interface LoginResponse {
   token?: string;
   refreshToken?: string;
   refresh_token?: string;
+  auth?: {
+    accessToken?: string;
+    access_token?: string;
+    token?: string;
+    refreshToken?: string;
+    refresh_token?: string;
+  };
 }
 
 type Status = 'restoring' | 'signedOut' | 'signedIn';
@@ -88,12 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await request<LoginResponse>(ROUTES.login, {
         method: 'POST',
-        body: { email, password },
+        baseUrl: AUTH_BASE_URL,
+        body: {
+          email,
+          password,
+          ...(GPFA_WEB_ORIGIN ? { webOrigin: GPFA_WEB_ORIGIN } : {}),
+        },
         anonymous: true,
       });
-      const access = res.accessToken ?? res.access_token ?? res.token;
+      const access =
+        res.accessToken ??
+        res.access_token ??
+        res.token ??
+        res.auth?.accessToken ??
+        res.auth?.access_token ??
+        res.auth?.token;
       if (!access) throw new ApiError('Sign-in succeeded but returned no token.', 500, res);
-      await saveTokens(access, res.refreshToken ?? res.refresh_token);
+      await saveTokens(
+        access,
+        res.refreshToken ?? res.refresh_token ?? res.auth?.refreshToken ?? res.auth?.refresh_token
+      );
       setStatus('signedIn');
       return true;
     } catch (cause) {

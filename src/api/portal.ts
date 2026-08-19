@@ -1,5 +1,5 @@
 import { request } from './client';
-import { ROUTES, USING_REMOTE_API } from './config';
+import { ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
   CalendarEvent,
@@ -47,9 +47,11 @@ import {
 /** Fixtures resolve immediately but still asynchronously. */
 const local = <T>(value: T): Promise<T> => Promise.resolve(value);
 
+const USING_PORTAL_FIXTURES = !USING_REMOTE_API || USING_FIXTURE_PORTAL_DATA;
+
 /** The signed-in member. Everything that shows "who am I" reads this. */
 export function getMe(): Promise<Member> {
-  if (!USING_REMOTE_API) return local(MEMBER);
+  if (USING_PORTAL_FIXTURES) return local(MEMBER);
   return request<Member>(ROUTES.me);
 }
 
@@ -58,18 +60,18 @@ export function getMe(): Promise<Member> {
  * Saved list. The screen does not re-sort it.
  */
 export function getSavedResources(): Promise<LibraryResource[]> {
-  if (!USING_REMOTE_API) return local(SAVED_RESOURCES);
+  if (USING_PORTAL_FIXTURES) return local(SAVED_RESOURCES);
   return request<LibraryResource[]>(ROUTES.savedResources);
 }
 
 /** The Home calendar card. Resolve null to hide it. */
 export function getNextEvent(): Promise<CalendarEvent | null> {
-  if (!USING_REMOTE_API) return local(NEXT_EVENT);
+  if (USING_PORTAL_FIXTURES) return local(NEXT_EVENT);
   return request<CalendarEvent | null>(ROUTES.nextEvent);
 }
 
 export function getGroups(): Promise<Group[]> {
-  if (!USING_REMOTE_API) return local(GROUPS);
+  if (USING_PORTAL_FIXTURES) return local(GROUPS);
   return request<Group[]>(ROUTES.groups);
 }
 
@@ -78,7 +80,7 @@ export function getGroups(): Promise<Group[]> {
  * groups; a backend more likely returns a flat list, hence the shared shape.
  */
 export function getFeed(): Promise<FeedEntry[]> {
-  if (!USING_REMOTE_API) {
+  if (USING_PORTAL_FIXTURES) {
     return local(GROUPS.flatMap((g) => g.threads.map((post) => ({ post, groupId: g.id }))));
   }
   return request<FeedEntry[]>(ROUTES.feed);
@@ -89,24 +91,24 @@ export function getFeed(): Promise<FeedEntry[]> {
  * digest — the digest picks the `radar` entries out of the same list.
  */
 export function getNews(): Promise<NewsStory[]> {
-  if (!USING_REMOTE_API) return local(NEWS_STORIES);
+  if (USING_PORTAL_FIXTURES) return local(NEWS_STORIES);
   return request<NewsStory[]>(ROUTES.news);
 }
 
 export function getLibrary(): Promise<LibraryResource[]> {
-  if (!USING_REMOTE_API) return local(LIBRARY);
+  if (USING_PORTAL_FIXTURES) return local(LIBRARY);
   return request<LibraryResource[]>(ROUTES.library);
 }
 
 /** Newest first — the screen features the first entry and never re-sorts it. */
 export function getPodcasts(): Promise<PodcastEpisode[]> {
-  if (!USING_REMOTE_API) return local(PODCASTS);
+  if (USING_PORTAL_FIXTURES) return local(PODCASTS);
   return request<PodcastEpisode[]>(ROUTES.podcasts);
 }
 
 /** Open roles on the member job board. The screen sorts and filters them. */
 export function getJobs(): Promise<JobListing[]> {
-  if (!USING_REMOTE_API) return local(JOBS);
+  if (USING_PORTAL_FIXTURES) return local(JOBS);
   return request<JobListing[]>(ROUTES.jobs);
 }
 
@@ -115,23 +117,23 @@ export function getJobs(): Promise<JobListing[]> {
  * consecutive entries by initial letter and never re-sorts them.
  */
 export function getMemberOrgs(): Promise<MemberOrg[]> {
-  if (!USING_REMOTE_API) return local(MEMBER_ORGS);
+  if (USING_PORTAL_FIXTURES) return local(MEMBER_ORGS);
   return request<MemberOrg[]>(ROUTES.directoryOrgs);
 }
 
 /** Every named individual in the directory, flat. `orgId` joins to a MemberOrg. */
 export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
-  if (!USING_REMOTE_API) return local(DIRECTORY_PEOPLE);
+  if (USING_PORTAL_FIXTURES) return local(DIRECTORY_PEOPLE);
   return request<DirectoryPerson[]>(ROUTES.directoryPeople);
 }
 
 export function getAskSuggestions(): Promise<string[]> {
-  if (!USING_REMOTE_API) return local(SUGGESTIONS);
+  if (USING_PORTAL_FIXTURES) return local(SUGGESTIONS);
   return request<string[]>(`${ROUTES.ask}/suggestions`);
 }
 
 export function askGpfa(question: string): Promise<AskAnswer> {
-  if (!USING_REMOTE_API) {
+  if (USING_PORTAL_FIXTURES) {
     // Matches the design's 1100ms think before answering.
     return new Promise((resolve) => setTimeout(() => resolve(findAnswer(question)), 1100));
   }
@@ -147,23 +149,23 @@ export function askGpfa(question: string): Promise<AskAnswer> {
  */
 
 export function createPost(input: NewPostInput): Promise<Thread | null> {
-  if (!USING_REMOTE_API) return local(null);
+  if (USING_PORTAL_FIXTURES) return local(null);
   return request<Thread>(ROUTES.feed, { method: 'POST', body: input });
 }
 
 export function createReply(postId: string, text: string): Promise<Reply | null> {
-  if (!USING_REMOTE_API) return local(null);
+  if (USING_PORTAL_FIXTURES) return local(null);
   return request<Reply>(ROUTES.replies(postId), { method: 'POST', body: { text } });
 }
 
 export function setUpvote(postId: string, upvoted: boolean): Promise<void> {
-  if (!USING_REMOTE_API) return local(undefined);
+  if (USING_PORTAL_FIXTURES) return local(undefined);
   return request<void>(ROUTES.upvote(postId), { method: upvoted ? 'POST' : 'DELETE' });
 }
 
 /** Bookmark a post to the member's saved list. */
 export function setSaved(postId: string, saved: boolean): Promise<void> {
-  if (!USING_REMOTE_API) return local(undefined);
+  if (USING_PORTAL_FIXTURES) return local(undefined);
   return request<void>(ROUTES.save(postId), { method: saved ? 'POST' : 'DELETE' });
 }
 
@@ -176,7 +178,7 @@ export function setReplyUpvote(
   replyId: string | undefined,
   upvoted: boolean
 ): Promise<void> {
-  if (!USING_REMOTE_API || !replyId) return local(undefined);
+  if (USING_PORTAL_FIXTURES || !replyId) return local(undefined);
   return request<void>(ROUTES.replyUpvote(postId, replyId), {
     method: upvoted ? 'POST' : 'DELETE',
   });
@@ -184,16 +186,16 @@ export function setReplyUpvote(
 
 /** Subscribe to a working group's digest, or unsubscribe from it. */
 export function setSubscribed(groupId: string, subscribed: boolean): Promise<void> {
-  if (!USING_REMOTE_API) return local(undefined);
+  if (USING_PORTAL_FIXTURES) return local(undefined);
   return request<void>(ROUTES.subscribe(groupId), { method: subscribed ? 'POST' : 'DELETE' });
 }
 
 export function castVote(postId: string, option: number): Promise<void> {
-  if (!USING_REMOTE_API) return local(undefined);
+  if (USING_PORTAL_FIXTURES) return local(undefined);
   return request<void>(ROUTES.vote(postId), { method: 'POST', body: { option } });
 }
 
 export function setRsvp(postId: string, choice: RsvpChoice): Promise<void> {
-  if (!USING_REMOTE_API) return local(undefined);
+  if (USING_PORTAL_FIXTURES) return local(undefined);
   return request<void>(ROUTES.rsvp(postId), { method: 'POST', body: { choice } });
 }

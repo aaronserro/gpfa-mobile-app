@@ -10,17 +10,26 @@ local fixtures; nothing about the UI changes when you point it at a real server.
 
 ## 1. The switch
 
-The app decides where data comes from by reading one environment variable:
+The app decides where data comes from by reading one required env var plus one
+optional auth env var:
 
 ```bash
 # .env  (see .env.example)
 EXPO_PUBLIC_API_URL=https://api.example.org
+EXPO_PUBLIC_GPFA_WEB_ORIGIN=http://192.168.1.25:3000
 ```
 
 | `EXPO_PUBLIC_API_URL` | Behaviour |
 | --- | --- |
 | unset / empty | **Fixture mode.** Data comes from `src/data/fixtures.ts`. Sign-in accepts any credentials. Mutations are local no-ops. |
 | set | **Remote mode.** Every read and write hits your server. Sign-in posts real credentials and stores a token. |
+
+`EXPO_PUBLIC_GPFA_WEB_ORIGIN` is optional and is sent to sign-in as
+`webOrigin` when set. Use your Mac's LAN IP for real devices; `localhost`
+points at the phone itself.
+
+For a step-by-step real-device auth test flow, see
+[docs/MOBILE_AUTH_TESTING.md](docs/MOBILE_AUTH_TESTING.md).
 
 Expo inlines `EXPO_PUBLIC_*` at **build time**, so restart Metro after changing
 it — a hot reload will not pick it up:
@@ -78,7 +87,8 @@ Rules that keep this working:
 
 1. On launch, reads a stored token from SecureStore. If present → signed in,
    skip the sign-in screen. If absent → show sign-in.
-2. Sign-in `POST`s to `/auth/login` with `{ email, password }`, **without** an
+2. Sign-in `POST`s to `/api/members/sign-in` with `{ email, password }`, and
+  includes `webOrigin` when `EXPO_PUBLIC_GPFA_WEB_ORIGIN` is set, **without** an
    `Authorization` header.
 3. On success, stores the token and enters the app.
 4. Every later request sends `Authorization: Bearer <token>`.
@@ -88,10 +98,10 @@ Rules that keep this working:
 ### 3.2 Login
 
 ```http
-POST /auth/login
+POST /api/members/sign-in
 Content-Type: application/json
 
-{ "email": "member@example.org", "password": "…" }
+{ "email": "member@example.org", "password": "…", "webOrigin": "http://192.168.1.25:3000" }
 ```
 
 Response — the app accepts any of these key spellings, so you probably don't
@@ -101,6 +111,17 @@ need to change your server:
 {
   "accessToken": "eyJ…",     // or "access_token", or "token"
   "refreshToken": "…"        // or "refresh_token" — optional
+}
+```
+
+Also accepted (nested):
+
+```jsonc
+{
+  "auth": {
+    "accessToken": "eyJ…",   // or "access_token", or "token"
+    "refreshToken": "…"      // or "refresh_token" — optional
+  }
 }
 ```
 
@@ -132,7 +153,8 @@ Base URL is prefixed to every path. All bodies are JSON.
 
 | Method | Path | Used by | Returns |
 | --- | --- | --- | --- |
-| `POST` | `/auth/login` | Sign-in | `{ accessToken, refreshToken? }` |
+| `POST` | `/api/members/sign-in` | Sign-in | `{ accessToken, refreshToken? }` or `{ auth: { accessToken, refreshToken? } }` |
+| `GET` | `/api/members/notifications` | Authenticated member notifications | implementation-specific |
 | `GET` | `/me` | Greeting, avatars, authorship | `Member` |
 | `GET` | `/me/saved` | Member profile → Saved | `LibraryResource[]`, newest first |
 | `GET` | `/groups` | Home, Groups drawer | `Group[]` |
@@ -738,7 +760,7 @@ Implications for your server:
 
 ## 11. Connecting: a checklist
 
-1. Copy `.env.example` to `.env`, set `EXPO_PUBLIC_API_URL`.
+1. Copy `.env.example` to `.env`, set `EXPO_PUBLIC_API_URL` and (if your auth backend requires it) `EXPO_PUBLIC_GPFA_WEB_ORIGIN`.
 2. `npx expo start --clear`.
 3. Sign in. If it fails, check §3.2 — token key spelling is the usual culprit.
 4. Home should load groups + news; Groups should load the feed.

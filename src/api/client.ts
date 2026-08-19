@@ -34,6 +34,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Skip the Authorization header — used by the login call itself. */
   anonymous?: boolean;
+  /** Optional host override for routes served from a different origin. */
+  baseUrl?: string;
   signal?: AbortSignal;
 }
 
@@ -45,14 +47,16 @@ export interface RequestOptions {
  * iOS App Transport Security will reject plain http:// in release builds.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  if (!API_BASE_URL) {
+  const { method = 'GET', body, anonymous = false, baseUrl, signal } = options;
+  const resolvedBaseUrl = baseUrl ?? API_BASE_URL;
+
+  if (!resolvedBaseUrl) {
     throw new ApiError('No API base URL configured (EXPO_PUBLIC_API_URL).', 0);
   }
 
-  const { method = 'GET', body, anonymous = false, signal } = options;
-
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (resolvedBaseUrl.includes('ngrok-free.')) headers['ngrok-skip-browser-warning'] = 'true';
   if (!anonymous) {
     const token = await getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -65,16 +69,24 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   signal?.addEventListener('abort', abort);
 
   let response: Response;
+  const target = `${resolvedBaseUrl}${path}`;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    if (__DEV__) console.info(`[api] ${method} ${target}`);
+    response = await fetch(target, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
+    if (__DEV__) console.info(`[api] ${response.status} ${method} ${target}`);
   } catch (cause) {
     const aborted = cause instanceof Error && cause.name === 'AbortError';
-    throw new ApiError(aborted ? 'The request timed out.' : 'Could not reach the server.', 0, cause);
+    if (__DEV__) console.warn(`[api] ${aborted ? 'timeout' : 'network'} ${method} ${target}`);
+    throw new ApiError(
+      aborted ? `The request timed out (${target}).` : `Could not reach the server (${target}).`,
+      0,
+      cause
+    );
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);

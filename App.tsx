@@ -147,6 +147,13 @@ function Portal() {
     setTab('directory');
   }, []);
 
+  const signOutForTesting = useCallback(() => {
+    setProfileSheetOpen(false);
+    setProfileOpen(false);
+    setTab('home');
+    signOut();
+  }, [signOut]);
+
   const openStory = useCallback((story: NewsStory) => {
     if (story.url) void Linking.openURL(story.url);
   }, []);
@@ -519,6 +526,7 @@ function Portal() {
               savedCount={(savedQuery.data ?? []).length}
               onClose={() => setProfileSheetOpen(false)}
               onOpenProfile={openProfile}
+              onSignOut={signOutForTesting}
             />
           )}
           {composerOpen && (

@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BookmarkSimple, Buildings, CaretRight, User, X, type Icon } from '../ds/icons';
+import { ArrowSquareOut, BookmarkSimple, Buildings, CaretRight, User, X, type Icon } from '../ds/icons';
 import { Avatar } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
@@ -23,6 +23,8 @@ export interface MemberSheetProps {
   onClose: () => void;
   /** Every row opens the profile; the design routes all three there. */
   onOpenProfile: () => void;
+  /** Dev-only testing escape hatch: clears the stored auth token. */
+  onSignOut?: () => void;
 }
 
 export default function MemberSheet({
@@ -30,6 +32,7 @@ export default function MemberSheet({
   savedCount,
   onClose,
   onOpenProfile,
+  onSignOut,
 }: MemberSheetProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -121,6 +124,9 @@ export default function MemberSheet({
             onPress={onOpenProfile}
             divided
           />
+          {__DEV__ && !!onSignOut && (
+            <Row icon={ArrowSquareOut} label="Sign out" onPress={onSignOut} divided />
+          )}
         </View>
       </Animated.View>
     </View>

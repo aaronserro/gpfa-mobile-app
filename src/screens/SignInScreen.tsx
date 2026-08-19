@@ -16,6 +16,7 @@ import { DisplayHead, Input, RadialWash } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad } from '../ds/tokens';
 import { useAuth } from '../auth/AuthProvider';
+import { SIGN_IN_URL } from '../api/config';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
@@ -108,6 +109,11 @@ export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void })
                 )}
               </Pressable>
               {!!error && <Text style={[styles.error, { color: t.brandBrickInk }]}>{error}</Text>}
+              {__DEV__ && !!SIGN_IN_URL && (
+                <Text style={[styles.debug, { color: alpha(t.inkInverse, 0.54) }]}>
+                  Auth: {SIGN_IN_URL}
+                </Text>
+              )}
             </View>
 
             <Pressable hitSlop={8}>
@@ -177,6 +183,12 @@ const styles = StyleSheet.create({
   error: {
     fontFamily: sans(500),
     fontSize: 12.5,
+    textAlign: 'center',
+  },
+  debug: {
+    fontFamily: sans(400),
+    fontSize: 10.5,
+    lineHeight: 15,
     textAlign: 'center',
   },
   forgot: {

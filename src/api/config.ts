@@ -11,11 +11,24 @@
  */
 const raw = process.env.EXPO_PUBLIC_API_URL ?? '';
 
+const rawWebOrigin = process.env.EXPO_PUBLIC_GPFA_WEB_ORIGIN ?? '';
+
+const rawFixturePortalData = process.env.EXPO_PUBLIC_FIXTURE_PORTAL_DATA ?? '';
+
 /** Base URL with any trailing slash removed, or '' when unset. */
 export const API_BASE_URL = raw.trim().replace(/\/+$/, '');
 
+/** Web app origin used by the member sign-in route when needed by backend auth. */
+export const GPFA_WEB_ORIGIN = rawWebOrigin.trim().replace(/\/+$/, '');
+
+/** Host used for member auth routes. */
+export const AUTH_BASE_URL = GPFA_WEB_ORIGIN || API_BASE_URL;
+
 /** True once a backend is configured; false means fixtures. */
 export const USING_REMOTE_API = API_BASE_URL.length > 0;
+
+/** True when auth is remote but portal screens should keep using fixtures. */
+export const USING_FIXTURE_PORTAL_DATA = rawFixturePortalData.trim().toLowerCase() === 'true';
 
 /** Abort a request that hasn't responded in this long. */
 export const REQUEST_TIMEOUT_MS = 15000;
@@ -25,9 +38,10 @@ export const REQUEST_TIMEOUT_MS = 15000;
  * one place rather than across the call sites.
  */
 export const ROUTES = {
-  login: '/auth/login',
+  login: '/api/members/sign-in',
   logout: '/auth/logout',
   session: '/auth/session',
+  notifications: '/api/members/notifications',
   me: '/me',
   savedResources: '/me/saved',
   groups: '/groups',
@@ -50,3 +64,6 @@ export const ROUTES = {
   vote: (id: string) => `/posts/${id}/vote`,
   rsvp: (id: string) => `/posts/${id}/rsvp`,
 } as const;
+
+/** Full sign-in URL, useful when validating Expo's inlined env on-device. */
+export const SIGN_IN_URL = AUTH_BASE_URL ? `${AUTH_BASE_URL}${ROUTES.login}` : '';
