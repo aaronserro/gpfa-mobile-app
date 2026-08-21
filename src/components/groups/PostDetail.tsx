@@ -65,6 +65,12 @@ export interface PostDetailProps {
   post: Thread;
   /** Every reply on the post, including any added this session. */
   replies: Reply[];
+  summary?: string;
+  summarizing?: boolean;
+  onSummarize?: () => void;
+  onUpdate?: (input: { title?: string; body?: string }) => void;
+  onDelete?: () => void;
+  onChangeStatus?: (status: 'open' | 'answered' | 'closed') => void;
   upvoted: boolean;
   onToggleUpvote: () => void;
   saved: boolean;
@@ -86,6 +92,12 @@ export default function PostDetail({
   groupName,
   post,
   replies,
+  summary,
+  summarizing = false,
+  onSummarize,
+  onUpdate,
+  onDelete,
+  onChangeStatus,
   upvoted,
   onToggleUpvote,
   saved,
@@ -103,6 +115,9 @@ export default function PostDetail({
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(post.title);
+  const [editBody, setEditBody] = useState(post.body);
 
   const type = post.type ?? 'discussion';
   const kind = postTypeStyle(t, type);
@@ -114,6 +129,9 @@ export default function PostDetail({
   const total = counts.reduce((a, b) => a + b, 0);
 
   const roots = replyTree(post.id, replies);
+  const canEdit = !!post.canEdit && !!onUpdate;
+  const canDelete = !!post.canDelete && !!onDelete;
+  const canChangeStatus = !!post.canChangeStatus && !!onChangeStatus;
 
   const send = () => {
     const text = draft.trim();
@@ -170,7 +188,40 @@ export default function PostDetail({
             )}
           </View>
 
-          <Text style={[styles.postTitle, { color: t.inkStrong }]}>{post.title}</Text>
+          {editing ? (
+            <View style={styles.editPanel}>
+              <Input value={editTitle} onChangeText={setEditTitle} style={styles.editInput} />
+              <Input
+                value={editBody}
+                onChangeText={setEditBody}
+                multiline
+                textAlignVertical="top"
+                style={[styles.editInput, styles.editTextarea]}
+              />
+              <View style={styles.manageRow}>
+                <Pressable
+                  onPress={() => {
+                    onUpdate?.({ title: editTitle.trim(), body: editBody.trim() });
+                    setEditing(false);
+                  }}
+                  style={[styles.manageBtn, { backgroundColor: t.surfaceAnchor, borderColor: t.surfaceAnchor }]}
+                >
+                  <Text style={styles.manageBtnOnText}>Save changes</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setEditing(false)}
+                  style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                >
+                  <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.postTitle, { color: t.inkStrong }]}>{post.title}</Text>
+              <Text style={[styles.postBody, { color: t.inkBody }]}>{post.body}</Text>
+            </>
+          )}
 
           <View style={styles.byline}>
             <AnchorAvatar initials={post.initials ?? initialsOf(post.author)} size={36} />
@@ -184,8 +235,6 @@ export default function PostDetail({
               </MastheadMeta>
             </View>
           </View>
-
-          <Text style={[styles.postBody, { color: t.inkBody }]}>{post.body}</Text>
 
           {!!post.file && (
             <Pressable
@@ -375,6 +424,49 @@ export default function PostDetail({
               </Text>
             </Pressable>
           </View>
+
+          <View style={styles.manageRow}>
+            {!!onSummarize && (
+              <Pressable
+                onPress={onSummarize}
+                disabled={summarizing}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{summarizing ? 'Summarizing...' : 'Summarize'}</Text>
+              </Pressable>
+            )}
+            {canEdit && (
+              <Pressable onPress={() => setEditing(true)} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Edit</Text>
+              </Pressable>
+            )}
+            {canDelete && (
+              <Pressable onPress={onDelete} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Delete</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {canChangeStatus && (
+            <View style={styles.statusRow}>
+              {(['open', 'answered', 'closed'] as const).map((status) => (
+                <Pressable
+                  key={status}
+                  onPress={() => onChangeStatus?.(status)}
+                  style={[styles.statusBtn, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+                >
+                  <Text style={[styles.statusText, { color: t.inkMuted }]}>{status}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {!!summary && (
+            <View style={[styles.summaryCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+              <Text style={[styles.summaryTitle, { color: t.inkStrong }]}>Summary</Text>
+              <Text style={[styles.summaryText, { color: t.inkMuted }]}>{summary}</Text>
+            </View>
+          )}
         </View>
 
         {isAnnouncement ? (
@@ -606,6 +698,9 @@ const styles = StyleSheet.create({
   bylineMeta: { marginTop: 1 },
   author: { fontFamily: sans(600), fontSize: 13.5 },
   postBody: { marginTop: 12, fontFamily: sans(400), fontSize: 14, lineHeight: 23.8 },
+  editPanel: { marginTop: 12, gap: 8 },
+  editInput: { minHeight: 44, paddingHorizontal: 12, fontSize: 14 },
+  editTextarea: { minHeight: 112, paddingVertical: 10 },
 
   attachment: {
     flexDirection: 'row',
@@ -675,6 +770,22 @@ const styles = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionEnd: { marginLeft: 'auto' },
   actionText: { fontFamily: mono(400), fontSize: 11 },
+  manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  manageBtn: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  manageBtnText: { fontFamily: sans(600), fontSize: 12 },
+  manageBtnOnText: { fontFamily: sans(600), fontSize: 12, color: '#fff' },
+  statusRow: { marginTop: 8, flexDirection: 'row', gap: 8 },
+  statusBtn: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderRadius: 8 },
+  statusText: { fontFamily: mono(400), fontSize: 10, textTransform: 'uppercase' },
+  summaryCard: { marginTop: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
+  summaryTitle: { fontFamily: sans(600), fontSize: 12.5 },
+  summaryText: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5, lineHeight: 19.4 },
 
   readOnly: {
     marginTop: 16,

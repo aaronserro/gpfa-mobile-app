@@ -49,13 +49,14 @@ export interface RequestOptions {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, anonymous = false, baseUrl, signal } = options;
   const resolvedBaseUrl = baseUrl ?? API_BASE_URL;
+  const formData = isFormData(body);
 
   if (!resolvedBaseUrl) {
     throw new ApiError('No API base URL configured (EXPO_PUBLIC_API_URL).', 0);
   }
 
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !formData) headers['Content-Type'] = 'application/json';
   if (resolvedBaseUrl.includes('ngrok-free.')) headers['ngrok-skip-browser-warning'] = 'true';
   if (!anonymous) {
     const token = await getAccessToken();
@@ -75,7 +76,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(target, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : formData ? body : JSON.stringify(body),
       signal: controller.signal,
     });
     if (__DEV__) console.info(`[api] ${response.status} ${method} ${target}`);
@@ -101,6 +102,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   return payload as T;
+}
+
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
 }
 
 function safeJson(text: string): unknown {

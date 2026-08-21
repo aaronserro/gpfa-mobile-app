@@ -170,7 +170,8 @@ export function ScreenHeader({
 }) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
-  const { initials, openProfile } = useMember();
+  const { initials, notificationUnreadCount, openNotifications, openProfile } = useMember();
+  const badgeLabel = notificationUnreadCount > 9 ? '9+' : String(notificationUnreadCount);
 
   return (
     <View>
@@ -194,9 +195,24 @@ export function ScreenHeader({
           <Pressable onPress={toggle} accessibilityLabel="Toggle dark mode" hitSlop={8}>
             {isDark ? <Sun size={20} color="#fff" /> : <Moon size={20} color="#fff" />}
           </Pressable>
-          {/* Inert, as it has always been — see CONTRACT.md §8. Deliberately not
-              a Pressable, so it isn't a tappable dead zone. */}
-          <Bell size={20} color="#fff" />
+          <Pressable
+            onPress={openNotifications}
+            disabled={!openNotifications}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+            hitSlop={8}
+            style={({ pressed }) => [
+              headerStyles.bellButton,
+              pressed && openNotifications ? { opacity: 0.7 } : null,
+            ]}
+          >
+            <Bell size={20} color="#fff" />
+            {notificationUnreadCount > 0 && (
+              <View style={[headerStyles.badge, { backgroundColor: t.brandGreenOnDark }]}>
+                <Text style={headerStyles.badgeText}>{badgeLabel}</Text>
+              </View>
+            )}
+          </Pressable>
           {!!initials &&
             (openProfile ? (
               <Pressable
@@ -246,6 +262,19 @@ const headerStyles = StyleSheet.create({
   band: { paddingHorizontal: 20, paddingBottom: 14 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 12 },
   spacer: { flex: 1 },
+  bellButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: { fontFamily: mono(600), fontSize: 9, lineHeight: 12, color: '#07171b' },
   title: {
     fontFamily: sans(600),
     fontSize: 22,

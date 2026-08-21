@@ -14,6 +14,7 @@ import type {
   JobListing,
   LibraryResource,
   Member,
+  MemberNotification,
   MemberOrg,
   NewsStory,
   PodcastEpisode,
@@ -525,6 +526,30 @@ export const MEMBER: Member = {
   role: 'Assistant VP, Treasury & Liquidity',
   orgId: 'hoopp',
 };
+
+export const NOTIFICATIONS: MemberNotification[] = [
+  {
+    id: 'notif-cl1',
+    title: 'New reply in Collateral & Liquidity',
+    body: 'Priya Nair commented on the indemnification comparison matrix thread.',
+    time: '18m ago',
+    read: false,
+  },
+  {
+    id: 'notif-annual',
+    title: 'Annual Meeting registration confirmed',
+    body: 'Your GPFA Annual Meeting 2026 registration is on file.',
+    time: '2h ago',
+    read: false,
+  },
+  {
+    id: 'notif-library',
+    title: 'Library update available',
+    body: 'Counterparty scoring methodology v2 was added to the member library.',
+    time: 'Yesterday',
+    read: true,
+  },
+];
 
 export const NEXT_EVENT: CalendarEvent = {
   id: 'annual-2026',

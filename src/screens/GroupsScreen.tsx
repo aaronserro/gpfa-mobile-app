@@ -32,10 +32,15 @@ export interface GroupsScreenProps {
   member: Member;
   /** All working groups, from the API. */
   groups: Group[];
-  /** Every post across those groups, from the API. */
-  posts: FeedEntry[];
   /** Posts composed this session, newest first. */
   newPosts: FeedEntry[];
+  selectedGroupFeed?: FeedEntry[];
+  selectedGroupLoading?: boolean;
+  selectedGroupLoadingMore?: boolean;
+  selectedGroupError?: Error | null;
+  selectedGroupNextCursor?: string | null;
+  selectedGroupCoLeads?: Group['members'];
+  onLoadMoreGroupFeed?: () => void;
   /** The group whose page is open; null shows the directory. */
   groupId: string | null;
   onOpenGroup: (id: string) => void;
@@ -43,6 +48,12 @@ export interface GroupsScreenProps {
   threadId: string | null;
   onOpenThread: (id: string) => void;
   onCloseThread: () => void;
+  postSummaries?: Record<string, string | undefined>;
+  summarizing?: Record<string, boolean | undefined>;
+  onSummarize?: (threadId: string) => void;
+  onUpdatePost?: (threadId: string, input: { title?: string; body?: string }) => void;
+  onDeletePost?: (threadId: string) => void;
+  onChangePostStatus?: (threadId: string, status: 'open' | 'answered' | 'closed') => void;
   /** Replies posted this session, kept out of the static data and keyed by thread. */
   extraReplies: Record<string, Reply[] | undefined>;
   onReply: (threadId: string, reply: Reply) => void;
@@ -74,14 +85,26 @@ export interface GroupsScreenProps {
 export default function GroupsScreen({
   member,
   groups,
-  posts,
   newPosts,
+  selectedGroupFeed,
+  selectedGroupLoading = false,
+  selectedGroupLoadingMore = false,
+  selectedGroupError = null,
+  selectedGroupNextCursor = null,
+  selectedGroupCoLeads = [],
+  onLoadMoreGroupFeed,
   groupId,
   onOpenGroup,
   onCloseGroup,
   threadId,
   onOpenThread,
   onCloseThread,
+  postSummaries = {},
+  summarizing = {},
+  onSummarize,
+  onUpdatePost,
+  onDeletePost,
+  onChangePostStatus,
   extraReplies,
   onReply,
   votes,
@@ -104,7 +127,7 @@ export default function GroupsScreen({
   const [tab, setTab] = useState<GroupTab>(defaultGroupTab);
   const [filter, setFilter] = useState<PostFilterId>('all');
 
-  const allPosts = useMemo(() => [...newPosts, ...posts], [newPosts, posts]);
+  const allPosts = useMemo(() => [...newPosts, ...(selectedGroupFeed ?? [])], [newPosts, selectedGroupFeed]);
 
   const repliesFor = (id: string): Reply[] => {
     const base = allPosts.find((x) => x.post.id === id)?.post.replies ?? [];
@@ -112,18 +135,6 @@ export default function GroupsScreen({
   };
 
   const isSubscribed = (g: Group) => subscribed[g.id] ?? g.joined;
-
-  /** Posts per group, newest first — `mins` is the only ordering key posts carry. */
-  const byGroup = useMemo(() => {
-    const map = new Map<string, Thread[]>();
-    for (const { post, groupId: gid } of allPosts) {
-      const list = map.get(gid);
-      if (list) list.push(post);
-      else map.set(gid, [post]);
-    }
-    for (const list of map.values()) list.sort((a, b) => (a.mins ?? 0) - (b.mins ?? 0));
-    return map;
-  }, [allPosts]);
 
   const group = groupId ? groups.find((g) => g.id === groupId) ?? null : null;
   const thread = threadId ? allPosts.find((x) => x.post.id === threadId)?.post ?? null : null;
@@ -135,6 +146,12 @@ export default function GroupsScreen({
         groupName={group.n}
         post={thread}
         replies={repliesFor(thread.id)}
+        summary={postSummaries[thread.id]}
+        summarizing={!!summarizing[thread.id]}
+        onSummarize={() => onSummarize?.(thread.id)}
+        onUpdate={(input) => onUpdatePost?.(thread.id, input)}
+        onDelete={() => onDeletePost?.(thread.id)}
+        onChangeStatus={(status) => onChangePostStatus?.(thread.id, status)}
         upvoted={!!upvoted[thread.id]}
         onToggleUpvote={() => onToggleUpvote(thread.id)}
         saved={!!saved[thread.id]}
@@ -162,7 +179,7 @@ export default function GroupsScreen({
 
   /* ── one group ───────────────────────────────────────────────────────── */
   if (group) {
-    const groupPosts = byGroup.get(group.id) ?? [];
+    const groupPosts = selectedGroupFeed?.map((entry) => entry.post) ?? [];
     const shown =
       filter === 'all' ? groupPosts : groupPosts.filter((p) => (p.type ?? 'discussion') === filter);
 
@@ -180,6 +197,12 @@ export default function GroupsScreen({
         posts={shown}
         totalPosts={groupPosts.length}
         typeCounts={typeCounts}
+        coLeads={selectedGroupCoLeads}
+        loading={selectedGroupLoading}
+        loadingMore={selectedGroupLoadingMore}
+        error={selectedGroupError}
+        hasMore={!!selectedGroupNextCursor}
+        onLoadMore={onLoadMoreGroupFeed}
         tab={tab}
         onTab={setTab}
         filter={filter}
@@ -201,14 +224,16 @@ export default function GroupsScreen({
 
   /* ── directory ───────────────────────────────────────────────────────── */
   const q = query.trim().toLowerCase();
-  const matches = q ? groups.filter((g) => g.n.toLowerCase().includes(q)) : groups;
+  const matches = q
+    ? groups.filter((g) => `${g.n} ${g.short} ${g.meta}`.toLowerCase().includes(q))
+    : groups;
 
   return (
     <View style={styles.fill}>
       <GroupDirectory
         subscribed={matches.filter(isSubscribed)}
         rest={matches.filter((g) => !isSubscribed(g))}
-        postCounts={Object.fromEntries(groups.map((g) => [g.id, (byGroup.get(g.id) ?? []).length]))}
+        postCounts={Object.fromEntries(groups.map((g) => [g.id, g.threads.length]))}
         query={query}
         onQuery={setQuery}
         onOpen={(id) => {

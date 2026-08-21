@@ -40,6 +40,12 @@ export interface GroupViewProps {
   totalPosts: number;
   /** Counts per type, for the About tab's stats grid. */
   typeCounts: Record<PostType, number>;
+  coLeads?: Group['members'];
+  loading?: boolean;
+  loadingMore?: boolean;
+  error?: Error | null;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
   tab: GroupTab;
   onTab: (tab: GroupTab) => void;
   filter: PostFilterId;
@@ -64,6 +70,12 @@ export default function GroupView({
   posts,
   totalPosts,
   typeCounts,
+  coLeads: routeCoLeads = [],
+  loading = false,
+  loadingMore = false,
+  error = null,
+  hasMore = false,
+  onLoadMore,
   tab,
   onTab,
   filter,
@@ -82,7 +94,8 @@ export default function GroupView({
 }: GroupViewProps) {
   const { t } = useTheme();
 
-  const coLeads = group.members.filter((m) => m.isLead);
+  const coLeads = routeCoLeads.length ? routeCoLeads : group.members.filter((m) => m.isLead);
+  const memberCount = group.memberCount ?? group.members.length;
   const topics: string[] = [];
   for (const p of posts) for (const tag of p.tags ?? []) if (!topics.includes(tag)) topics.push(tag);
 
@@ -144,7 +157,17 @@ export default function GroupView({
       <View style={styles.fill}>
         {tab === 'posts' && (
           <>
-            <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={400}
+              onScroll={({ nativeEvent }) => {
+                if (!hasMore || loadingMore || !onLoadMore) return;
+                const distanceFromBottom =
+                  nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y;
+                if (distanceFromBottom < 220) onLoadMore();
+              }}
+            >
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -174,7 +197,27 @@ export default function GroupView({
                 })}
               </ScrollView>
 
-              {posts.length === 0 ? (
+              {loading ? (
+                <View
+                  style={[
+                    styles.emptyCard,
+                    { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) },
+                  ]}
+                >
+                  <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Loading feed</Text>
+                  <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Fetching the latest group posts.</Text>
+                </View>
+              ) : error ? (
+                <View
+                  style={[
+                    styles.emptyCard,
+                    { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) },
+                  ]}
+                >
+                  <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Feed unavailable</Text>
+                  <Text style={[styles.emptyBody, { color: t.inkMuted }]}>{error.message}</Text>
+                </View>
+              ) : posts.length === 0 ? (
                 <View
                   style={[
                     styles.emptyCard,
@@ -201,6 +244,11 @@ export default function GroupView({
                       onOpen={() => onOpenPost(p.id)}
                     />
                   ))}
+                  {(hasMore || loadingMore) && (
+                    <View style={[styles.moreRow, { borderColor: t.ruleHairline }]}>
+                      <Text style={[styles.moreText, { color: t.inkMuted }]}>{loadingMore ? 'Loading more posts...' : 'More posts load as you scroll'}</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -222,10 +270,17 @@ export default function GroupView({
 
         {tab === 'about' && (
           <ScrollView contentContainerStyle={styles.about} showsVerticalScrollIndicator={false}>
+            {!!group.meta && (
+              <View>
+                <Text style={[styles.aboutHead, { color: t.inkFaint }]}>ABOUT THIS GROUP</Text>
+                <Text style={[styles.aboutBio, { color: t.inkMuted }]}>{group.meta}</Text>
+              </View>
+            )}
+
             <View style={[styles.statGrid, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
               {(
                 [
-                  ['Members', group.members.length],
+                  ['Members', memberCount],
                   ['Discussions', typeCounts.discussion],
                   ['Polls', typeCounts.poll],
                   ['Events', typeCounts.event],
@@ -315,7 +370,7 @@ export default function GroupView({
         {tab === 'members' && (
           <ScrollView contentContainerStyle={styles.members} showsVerticalScrollIndicator={false}>
             <MastheadMeta size={9.5} color={t.inkFaint} style={styles.membersMeta}>
-              {`${group.members.length} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
+              {`${memberCount} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
             </MastheadMeta>
             {group.members.map((m) => (
               <View
@@ -555,6 +610,8 @@ const styles = StyleSheet.create({
   stripText: { flex: 1, fontFamily: mono(400), fontSize: 10 },
   cardTags: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   cardActions: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  moreRow: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  moreText: { fontFamily: sans(400), fontSize: 12 },
   cardAction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -598,6 +655,7 @@ const styles = StyleSheet.create({
   fabText: { fontFamily: sans(600), fontSize: 14, color: '#fff' },
 
   about: { padding: 16, paddingBottom: 40, gap: 18 },
+  aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

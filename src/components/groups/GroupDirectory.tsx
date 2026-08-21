@@ -99,11 +99,15 @@ export default function GroupDirectory({
                           <View style={[styles.memberChip, { backgroundColor: t.surfaceSoft }]}>
                             <UsersThree size={11} weight="fill" color={t.inkStrong} />
                             <Text style={[styles.memberChipText, { color: t.inkStrong }]}>
-                              {g.members.length}
+                              {g.memberCount ?? g.members.length}
                             </Text>
                           </View>
                         </View>
                       </View>
+
+                      {!!g.meta && (
+                        <Text numberOfLines={3} style={[styles.groupBio, { color: t.inkMuted }]}>{g.meta}</Text>
+                      )}
 
                       <View style={styles.cardFoot}>
                         <Text style={[styles.cardCount, { color: t.inkMuted }]}>
@@ -194,6 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
   },
   memberChipText: { fontFamily: sans(500), fontSize: 10.5, fontVariant: ['tabular-nums'] },
+  groupBio: { marginTop: 8, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.75 },
   cardCount: { fontFamily: sans(400), fontSize: 12 },
   cardFoot: {
     marginTop: 12,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import JetBrainsMono_500Medium from '@expo-google-fonts/jetbrains-mono/500Medium
 import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf';
 
 import MemberSheet from './src/components/MemberSheet';
+import NotificationsSheet from './src/components/NotificationsSheet';
 import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
 import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar';
@@ -31,6 +32,7 @@ import {
   castVote,
   createPost as createPostRequest,
   createReply,
+  deleteForumThread,
   getDirectoryPeople,
   getFeed,
   getGroups,
@@ -40,17 +42,26 @@ import {
   getMe,
   getNews,
   getNextEvent,
+  getNotifications,
   getPodcasts,
   getSavedResources,
+  getWorkingGroupCoLeadMembers,
+  getWorkingGroupTagUsage,
+  getWorkingGroupThreadFeed,
+  getWorkingGroupMembership,
   setReplyUpvote,
   setRsvp as setRsvpRequest,
   setSaved as setSavedRequest,
   setSubscribed as setSubscribedRequest,
   setUpvote,
+  summarizeForum,
+  updateForumThread,
+  updateForumThreadStatus,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
 import type {
   FeedEntry,
+  GroupMember,
   Member,
   MemberOrg,
   NewPostInput,
@@ -68,6 +79,28 @@ const DEFAULT_TAB: TabId = 'home';
 const DARK_MODE = false;
 const SHOW_BADGES = true;
 
+interface GroupDetailState {
+  items: FeedEntry[];
+  nextCursor: string | null;
+  totalMatching: number;
+  coLeads: GroupMember[];
+  tagSuggestions: string[];
+  loading: boolean;
+  loadingMore: boolean;
+  error: Error | null;
+}
+
+const EMPTY_GROUP_DETAIL: GroupDetailState = {
+  items: [],
+  nextCursor: null,
+  totalMatching: 0,
+  coLeads: [],
+  tagSuggestions: [],
+  loading: false,
+  loadingMore: false,
+  error: null,
+};
+
 function Portal() {
   const { t } = useTheme();
 
@@ -81,6 +114,9 @@ function Portal() {
   // The Groups tab is a directory; this is the group whose page is open.
   const [groupId, setGroupId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [groupDetails, setGroupDetails] = useState<Record<string, GroupDetailState | undefined>>({});
+  const [postSummaries, setPostSummaries] = useState<Record<string, string | undefined>>({});
+  const [summarizing, setSummarizing] = useState<Record<string, boolean | undefined>>({});
   // Replies the member posts are kept outside the static data, keyed by thread.
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
   const [votes, setVotes] = useState<Record<string, number | undefined>>({});
@@ -97,11 +133,13 @@ function Portal() {
   // quick sheet first, then the full profile over whichever tab is underneath.
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  // Portal data. Resolves from fixtures until EXPO_PUBLIC_API_URL is set.
+  // Portal data. Member-scoped ready routes wait for sign-in; the rest can stay
+  // fixture-backed while EXPO_PUBLIC_FIXTURE_PORTAL_DATA is true.
   const meQuery = useQuery(getMe, []);
   const eventQuery = useQuery(getNextEvent, []);
-  const groupsQuery = useQuery(getGroups, []);
+  const groupsQuery = useQuery(() => (isSignedIn ? getGroups() : Promise.resolve([])), [isSignedIn]);
   const feedQuery = useQuery(getFeed, []);
   const newsQuery = useQuery(getNews, []);
   const libraryQuery = useQuery(getLibrary, []);
@@ -110,6 +148,10 @@ function Portal() {
   const orgsQuery = useQuery(getMemberOrgs, []);
   const directoryPeopleQuery = useQuery(getDirectoryPeople, []);
   const savedQuery = useQuery(getSavedResources, []);
+  const notificationsQuery = useQuery(
+    () => (isSignedIn ? getNotifications() : Promise.resolve([])),
+    [isSignedIn]
+  );
 
   // What another screen asked Resources to open: an episode from the
   // now-playing bar, or a posting from an organization's directory profile.
@@ -136,6 +178,11 @@ function Portal() {
   // Handed to MemberProvider, so the header avatar on every screen opens it.
   const openProfileSheet = useCallback(() => setProfileSheetOpen(true), []);
 
+  const openNotifications = useCallback(() => {
+    notificationsQuery.refetch();
+    setNotificationsOpen(true);
+  }, [notificationsQuery.refetch]);
+
   const openProfile = useCallback(() => {
     setProfileSheetOpen(false);
     setProfileOpen(true);
@@ -150,6 +197,7 @@ function Portal() {
   const signOutForTesting = useCallback(() => {
     setProfileSheetOpen(false);
     setProfileOpen(false);
+    setNotificationsOpen(false);
     setTab('home');
     signOut();
   }, [signOut]);
@@ -163,6 +211,87 @@ function Portal() {
   const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
+  const notifications = notificationsQuery.data ?? [];
+  const unreadNotifications = notifications.filter((n) => !n.read).length;
+  const selectedGroupDetail = groupId ? groupDetails[groupId] : undefined;
+
+  const loadGroupDetail = useCallback(
+    (id: string, cursor?: string | null) => {
+      const group = groups.find((g) => g.id === id);
+      if (!group) return;
+      const slug = group.slug ?? group.id;
+      const append = !!cursor;
+
+      setGroupDetails((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] ?? EMPTY_GROUP_DETAIL),
+          loading: !append,
+          loadingMore: append,
+          error: null,
+        },
+      }));
+
+      const feedPromise = getWorkingGroupThreadFeed(slug, id, { limit: 20, cursor: cursor ?? undefined });
+      const coLeadsPromise = append
+        ? Promise.resolve(groupDetails[id]?.coLeads ?? [])
+        : getWorkingGroupCoLeadMembers(slug);
+      const tagsPromise = append
+        ? Promise.resolve(groupDetails[id]?.tagSuggestions ?? [])
+        : getWorkingGroupTagUsage(slug, { limit: 24 }).then((res) => res.tags.map((tag) => tag.label));
+
+      void Promise.all([feedPromise, coLeadsPromise, tagsPromise])
+        .then(([feed, coLeads, tagSuggestions]) => {
+          setGroupDetails((prev) => {
+            const current = prev[id] ?? EMPTY_GROUP_DETAIL;
+            const existingIds = new Set(current.items.map((entry) => entry.post.id));
+            const merged = append
+              ? [
+                  ...current.items,
+                  ...feed.items.filter((entry) => !existingIds.has(entry.post.id)),
+                ]
+              : feed.items;
+            return {
+              ...prev,
+              [id]: {
+                items: merged,
+                nextCursor: feed.nextCursor,
+                totalMatching: feed.totalMatching,
+                coLeads,
+                tagSuggestions,
+                loading: false,
+                loadingMore: false,
+                error: null,
+              },
+            };
+          });
+        })
+        .catch((cause) => {
+          setGroupDetails((prev) => ({
+            ...prev,
+            [id]: {
+              ...(prev[id] ?? EMPTY_GROUP_DETAIL),
+              loading: false,
+              loadingMore: false,
+              error: cause instanceof Error ? cause : new Error(String(cause)),
+            },
+          }));
+        });
+    },
+    [groupDetails, groups]
+  );
+
+  const loadMoreGroupFeed = useCallback(() => {
+    if (!groupId) return;
+    const detail = groupDetails[groupId];
+    if (!detail?.nextCursor || detail.loading || detail.loadingMore) return;
+    loadGroupDetail(groupId, detail.nextCursor);
+  }, [groupDetails, groupId, loadGroupDetail]);
+
+  useEffect(() => {
+    if (!groupId || groupDetails[groupId]) return;
+    loadGroupDetail(groupId);
+  }, [groupDetails, groupId, loadGroupDetail]);
 
   /**
    * The member's own organization, for their profile's Organization card.
@@ -181,27 +310,73 @@ function Portal() {
     );
   }, [orgsQuery.data, member.org, member.orgId]);
 
+  const entryForThread = useCallback(
+    (id: string): FeedEntry | undefined => {
+      for (const detail of Object.values(groupDetails)) {
+        const found = detail?.items.find((entry) => entry.post.id === id);
+        if (found) return found;
+      }
+      return newPosts.find((entry) => entry.post.id === id) ?? posts.find((entry) => entry.post.id === id);
+    },
+    [groupDetails, newPosts, posts]
+  );
+
+  const targetTypeForThread = useCallback((thread: Thread | undefined): string => {
+    if (!thread) return 'thread';
+    return thread.targetType ?? (thread.type === 'discussion' || !thread.type ? 'thread' : thread.type);
+  }, []);
+
+  const refreshGroupMembership = useCallback(
+    (id: string) => {
+      const group = groups.find((g) => g.id === id);
+      const slug = group?.slug ?? id;
+      void getWorkingGroupMembership(slug)
+        .then((membership) => {
+          setSubscribed((prev) => ({
+            ...prev,
+            [id]: membership?.subscriptionStatus === 'subscribed',
+          }));
+        })
+        .catch(() => {});
+    },
+    [groups]
+  );
+
   // Tapping a group on Home opens that group's page.
   const pickGroup = useCallback((id: string) => {
     setGroupId(id);
     setThreadId(null);
     setTab('groups');
-  }, []);
+    refreshGroupMembership(id);
+    loadGroupDetail(id);
+  }, [loadGroupDetail, refreshGroupMembership]);
+
+  const openGroup = useCallback((id: string) => {
+    setGroupId(id);
+    refreshGroupMembership(id);
+    loadGroupDetail(id);
+  }, [loadGroupDetail, refreshGroupMembership]);
 
   // Mutations apply optimistically, then reconcile with the server. Against
   // fixtures the requests resolve as no-ops, so behaviour is identical.
   const addReply = useCallback((id: string, reply: Reply) => {
+    const entry = entryForThread(id);
+    const group = entry ? groups.find((g) => g.id === entry.groupId) : null;
+    const groupSlug = entry?.post.groupSlug ?? group?.slug ?? entry?.groupId;
     setExtraReplies((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), reply] }));
-    void createReply(id, reply.text).catch(() => {
+    void createReply(id, reply.text, groupSlug).catch(() => {
       setExtraReplies((prev) => ({
         ...prev,
         [id]: (prev[id] ?? []).filter((r) => r !== reply),
       }));
     });
-  }, []);
+  }, [entryForThread, groups]);
 
   // One vote per organization — the first choice sticks.
   const vote = useCallback((id: string, option: number) => {
+    const entry = entryForThread(id);
+    const poll = entry?.post.poll;
+    const chosen = poll?.options[option];
     let cast = false;
     setVotes((prev) => {
       if (prev[id] !== undefined) return prev;
@@ -209,21 +384,27 @@ function Portal() {
       return { ...prev, [id]: option };
     });
     if (cast) {
-      void castVote(id, option).catch(() => {
+      void castVote(poll?.id ?? id, option, {
+        groupSlug: entry?.post.groupSlug,
+        questionId: poll?.questionId,
+        optionId: chosen?.id,
+      }).catch(() => {
         setVotes((prev) => ({ ...prev, [id]: undefined }));
       });
     }
-  }, []);
+  }, [entryForThread]);
 
   const toggleUpvote = useCallback((id: string) => {
+    const entry = entryForThread(id);
+    const targetType = targetTypeForThread(entry?.post);
     setUpvoted((prev) => {
       const next = !prev[id];
-      void setUpvote(id, next).catch(() => {
+      void setUpvote(id, next, targetType).catch(() => {
         setUpvoted((current) => ({ ...current, [id]: !next }));
       });
       return { ...prev, [id]: next };
     });
-  }, []);
+  }, [entryForThread, targetTypeForThread]);
 
   const toggleReplyUpvote = useCallback(
     (postId: string, key: string, replyId: string | undefined) => {
@@ -241,21 +422,24 @@ function Portal() {
   );
 
   const toggleSave = useCallback((id: string) => {
+    const entry = entryForThread(id);
+    const targetType = targetTypeForThread(entry?.post);
     setSaved((prev) => {
       const next = !prev[id];
-      void setSavedRequest(id, next).catch(() => {
+      void setSavedRequest(id, next, targetType).catch(() => {
         setSaved((current) => ({ ...current, [id]: !next }));
       });
       return { ...prev, [id]: next };
     });
-  }, []);
+  }, [entryForThread, targetTypeForThread]);
 
   const toggleSubscribe = useCallback(
     (id: string) => {
-      const current = subscribed[id] ?? groups.find((g) => g.id === id)?.joined ?? false;
+      const group = groups.find((g) => g.id === id);
+      const current = subscribed[id] ?? group?.joined ?? false;
       const next = !current;
       setSubscribed((prev) => ({ ...prev, [id]: next }));
-      void setSubscribedRequest(id, next).catch(() => {
+      void setSubscribedRequest(group?.slug ?? id, next).catch(() => {
         setSubscribed((prev) => ({ ...prev, [id]: current }));
       });
     },
@@ -263,19 +447,23 @@ function Portal() {
   );
 
   const setRsvp = useCallback((id: string, choice: RsvpChoice) => {
+    const entry = entryForThread(id);
     setRsvps((prev) => {
       const previous = prev[id];
-      void setRsvpRequest(id, choice).catch(() => {
+      void setRsvpRequest(id, choice, entry?.post.groupSlug).catch(() => {
         setRsvps((current) => ({ ...current, [id]: previous }));
       });
       return { ...prev, [id]: choice };
     });
-  }, []);
+  }, [entryForThread]);
 
   const createPost = useCallback(
     (draft: NewPostInput, member: Member) => {
+    const group = groups.find((g) => g.id === draft.groupId);
     const post: Thread = {
       id: `new-${Date.now()}`,
+      groupSlug: draft.groupSlug ?? group?.slug ?? draft.groupId,
+      targetType: draft.type === 'discussion' ? 'thread' : draft.type,
       type: draft.type,
       title: draft.title,
       author: member.name,
@@ -286,6 +474,23 @@ function Portal() {
       mins: 0,
       upvotes: 0,
       body: draft.body,
+      tags: draft.tags,
+      eventRows:
+        draft.type === 'event'
+          ? [
+              ...(draft.startsAt ? [{ icon: 'calendar' as const, text: draft.startsAt }] : []),
+              ...(draft.location ? [{ icon: 'pin' as const, text: draft.location }] : []),
+              ...(draft.isVirtual ? [{ icon: 'people' as const, text: 'Virtual' }] : []),
+            ]
+          : undefined,
+      poll:
+        draft.type === 'poll'
+          ? {
+              q: draft.pollQuestion?.trim() || draft.title,
+              closes: draft.closesAt ?? 'Open',
+              options: (draft.pollOptions ?? []).map((label) => ({ label, votes: 0 })),
+            }
+          : undefined,
       replies: [],
     };
     const entry = { post, groupId: draft.groupId };
@@ -298,13 +503,56 @@ function Portal() {
         if (created) {
           setNewPosts((prev) => prev.map((e) => (e === entry ? { ...e, post: created } : e)));
         }
+        loadGroupDetail(draft.groupId);
       })
       .catch(() => {
         setNewPosts((prev) => prev.filter((e) => e !== entry));
       });
     },
-    []
+    [groups, loadGroupDetail]
   );
+
+  const summarizePost = useCallback((id: string) => {
+    const entry = entryForThread(id);
+    if (!entry?.post.groupSlug) return;
+    setSummarizing((prev) => ({ ...prev, [id]: true }));
+    void summarizeForum({ threadId: id, groupSlug: entry.post.groupSlug })
+      .then((res) => {
+        if (res?.summary) setPostSummaries((prev) => ({ ...prev, [id]: res.summary }));
+      })
+      .finally(() => {
+        setSummarizing((prev) => ({ ...prev, [id]: false }));
+      });
+  }, [entryForThread]);
+
+  const updatePost = useCallback((id: string, input: { title?: string; body?: string }) => {
+    const previous = entryForThread(id)?.post;
+    setGroupDetails((prev) => updateThreadInGroupDetails(prev, id, input));
+    setNewPosts((prev) => prev.map((entry) => entry.post.id === id ? { ...entry, post: { ...entry.post, ...input } } : entry));
+    void updateForumThread(id, input).catch(() => {
+      if (!previous) return;
+      setGroupDetails((prev) => updateThreadInGroupDetails(prev, id, previous));
+      setNewPosts((prev) => prev.map((entry) => entry.post.id === id ? { ...entry, post: previous } : entry));
+    });
+  }, [entryForThread]);
+
+  const deletePost = useCallback((id: string) => {
+    const previous = entryForThread(id);
+    setThreadId(null);
+    setGroupDetails((prev) => removeThreadFromGroupDetails(prev, id));
+    setNewPosts((prev) => prev.filter((entry) => entry.post.id !== id));
+    void deleteForumThread(id).catch(() => {
+      if (!previous) return;
+      setGroupDetails((prev) => appendThreadToGroupDetails(prev, previous));
+      setNewPosts((prev) => previous.groupId === groupId ? [previous, ...prev] : prev);
+    });
+  }, [entryForThread, groupId]);
+
+  const changePostStatus = useCallback((id: string, status: 'open' | 'answered' | 'closed') => {
+    const lifecycle = status === 'answered' ? 'resolved' : status;
+    setGroupDetails((prev) => updateThreadInGroupDetails(prev, id, { lifecycle, state: status === 'open' ? undefined : status[0].toUpperCase() + status.slice(1) }));
+    void updateForumThreadStatus(id, { status }).catch(() => loadGroupDetail(groupId ?? ''));
+  }, [groupId, loadGroupDetail]);
 
   const selectTab = useCallback((next: TabId) => {
     setTab(next);
@@ -317,7 +565,12 @@ function Portal() {
   }, []);
 
   return (
-    <MemberProvider member={meQuery.data ?? null} onOpenProfile={openProfileSheet}>
+    <MemberProvider
+      member={meQuery.data ?? null}
+      onOpenProfile={openProfileSheet}
+      notificationUnreadCount={isSignedIn ? unreadNotifications : 0}
+      onOpenNotifications={isSignedIn ? openNotifications : undefined}
+    >
     <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
       {/* Every header is the anchor surface, and sign-in is darker still, so
           the glyphs are light on every screen in both themes. */}
@@ -428,25 +681,36 @@ function Portal() {
             )}
             {tab === 'groups' && (
               <DataGate
-                loading={meQuery.loading || groupsQuery.loading || feedQuery.loading}
-                error={meQuery.error ?? groupsQuery.error ?? feedQuery.error}
+                loading={meQuery.loading || groupsQuery.loading}
+                error={meQuery.error ?? groupsQuery.error}
                 onRetry={() => {
                   meQuery.refetch();
                   groupsQuery.refetch();
-                  feedQuery.refetch();
                 }}
               >
               <GroupsScreen
                 member={member}
                 groups={groups}
-                posts={posts}
                 newPosts={newPosts}
+                selectedGroupFeed={selectedGroupDetail?.items}
+                selectedGroupLoading={selectedGroupDetail?.loading ?? false}
+                selectedGroupLoadingMore={selectedGroupDetail?.loadingMore ?? false}
+                selectedGroupError={selectedGroupDetail?.error ?? null}
+                selectedGroupNextCursor={selectedGroupDetail?.nextCursor ?? null}
+                selectedGroupCoLeads={selectedGroupDetail?.coLeads ?? []}
+                onLoadMoreGroupFeed={loadMoreGroupFeed}
                 groupId={groupId}
-                onOpenGroup={setGroupId}
+                onOpenGroup={openGroup}
                 onCloseGroup={() => setGroupId(null)}
                 threadId={threadId}
                 onOpenThread={setThreadId}
                 onCloseThread={() => setThreadId(null)}
+                postSummaries={postSummaries}
+                summarizing={summarizing}
+                onSummarize={summarizePost}
+                onUpdatePost={updatePost}
+                onDeletePost={deletePost}
+                onChangePostStatus={changePostStatus}
                 extraReplies={extraReplies}
                 onReply={addReply}
                 votes={votes}
@@ -529,11 +793,21 @@ function Portal() {
               onSignOut={signOutForTesting}
             />
           )}
+          {notificationsOpen && (
+            <NotificationsSheet
+              notifications={notifications}
+              loading={notificationsQuery.loading || notificationsQuery.refreshing}
+              error={notificationsQuery.error}
+              onRetry={notificationsQuery.refetch}
+              onClose={() => setNotificationsOpen(false)}
+            />
+          )}
           {composerOpen && (
             <PostComposer
               groups={groups}
               // The composer opens from inside a group, so that group is the default.
               initialGroupId={groupId ?? groups[0]?.id ?? ''}
+              tagSuggestions={groupId ? (groupDetails[groupId]?.tagSuggestions ?? []) : []}
               onClose={() => setComposerOpen(false)}
               onCreate={(draft) => createPost(draft, member)}
             />
@@ -543,6 +817,52 @@ function Portal() {
     </View>
     </MemberProvider>
   );
+}
+
+function updateThreadInGroupDetails(
+  details: Record<string, GroupDetailState | undefined>,
+  threadId: string,
+  patch: Partial<Thread>
+): Record<string, GroupDetailState | undefined> {
+  return Object.fromEntries(
+    Object.entries(details).map(([id, detail]) => [
+      id,
+      detail
+        ? {
+            ...detail,
+            items: detail.items.map((entry) =>
+              entry.post.id === threadId ? { ...entry, post: { ...entry.post, ...patch } } : entry
+            ),
+          }
+        : detail,
+    ])
+  );
+}
+
+function removeThreadFromGroupDetails(
+  details: Record<string, GroupDetailState | undefined>,
+  threadId: string
+): Record<string, GroupDetailState | undefined> {
+  return Object.fromEntries(
+    Object.entries(details).map(([id, detail]) => [
+      id,
+      detail ? { ...detail, items: detail.items.filter((entry) => entry.post.id !== threadId) } : detail,
+    ])
+  );
+}
+
+function appendThreadToGroupDetails(
+  details: Record<string, GroupDetailState | undefined>,
+  entry: FeedEntry
+): Record<string, GroupDetailState | undefined> {
+  const current = details[entry.groupId] ?? EMPTY_GROUP_DETAIL;
+  return {
+    ...details,
+    [entry.groupId]: {
+      ...current,
+      items: [entry, ...current.items.filter((item) => item.post.id !== entry.post.id)],
+    },
+  };
 }
 
 export default function App() {

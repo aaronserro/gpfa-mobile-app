@@ -39,11 +39,13 @@ const TYPE_HINT: Record<PostType, string> = {
 export default function PostComposer({
   groups,
   initialGroupId,
+  tagSuggestions = [],
   onClose,
   onCreate,
 }: {
   groups: Group[];
   initialGroupId: string;
+  tagSuggestions?: string[];
   onClose: () => void;
   onCreate: (draft: NewPostInput) => void;
 }) {
@@ -53,12 +55,48 @@ export default function PostComposer({
   const [type, setType] = useState<PostType>('discussion');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [attachmentIds, setAttachmentIds] = useState('');
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState('');
+  const [closesAt, setClosesAt] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [location, setLocation] = useState('');
+  const [registrationUrl, setRegistrationUrl] = useState('');
+  const [isVirtual, setIsVirtual] = useState(false);
 
-  const canPost = title.trim().length > 0;
+  const selectedGroup = groups.find((g) => g.id === groupId);
+  const parsedPollOptions = pollOptions
+    .split('\n')
+    .map((option) => option.trim())
+    .filter(Boolean);
+  const canPost = title.trim().length > 0 && (type !== 'poll' || parsedPollOptions.length >= 2);
 
   const submit = () => {
     if (!canPost) return;
-    onCreate({ groupId, type, title: title.trim(), body: body.trim() });
+    onCreate({
+      groupId,
+      groupSlug: selectedGroup?.slug ?? groupId,
+      type,
+      title: title.trim(),
+      body: body.trim(),
+      tags,
+      attachmentIds: attachmentIds
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+      pollQuestion: pollQuestion.trim() || undefined,
+      pollOptions: parsedPollOptions,
+      closesAt: closesAt.trim() || undefined,
+      startsAt: startsAt.trim() || undefined,
+      endsAt: endsAt.trim() || undefined,
+      timezone: timezone.trim() || undefined,
+      location: location.trim() || undefined,
+      registrationUrl: registrationUrl.trim() || undefined,
+      isVirtual,
+    });
   };
 
   return (
@@ -129,6 +167,34 @@ export default function PostComposer({
             </View>
             <Text style={[styles.hint, { color: t.inkFaint }]}>{TYPE_HINT[type]}</Text>
 
+            {tagSuggestions.length > 0 && (
+              <>
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Tags</Text>
+                <View style={styles.suggestionRow}>
+                  {tagSuggestions.map((tag) => {
+                    const on = tags.includes(tag);
+                    return (
+                      <Pressable
+                        key={tag}
+                        onPress={() =>
+                          setTags((prev) => on ? prev.filter((value) => value !== tag) : [...prev, tag])
+                        }
+                        style={[
+                          styles.suggestionChip,
+                          {
+                            borderColor: on ? t.surfaceAnchor : t.ruleHairline,
+                            backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.suggestionText, { color: on ? t.inkInverse : t.inkMuted }]}>{tag}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Title</Text>
             <Input
               value={title}
@@ -145,6 +211,51 @@ export default function PostComposer({
               multiline
               textAlignVertical="top"
               style={[styles.field, styles.textarea]}
+            />
+
+            {type === 'poll' && (
+              <>
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Poll question</Text>
+                <Input value={pollQuestion} onChangeText={setPollQuestion} placeholder="Question members will answer" style={styles.field} />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Options</Text>
+                <Input
+                  value={pollOptions}
+                  onChangeText={setPollOptions}
+                  placeholder="One option per line"
+                  multiline
+                  textAlignVertical="top"
+                  style={[styles.field, styles.textarea]}
+                />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Closes at</Text>
+                <Input value={closesAt} onChangeText={setClosesAt} placeholder="2026-09-01T17:00:00Z" style={styles.field} />
+              </>
+            )}
+
+            {type === 'event' && (
+              <>
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Starts at</Text>
+                <Input value={startsAt} onChangeText={setStartsAt} placeholder="2026-09-01T17:00:00Z" style={styles.field} />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Ends at</Text>
+                <Input value={endsAt} onChangeText={setEndsAt} placeholder="2026-09-01T18:00:00Z" style={styles.field} />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Timezone</Text>
+                <Input value={timezone} onChangeText={setTimezone} placeholder="America/Toronto" style={styles.field} />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Location</Text>
+                <Input value={location} onChangeText={setLocation} placeholder="Toronto or Zoom" style={styles.field} />
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Registration URL</Text>
+                <Input value={registrationUrl} onChangeText={setRegistrationUrl} placeholder="https://..." autoCapitalize="none" style={styles.field} />
+                <Pressable onPress={() => setIsVirtual((value) => !value)} style={[styles.virtualToggle, { borderColor: t.ruleHairline }]}>
+                  <Text style={[styles.virtualText, { color: t.inkMuted }]}>{isVirtual ? 'Virtual event' : 'In-person or hybrid'}</Text>
+                </Pressable>
+              </>
+            )}
+
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Attachment asset IDs</Text>
+            <Input
+              value={attachmentIds}
+              onChangeText={setAttachmentIds}
+              placeholder="asset_id_1, asset_id_2"
+              autoCapitalize="none"
+              style={styles.field}
             />
           </ScrollView>
 
@@ -249,6 +360,15 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 17,
   },
+  suggestionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 },
+  suggestionChip: {
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 32,
+  },
+  suggestionText: { fontFamily: sans(500), fontSize: 11.5 },
   field: {
     marginTop: 8,
     minHeight: 44,
@@ -257,6 +377,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   textarea: { minHeight: 88 },
+  virtualToggle: {
+    minHeight: 38,
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  virtualText: { fontFamily: sans(500), fontSize: 12.5 },
   post: {
     minHeight: 48,
     borderRadius: 8,

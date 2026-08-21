@@ -35,11 +35,14 @@ export interface EventRow {
 }
 
 export interface PollOption {
+  id?: string;
   label: string;
   votes: number;
 }
 
 export interface Poll {
+  id?: string;
+  questionId?: string;
   q: string;
   closes: string;
   options: PollOption[];
@@ -47,6 +50,10 @@ export interface Poll {
 
 export interface Thread {
   id: string;
+  /** Backend working-group slug for member scoped forum, poll, RSVP and content routes. */
+  groupSlug?: string;
+  /** Backend content target type used by saved/upvote routes. */
+  targetType?: MemberContentTargetType;
   /** Defaults to 'discussion' when the source design didn't classify the post. */
   type?: PostType;
   title: string;
@@ -56,6 +63,7 @@ export interface Thread {
   time: string;
   /** Short status shown beside the type chip, e.g. 'Closes Mon' or 'Oct 8'. */
   state?: string;
+  lifecycle?: 'open' | 'resolved' | 'closed';
   body: string;
   file?: string;
   fileMeta?: string;
@@ -67,6 +75,9 @@ export interface Thread {
   mins?: number;
   /** Topic labels, shown as #chips and collected into the group's About tab. */
   tags?: string[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canChangeStatus?: boolean;
   replies: Reply[];
 }
 
@@ -85,11 +96,15 @@ export interface GroupMember {
 
 export interface Group {
   id: string;
+  /** Backend working-group slug, used by member-scoped group routes. */
+  slug?: string;
   n: string;
   short: string;
   cls: WgRuleClass;
   unread: number;
   meta: string;
+  /** Authoritative count when the listing endpoint returns a summary only. */
+  memberCount?: number;
   /** Roster for the Members tab; its length is the members count everywhere. */
   members: GroupMember[];
   /** Whether the signed-in member is subscribed. Drives which directory section it lands in. */
@@ -97,6 +112,345 @@ export interface Group {
   /** Flags the group as trending in the directory. */
   trending?: boolean;
   threads: Thread[];
+}
+
+export interface WorkingGroupMembership {
+  id: number;
+  memberId: string;
+  workingGroupSlug: string;
+  role: 'member' | 'co_lead';
+  subscriptionStatus: 'subscribed' | 'unsubscribed';
+  updatedAt: string;
+}
+
+export interface ApiSuccess {
+  status: 'success';
+}
+
+export interface WorkingGroupCoLead {
+  id: string;
+  name: string;
+  photo: string | null;
+  role: string;
+  organization: string;
+  initials: string;
+}
+
+export interface FeedAuthor {
+  id?: string;
+  name: string;
+  roleTitle?: string;
+  photo?: string;
+  profileHref?: string;
+  organization: string;
+  organizationAbbreviation?: string;
+  organizationHref?: string;
+}
+
+interface FeedItemBase {
+  id: string;
+  groupSlug: string;
+  groupName: string;
+  href: string;
+  postType: 'discussion' | 'announcement' | 'event' | 'poll';
+  title: string;
+  excerpt?: string;
+  author: FeedAuthor;
+  tags: string[];
+  dateLabel: string;
+  createdAt: string;
+  activityAt: string;
+  sortAt: string;
+  isEdited: boolean;
+  lifecycle: 'open' | 'resolved' | 'closed';
+  upvoteCount: number;
+  hasUpvoted: boolean;
+  repostCount: number;
+  hasReposted: boolean;
+}
+
+export type WorkingGroupFeedItem =
+  | (FeedItemBase & { postType: 'discussion'; replyCount: number })
+  | (FeedItemBase & { postType: 'announcement' })
+  | (FeedItemBase & {
+      postType: 'event';
+      startsAt?: string;
+      startsAtLabel?: string;
+      endsAt?: string;
+      endsAtLabel?: string;
+      timezone?: string;
+      location?: string;
+      registrationUrl?: string;
+      isVirtual?: boolean;
+    })
+  | (FeedItemBase & {
+      postType: 'poll';
+      closesAt?: string;
+      closedAt?: string;
+      questionCount: number;
+      responseCount: number;
+      hasAnswered: boolean;
+    });
+
+export interface WorkingGroupFeedQuery {
+  query?: string;
+  type?: 'all' | 'discussion' | 'announcement' | 'event' | 'poll';
+  status?: 'any' | 'open' | 'closed';
+  sort?: 'newest' | 'oldest' | 'recently_active' | 'most_upvoted';
+  limit?: number;
+  cursor?: string;
+}
+
+export interface WorkingGroupFeedResponse {
+  status: 'success';
+  items: WorkingGroupFeedItem[];
+  nextCursor: string | null;
+  snapshotAt: string;
+  totalMatching: number;
+}
+
+export interface WorkingGroupTagUsageResponse {
+  status: 'success';
+  group: { slug: string; name: string };
+  tags: Array<{ key: string; label: string; count: number }>;
+}
+
+export type WorkingGroupResourceType =
+  | 'document'
+  | 'meeting_material'
+  | 'agenda'
+  | 'minutes'
+  | 'template'
+  | 'report'
+  | 'whitepaper'
+  | 'presentation'
+  | 'external_link'
+  | 'guide'
+  | 'other';
+
+export interface WorkingGroupResourceSubmissionInput {
+  title: string;
+  resourceType?: WorkingGroupResourceType;
+  sourceUrl?: string;
+  summary?: string;
+  contributorNotes?: string;
+  tags?: string | string[];
+  files?: unknown[];
+}
+
+export interface WorkingGroupResourceSubmissionResponse {
+  status: 'success';
+  submission: { id: string; status: string; submittedAt: string };
+}
+
+export interface WorkingGroupEventRsvpInput {
+  threadId: string;
+  groupSlug: string;
+  status: 'attending' | 'not_attending';
+}
+
+export interface MessageResponse {
+  status: 'success';
+  message: string;
+}
+
+export interface RedirectResponse {
+  status: 'success';
+  redirectTo: string;
+}
+
+export interface StatusResponse {
+  status: 'success';
+}
+
+export interface ForumThreadCreateInput {
+  groupSlug: string;
+  postType?: 'discussion' | 'announcement' | 'event';
+  title: string;
+  body?: string;
+  tags?: string;
+  attachmentIds?: string[];
+  startsAt?: string;
+  endsAt?: string;
+  timezone?: string;
+  location?: string;
+  registrationUrl?: string;
+  isVirtual?: 'on' | 'true' | boolean;
+}
+
+export interface ForumThreadUpdateInput {
+  body?: string;
+  title?: string;
+  tags?: string;
+  startsAt?: string;
+  endsAt?: string;
+  timezone?: string;
+  location?: string;
+  registrationUrl?: string;
+  isVirtual?: boolean;
+}
+
+export interface ForumThreadStatusResponse {
+  status: 'success';
+  threadStatus: 'open' | 'answered' | 'closed';
+}
+
+export interface ForumReplyInput {
+  threadId: string;
+  groupSlug: string;
+  body: string;
+  attachmentIds?: string[];
+  parentPostId?: string | null;
+}
+
+export interface ForumUploadPrepareInput {
+  groupSlug: string;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface ForumUploadPrepareResponse {
+  status: 'success';
+  assetId: string;
+  bucket: 'content-assets-private';
+  storagePath: string;
+  signedUrl: string;
+  expectedContentType: string;
+  expectedByteSize: number;
+}
+
+export interface ForumUploadFinalizeInput {
+  groupSlug: string;
+  assetId: string;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface ForumUploadFinalizeResponse {
+  status: 'success';
+  assetId: string;
+  title: string;
+  bucket: string;
+  storagePath: string;
+}
+
+export interface ForumSummarizeInput {
+  threadId: string;
+  groupSlug: string;
+}
+
+export interface ForumSummarizeResponse extends MessageResponse {
+  summary: string;
+}
+
+export interface PollQuestionInput {
+  text: string;
+  options: Array<{ label: string }>;
+}
+
+export interface MemberPollCreateInput {
+  title: string;
+  description?: string | null;
+  tags?: string[];
+  closesAt: string;
+  groupSlug?: string;
+  questions: PollQuestionInput[];
+}
+
+export interface MemberPollUpdateInput {
+  title?: string;
+  description?: string | null;
+  tags?: string[];
+  closesAt?: string;
+  status?: 'active' | 'closed';
+  questions?: PollQuestionInput[];
+}
+
+export interface MemberPoll {
+  id: string;
+  title: string;
+  description?: string | null;
+  tags: string[];
+  author: { id?: string; name: string; [key: string]: unknown };
+  createdAt: string;
+  updatedAt: string;
+  closesAt: string;
+  closedAt?: string | null;
+  totalResponses: number;
+  groupSlug?: string | null;
+  groupName?: string | null;
+  questions: unknown[];
+  upvoteCount: number;
+  hasUpvoted: boolean;
+  repostCount: number;
+  hasReposted: boolean;
+}
+
+export interface MemberPollsResponse {
+  status: 'success';
+  polls: MemberPoll[];
+  resultsByPoll: Record<string, unknown[]>;
+  answersByPoll: Record<string, unknown[]>;
+  member: { id: string; name: string };
+}
+
+export interface MemberPollResponse {
+  status: 'success';
+  poll: MemberPoll;
+}
+
+export interface MemberPollCreateResponse {
+  status: 'success';
+  pollId: string;
+}
+
+export interface MemberPollVoteInput {
+  pollId: string;
+  groupSlug?: string;
+  answers: Array<{ questionId: string; optionId: string }>;
+}
+
+export type MemberContentTargetType = 'thread' | 'event' | 'announcement' | 'poll' | string;
+
+export interface MemberContentTargetInput {
+  targetType: MemberContentTargetType;
+  targetId: string;
+}
+
+export interface MemberContentQuery {
+  targetType?: string;
+  targetId?: string;
+  groupSlug?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MemberContentItem {
+  id: string;
+  member_id: string;
+  target_type: string;
+  target_id: string;
+  created_at: string;
+}
+
+export interface MemberContentListResponse {
+  status: 'success';
+  items: MemberContentItem[];
+  meta: {
+    targetType: string | null;
+    targetId: string | null;
+    groupSlug: string | null;
+    limit: number;
+    offset: number;
+    count: number;
+  };
+}
+
+export interface MemberContentMutationResponse extends MemberContentTargetInput {
+  status: 'success';
+  message: string;
 }
 
 export interface Answer {
@@ -160,12 +514,30 @@ export interface FeedEntry {
   groupId: string;
 }
 
+export interface WorkingGroupThreadFeed {
+  items: FeedEntry[];
+  nextCursor: string | null;
+  totalMatching: number;
+}
+
 /** What the composer collects; the server assigns id, author and timestamps. */
 export interface NewPostInput {
   groupId: string;
+  groupSlug?: string;
   type: PostType;
   title: string;
   body: string;
+  tags?: string[];
+  attachmentIds?: string[];
+  startsAt?: string;
+  endsAt?: string;
+  timezone?: string;
+  location?: string;
+  registrationUrl?: string;
+  isVirtual?: boolean;
+  pollQuestion?: string;
+  pollOptions?: string[];
+  closesAt?: string;
 }
 
 /** An answer from Ask GPFA, with the member material it cites. */
@@ -196,6 +568,27 @@ export interface Member {
    * directory's names, which only works while the strings agree.
    */
   orgId?: string;
+}
+
+/** A notification addressed to the signed-in member. */
+export interface MemberNotification {
+  id: string;
+  /** Backend category for the event, e.g. reply, mention, saved item. */
+  kind?: string;
+  title: string;
+  /** Supporting copy under the title. Omit when the title carries the whole message. */
+  body?: string;
+  /** Display string, e.g. "2h ago" or "Aug 20". The app never parses it. */
+  time?: string;
+  /** False means it contributes to the bell badge. Missing is treated as unread. */
+  read?: boolean;
+  /** Optional deep link or web URL for a later open action. */
+  href?: string;
+  targetType?: string;
+  targetId?: string;
+  contentType?: string;
+  contentId?: string;
+  contentDeletedAt?: string | null;
 }
 
 /** A badge on the calendar card. */

@@ -16,6 +16,15 @@ Code changes:
   - Builds `AUTH_BASE_URL` and `SIGN_IN_URL` from those env vars.
   - Points `ROUTES.login` at `/api/members/sign-in`.
   - Declares `ROUTES.notifications` as `/api/members/notifications`.
+  - Declares `ROUTES.workingGroups` as `/api/members/working-groups`.
+  - Declares `ROUTES.workingGroupMembership` as `/api/members/working-groups/:slug/membership`.
+  - Prepares typed working-group feed/co-lead/tag/subscription/resource routes plus forum, poll, upvote, and saved-content routes under `/api/members/*`.
+- `src/api/portal.ts`
+  - Calls `GET /api/members/notifications` for the header notification bell.
+  - Calls `GET /api/members/working-groups` for Home and the Groups directory.
+  - Calls `GET /api/members/working-groups/:slug/membership` when a group opens.
+  - Uses `POST`/`DELETE /api/members/working-groups/:slug/subscription` for subscribe toggles.
+  - Keeps fixture fallbacks available for fields not returned by ready routes.
 - `src/auth/AuthProvider.tsx`
   - Sends sign-in to `AUTH_BASE_URL + /api/members/sign-in`.
   - Sends `{ email, password, webOrigin }` when `EXPO_PUBLIC_GPFA_WEB_ORIGIN` is set.
@@ -58,12 +67,15 @@ or:
 For bad credentials, the backend should return `401` or `403`. The app then
 shows the invalid-credentials message on the sign-in screen.
 
-The currently migrated authenticated test route is:
+The currently migrated authenticated UI route is:
 
 ```http
 GET /api/members/notifications
 Authorization: Bearer <accessToken>
 ```
+
+After sign-in, the bell in every screen header shows the unread count. Tapping
+it opens the notifications sheet and refetches this route.
 
 ## Recommended Off-Network Setup
 
@@ -130,9 +142,10 @@ EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true
 
 Do not include a trailing slash.
 
-`EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true` means sign-in is real, but portal screens
-continue using local fixture data. Keep it enabled while only auth endpoints are
-migrated. Remove it or set it to `false` once `/me`, `/groups`, `/posts`,
+`EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true` means sign-in, member notifications,
+working groups, and working-group membership are real, but the remaining portal
+screens continue using local fixture data. Keep it enabled while only those
+routes are migrated. Remove it or set it to `false` once `/me`, `/posts`,
 `/news`, and the other portal routes return the mobile contract shapes.
 
 ### 4. Start Expo Tunnel

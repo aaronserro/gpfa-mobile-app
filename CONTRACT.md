@@ -154,10 +154,32 @@ Base URL is prefixed to every path. All bodies are JSON.
 | Method | Path | Used by | Returns |
 | --- | --- | --- | --- |
 | `POST` | `/api/members/sign-in` | Sign-in | `{ accessToken, refreshToken? }` or `{ auth: { accessToken, refreshToken? } }` |
-| `GET` | `/api/members/notifications` | Authenticated member notifications | implementation-specific |
+| `GET` | `/api/members/notifications` | Header notification bell | `MemberNotification[]`, newest first |
+| `GET` | `/api/members/working-groups` | Home + Groups directory | `WorkingGroupsResponse` |
+| `GET` | `/api/members/working-groups/:slug/membership` | Group subscribe state | `WorkingGroupMembershipResponse` |
+| `GET` | `/api/members/working-groups/:slug/co-leads` | Group detail About/Members | `{ status, members: WorkingGroupCoLead[] }` |
+| `GET` | `/api/members/working-groups/:slug/feed` | Group detail infinite feed | `WorkingGroupFeedResponse` |
+| `GET` | `/api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared route | `{ status, item: WorkingGroupFeedItem }` |
+| `GET` | `/api/members/working-groups/:slug/tag-usage` | Create post tag suggestions | `WorkingGroupTagUsageResponse` |
+| `POST`/`DELETE` | `/api/members/working-groups/:slug/subscription` | Group header + About tab | ignored |
+| `POST` | `/api/members/working-groups/:slug/resource-submissions` | Prepared route | `WorkingGroupResourceSubmissionResponse` |
+| `POST` | `/api/members/working-groups/events/rsvp` | Event detail RSVP | `{ status, message }` |
+| `POST` | `/api/members/forum/threads` | Create post sheet | `{ status, redirectTo }` |
+| `PATCH`/`DELETE` | `/api/members/forum/threads/:threadId` | Post detail edit/delete controls | `{ status }` |
+| `PATCH` | `/api/members/forum/threads/:threadId/status` | Post detail status controls | `{ status, threadStatus }` |
+| `POST` | `/api/members/forum/replies` | Post detail reply composer | `{ status, message }` |
+| `DELETE` | `/api/members/forum/replies/:replyId` | Prepared route | `{ status }` |
+| `POST` | `/api/members/forum/uploads/prepare` | Prepared route | `ForumUploadPrepareResponse` |
+| `POST` | `/api/members/forum/uploads/finalize` | Prepared route | `ForumUploadFinalizeResponse` |
+| `POST` | `/api/members/forum/summarize` | Post detail summarize action | `ForumSummarizeResponse` |
+| `GET`/`POST` | `/api/members/polls` | Poll detail/create poll | `MemberPollsResponse` / `{ status, pollId }` |
+| `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Prepared route | `MemberPollResponse` / `{ status }` |
+| `POST` | `/api/members/polls/vote` | Poll detail vote action | `{ status, message }` |
+| `GET`/`POST`/`DELETE` | `/api/members/upvotes` | Feed/detail upvote actions | member content list / mutation response |
+| `GET`/`POST`/`DELETE` | `/api/members/saved-content` | Feed/detail save actions | member content list / mutation response |
 | `GET` | `/me` | Greeting, avatars, authorship | `Member` |
 | `GET` | `/me/saved` | Member profile → Saved | `LibraryResource[]`, newest first |
-| `GET` | `/groups` | Home, Groups drawer | `Group[]` |
+| `GET` | `/groups` | Home, Groups drawer | legacy `Group[]` shape, not used while `/api/members/working-groups` is configured |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
 | `GET` | `/news` | News screen + Home digest + Resources → News | `NewsStory[]`, newest first |
@@ -174,7 +196,7 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `POST`/`DELETE` | `/posts/:id/upvote` | Feed + detail | ignored |
 | `POST`/`DELETE` | `/posts/:id/save` | Feed + detail bookmark | ignored |
 | `POST`/`DELETE` | `/posts/:id/replies/:replyId/upvote` | Post detail | ignored |
-| `POST`/`DELETE` | `/groups/:id/subscribe` | Group header + About tab | ignored |
+| `POST`/`DELETE` | `/groups/:id/subscribe` | Legacy group subscription route | ignored |
 | `POST` | `/posts/:id/vote` | Poll | ignored |
 | `POST` | `/posts/:id/rsvp` | Event post | ignored |
 
@@ -220,6 +242,127 @@ entry can't disagree. An empty array renders the profile's empty state.
 
 There is no mutation for this yet: `POST`/`DELETE /posts/:id/save` bookmarks a
 **post**, and nothing in the app writes to `/me/saved`. See §8.
+
+**`GET /api/members/notifications` → `MemberNotification[]`**
+
+Notifications for the signed-in member, newest first. The request includes the
+stored token:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+The API currently returns `{ "status": "success", "memberCreatedAt": "...",
+"notifications": [...] }`. The app reads the `notifications` array and
+normalizes each row. It also tolerates common aliases such as `_id`, `uuid`,
+`subject`, `message`, `text`, `createdAt`, `date`, `isRead`, and `readAt`, but
+this is the target shape:
+
+```json
+[
+  {
+    "id": "notif-cl1",
+    "kind": "reply",
+    "title": "New reply in Collateral & Liquidity",
+    "body": "Priya Nair commented on the indemnification comparison matrix thread.",
+    "created_at": "2026-08-20T12:34:56.000Z",
+    "read": false,
+    "navigation_href": "/members/...",
+    "target_type": "member",
+    "target_id": "...",
+    "content_type": "post",
+    "content_id": "...",
+    "content_deleted_at": null,
+    "readAt": null
+  }
+]
+```
+
+`read: false` or a missing `read` value counts toward the bell badge. `href` is
+stored from `navigation_href` for a later open action; the current sheet only
+displays the list.
+
+**`GET /api/members/working-groups` → `WorkingGroupsResponse`**
+
+Member-scoped working group summary. The request includes the stored token:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+The app calls this route after sign-in whenever `EXPO_PUBLIC_API_URL` is set,
+even if `EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true`. That lets the ready working
+group route power Home and the Groups directory while the rest of the portal can
+remain on fixtures.
+
+```ts
+type WorkingGroupsResponse = {
+  status: 'success';
+  groups: Array<{
+    slug: string;
+    name: string;
+    description: string;
+    leadLabel: string;
+    color: string;
+    cardImageUrl?: string;
+    unread?: number;
+    topic?: string;
+    members?: number;
+    memberRole?: 'member' | 'co_lead';
+  }>;
+  threads: Array<{
+    groupSlug: string;
+    updatedAt: string;
+    replies?: number;
+    upvoteCount?: number;
+  }>;
+  joinedSlugs: string[];
+  home: {
+    groups: Array<{ slug: string; href: string; name: string; unread: number | null }>;
+    threads: Array<{
+      id: string;
+      href: string;
+      title: string;
+      groupName: string;
+      authorName: string;
+      replies: number;
+      age: string;
+      unread: boolean;
+      participants: Array<{ id: string; name: string; initials: string }>;
+    }>;
+  };
+};
+```
+
+`src/api/portal.ts` maps this summary into the app's existing `Group[]` shape.
+Fields not returned by this endpoint, such as detailed member rosters and full
+post bodies, fall back to local fixtures for now.
+
+**`GET /api/members/working-groups/:slug/membership` → `WorkingGroupMembershipResponse`**
+
+Member-scoped membership state for one working group. The app calls this when a
+member opens a working group and uses `subscriptionStatus` to refresh the group
+header's Subscribe/Subscribed state.
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+```ts
+type WorkingGroupMembershipResponse = {
+  status: 'success';
+  membership: {
+    id: number;
+    memberId: string;
+    workingGroupSlug: string;
+    role: 'member' | 'co_lead';
+    subscriptionStatus: 'subscribed' | 'unsubscribed';
+    updatedAt: string;
+  } | null;
+};
+```
+
+`membership: null` is treated as not subscribed.
 
 **`GET /events/next` → `CalendarEvent | null`**
 
@@ -693,10 +836,8 @@ Honest list of what is *not* handled, in rough priority order:
    its consumers.
 5. **Search is client-side** (§6). Server-side search means a new endpoint and
    moving the query out of `GroupsScreen`.
-6. **Not wired to anything:** the notification bell — now drawn by
-   `ScreenHeader` on *every* screen, so wiring it means one endpoint and one
-   change in `src/ds/primitives.tsx` — plus the per-card `⋯` menu, "Forgot
-   password?", and Share / send on feed cards.
+6. **Not wired to anything:** the per-card `⋯` menu, "Forgot password?", and
+  Share / send on feed cards.
 7. **Composer captures only** group, type, title, body. A poll created in-app
    has no options; an event has no date rows.
 8. **Saved is read-only.** The member profile lists `GET /me/saved`, but nothing
