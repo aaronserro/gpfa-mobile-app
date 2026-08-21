@@ -415,7 +415,7 @@ export function setWorkingGroupEventRsvp(input: WorkingGroupEventRsvpInput): Pro
 
 export function createForumThread(input: ForumThreadCreateInput): Promise<RedirectResponse | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<RedirectResponse | null>();
-  return request<RedirectResponse>(ROUTES.forumThreads, { method: 'POST', body: input });
+  return request<RedirectResponse>(ROUTES.forumThreads, { method: 'POST', body: forumThreadFormData(input) });
 }
 
 export function updateForumThread(threadId: string, input: ForumThreadUpdateInput): Promise<StatusResponse | null> {
@@ -698,6 +698,36 @@ function groupRuleClass(row: WorkingGroupRow, index: number): WgRuleClass {
     'wg-rule-general',
   ];
   return classes[index % classes.length];
+}
+
+function forumThreadFormData(input: ForumThreadCreateInput): FormData {
+  const form = new FormData();
+  form.append('groupSlug', input.groupSlug);
+  form.append('postType', input.postType ?? 'discussion');
+  form.append('title', input.title);
+  form.append('body', input.body ?? '');
+  form.append('tags', input.tags ?? '');
+
+  if (input.postType === 'event') {
+    form.append('startsAt', toIsoStringOrEmpty(input.startsAt));
+    form.append('endsAt', toIsoStringOrEmpty(input.endsAt));
+    form.append('timezone', input.timezone ?? '');
+    form.append('location', input.location ?? '');
+    form.append('registrationUrl', input.registrationUrl ?? '');
+    form.append('isVirtual', input.isVirtual ? 'true' : 'false');
+  }
+
+  for (const id of input.attachmentIds ?? []) {
+    form.append('attachmentIds', id);
+  }
+
+  return form;
+}
+
+function toIsoStringOrEmpty(value: string | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
 function shortGroupName(name: string): string {

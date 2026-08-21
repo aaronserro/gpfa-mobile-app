@@ -149,7 +149,7 @@ field if present.
 
 ## 4. Endpoints
 
-Base URL is prefixed to every path. All bodies are JSON.
+Base URL is prefixed to every path. Bodies are JSON unless a route explicitly notes another format.
 
 | Method | Path | Used by | Returns |
 | --- | --- | --- | --- |
@@ -164,7 +164,7 @@ Base URL is prefixed to every path. All bodies are JSON.
 | `POST`/`DELETE` | `/api/members/working-groups/:slug/subscription` | Group header + About tab | ignored |
 | `POST` | `/api/members/working-groups/:slug/resource-submissions` | Prepared route | `WorkingGroupResourceSubmissionResponse` |
 | `POST` | `/api/members/working-groups/events/rsvp` | Event detail RSVP | `{ status, message }` |
-| `POST` | `/api/members/forum/threads` | Create post sheet | `{ status, redirectTo }` |
+| `POST` | `/api/members/forum/threads` | Create post sheet | `multipart/form-data` → `{ status, redirectTo }` |
 | `PATCH`/`DELETE` | `/api/members/forum/threads/:threadId` | Post detail edit/delete controls | `{ status }` |
 | `PATCH` | `/api/members/forum/threads/:threadId/status` | Post detail status controls | `{ status, threadStatus }` |
 | `POST` | `/api/members/forum/replies` | Post detail reply composer | `{ status, message }` |
@@ -419,6 +419,28 @@ right now."* — the screen does not throw.
 Body is `NewPostInput`. Return the created post; the app swaps its optimistic
 placeholder for your record so the real `id` and timestamps take effect.
 
+**`POST /api/members/forum/threads` → `{ status, redirectTo }`**
+
+The mobile app sends this as `multipart/form-data` with the bearer token. Do not
+require a client-supplied `Content-Type`; React Native/fetch adds the boundary.
+
+Fields:
+
+```ts
+groupSlug: string;
+postType: 'discussion' | 'announcement' | 'event';
+title: string;
+body: string;
+tags: string;
+startsAt?: string;          // ISO string for event posts
+endsAt?: string;            // ISO string or empty string for event posts
+timezone?: string;
+location?: string;
+registrationUrl?: string;
+isVirtual?: 'true' | 'false';
+attachmentIds?: string[];   // repeated multipart field
+```
+
 **`POST /posts/:id/replies` → `Reply`**
 
 Body is `{ "text": "…" }`. The author is the authenticated member — do not trust
@@ -470,6 +492,205 @@ checks for a non-error status.
   organization; the app blocks a second vote client-side, but **enforce it
   server-side**.
 - RSVP: `{ "choice": "yes" | "no" }`.
+
+---
+
+### 4.2 GPFA web API workflow contracts (2026-08-21)
+
+This section inventories the GPFA web app routes that matter to the first mobile
+pass. The source API lives in `../gpfa-modern/app/api`; the mobile route map
+lives in `src/api/config.ts`; the mapping layer is `src/api/portal.ts`.
+
+Status legend:
+
+| Status | Meaning |
+| --- | --- |
+| Current | `src/api/config.ts` points at the GPFA web API path and `src/api/portal.ts` has a repository function for it. |
+| Prepared | Route constants and types exist, but no required screen calls it yet. Keep the contract accurate before turning it on. |
+| Deferred | A GPFA web route exists, but the mobile app still points at a legacy placeholder or the route still needs a mobile auth/mapping pass. |
+| Excluded | Do not include in the first mobile pass unless a real mobile screen or workflow is added. |
+
+Auth legend:
+
+| Auth | Contract |
+| --- | --- |
+| Public | No bearer token. Still validate and rate-limit attacker-controlled input. |
+| Member bearer-ready | `Authorization: Bearer <accessToken>` is supported by the route through `getApiMemberAuth(request)`. Invalid bearer headers fail closed and do not fall back to cookies. |
+| Active member, migration needed | The web route requires an active member session through the browser-oriented member helper. Do not treat it as mobile-ready until bearer auth is verified or migrated. |
+| Organization admin | Active member plus organization-admin authorization. Excluded unless an org-admin mobile screen exists. |
+| Global admin / cron / webhook | Not a mobile member API. Excluded from this pass. |
+
+Universal response rules for GPFA web API routes:
+
+- Successful JSON responses include `status: "success"` unless the route is a
+  legacy placeholder still mapped in `portal.ts`.
+- Error JSON responses include `status: "error"` and a human-readable
+  `message`; validation errors may include `errors`.
+- Mobile treats any `401` or `403` as session-ending and returns to sign-in.
+- Required member routes must prove both Supabase identity and active GPFA
+  membership. A valid Supabase account is not enough.
+- Responses must not include member emails, app roles, inactive/lock reasons,
+  organization domain allowlists, private metadata, extracted document text, or
+  service-role-only fields.
+- Member-specific reads should use `Cache-Control: private, no-store` where the
+  web route returns account-scoped data.
+- Empty states are honest empty payloads, not fallback data: `[]`, `null`, or an
+  empty page with `nextCursor: null` as appropriate.
+
+#### Auth and session
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `POST /api/members/sign-in` | Current / Public, rate-limited. Source: `members/sign-in/route.ts`. | JSON `{ email, password, responseMode?: "token" | "cookie", webOrigin? }`. Mobile should send `responseMode: "token"`; no `Authorization` header. | `{ status: "success", redirectTo, memberId, auth: { tokenType: "bearer", accessToken, refreshToken, expiresAt, expiresIn } }`. The app also accepts flat token aliases for adapter flexibility. | No pagination. Invalid credentials, locked, inactive, unverified, and non-member accounts fail before tokens are returned, normally `401` with `status: "error"`. |
+| `POST /api/members/sign-out` | Deferred / web session route. Source: `members/sign-out/route.ts`. | No body. | Redirect or status response depending on caller. | Mobile sign-out is local-only today; do not call until a token-mode logout/session endpoint is added. |
+| `POST /api/members/forgot-password` | Deferred / Public, rate-limited. Source: `members/forgot-password/route.ts`. | JSON `{ email }`. | `{ status: "success" }` or uniform recovery message. | No pagination. Keep account discovery narrow; the current mobile app has no forgot-password UI. |
+| `POST /api/members/reset-password` | Deferred / Public token flow. Source: `members/reset-password/route.ts`. | JSON reset token plus password fields. | `{ status: "success" }`. | No pagination. Invalid or expired token returns `400`/`401`; not part of first mobile shell. |
+| `POST /api/members/change-password` | Deferred / active member, migration needed. Source: `members/change-password/route.ts`. | JSON `{ currentPassword, newPassword }`. | `{ status: "success" }`. | No pagination. `401` when not active; validation errors return `400`. Requires a profile/settings mobile screen. |
+| `POST /api/auth/verify-email-link` | Deferred / Public token flow. Source: `auth/verify-email-link/route.ts`. | JSON `{ token }`. | `{ status: "success" }`. | No pagination. Invalid token returns error; include only when mobile owns email verification. |
+
+#### Member profile and onboarding
+
+These routes are mobile workflows, but the current app does not yet have a
+profile/settings tab that calls the GPFA web API. Treat them as deferred until
+`ROUTES.me`, profile editing, avatar upload, and onboarding routes are remapped
+from legacy placeholders to `/api/members/*` paths.
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `PATCH /api/members/profile` | Deferred / active member, migration needed. Source: `members/profile/route.ts`. | JSON `{ fullName, roleTitle, country, bio }`. | `{ status: "success" }`. | No pagination. Invalid body returns `400` with field errors; unauthenticated/inactive returns `401`; write failures return `500`. |
+| `PATCH /api/members/email-preferences` | Deferred / active member, migration needed. Source: `members/email-preferences/route.ts`. | JSON preference booleans keyed by email category. | `{ status: "success" }`. | No pagination. Add only with a notifications/settings screen. |
+| `GET /api/members/onboarding/state` | Deferred / active member, migration needed. Source: `members/onboarding/state/route.ts`. | No body. | Current onboarding step/state payload. | No pagination. Empty state is the server-defined incomplete/completed state, not a guessed client fallback. |
+| `POST /api/members/onboarding/profile` | Deferred / active member, migration needed. Source: `members/onboarding/profile/route.ts`. | JSON profile details matching `MemberProfileDetailsSchema`. | `{ status: "success" }`. | No pagination. Validation `400`; inactive/unauthenticated `401`. |
+| `POST /api/members/onboarding/password` | Deferred / active member, migration needed. Source: `members/onboarding/password/route.ts`. | JSON password payload. | `{ status: "success" }`. | No pagination. Validation `400`; auth errors `401`. |
+| `POST /api/members/onboarding/complete` | Deferred / active member, migration needed. Source: `members/onboarding/complete/route.ts`. | No body. | `{ status: "success" }`. | No pagination. Missing active profile fails closed. |
+| `POST /api/members/avatar/prepare` | Deferred / active member, migration needed. Source: `members/avatar/prepare/route.ts`. | JSON filename/content-type/size metadata. | Direct-upload URL and server upload identifier. | No pagination. Validation `400`; storage errors `500`. |
+| `POST /api/members/avatar/finalize` | Deferred / active member, migration needed. Source: `members/avatar/finalize/route.ts`. | JSON upload identifier. | `{ status: "success" }` plus persisted avatar metadata. | No pagination. Invalid upload `400`/`404`; storage errors `500`. |
+| `DELETE /api/members/avatar` | Deferred / active member, migration needed. Source: `members/avatar/route.ts`. | No body. | `{ status: "success" }`. | Empty state is no avatar; UI may fall back to initials. |
+| `POST /api/members/avatar/linkedin` | Deferred / active member, migration needed. Source: `members/avatar/linkedin/route.ts`. | No body or provider payload as implemented by the route. | `{ status: "success" }` plus avatar result. | External-provider errors should surface as recoverable failures. |
+
+#### Notifications
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/notifications` | Current / Member bearer-ready. Source: `members/notifications/route.ts`. | No query params. | `{ status: "success", memberCreatedAt, notifications: MemberNotification[] }`. `portal.ts` normalizes `notifications` into `MemberNotification[]`. | Newest first, route-limited to the latest notification window. Empty state is `notifications: []`. `401` when not active; malformed rows are logged/dropped rather than rendered. |
+| `POST /api/members/notifications/read` | Deferred / active member, migration needed. Source: `members/notifications/read/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", readAt }`. | No pagination. Validation `400`; `401` when not active; `500` on write failure. Add when the mobile sheet supports mark-read sync. |
+| `POST /api/members/notifications/dismiss` | Deferred / active member, migration needed. Source: `members/notifications/dismiss/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", dismissedAt }`. | No pagination. Same validation/auth/write errors as mark-read. Empty state after dismissal is a shorter notifications list. |
+
+#### Working groups
+
+These are the core current mobile integration routes. They are member-scoped,
+bearer-ready unless noted, and are mapped in `src/api/config.ts`.
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/working-groups` | Current / Member bearer-ready. Source: `members/working-groups/route.ts`. | No query params. | `{ status, groups, threads, joinedSlugs, home }`; mapped to `Group[]` in `portal.ts`. | Server returns summary order for the directory/home. Empty state is `groups: []`, `threads: []`, `joinedSlugs: []`. `401` when not active; `500` on load failure. |
+| `GET /api/members/working-groups/:slug/membership` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/membership/route.ts`. | Path `slug`. | `{ status: "success", membership: WorkingGroupMembership | null }`. | No pagination. `membership: null` means not subscribed. Invalid/inaccessible slug returns an error without granting mutation rights. |
+| `GET /api/members/working-groups/:slug/co-leads` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/co-leads/route.ts`. | Path `slug`. | `{ status: "success", members: WorkingGroupCoLead[] }`. | Sorted by server helper; no pagination. Empty state is `members: []`. `401` when inactive; inaccessible group should fail closed. |
+| `GET /api/members/working-groups/:slug/feed` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/route.ts`. | Query `query?`, `type?`, `status?`, `sort?`, `limit?`, `cursor?`; path `slug`. | `WorkingGroupFeedResponse`: `{ status, items, nextCursor, snapshotAt, totalMatching }`. | Cursor pagination. Sort values are `newest`, `oldest`, `recently_active`, `most_upvoted`. Empty page is `items: []`, `nextCursor: null`, `totalMatching: 0`. Invalid filters/cursors return `400`; auth errors `401`; group visibility errors should not leak private data. |
+| `GET /api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/feed/items/[itemType]/[itemId]/route.ts`. | Path `slug`, `itemType`, `itemId`. | `{ status: "success", item: WorkingGroupFeedItem }`. | No pagination. Unknown or inaccessible items should return the same not-found shape where practical. |
+| `GET /api/members/working-groups/:slug/tag-usage` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/tag-usage/route.ts`. | Query `query?`/`q?`, `limit?`; path `slug`. | `WorkingGroupTagUsageResponse`: `{ status, group, tags: [{ key, label, count }] }`. | Server-ranked tag suggestions, limited by query. Empty state is `tags: []`. Validation/auth errors as above. |
+| `POST /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/subscription/route.ts`. | Path `slug`; no body required. | Success response is ignored by the app; route records subscription. | No pagination. Idempotent subscribe semantics are preferred because mobile writes optimistically. `401` inactive; `404`/`403` for invalid group; write errors `500`. |
+| `DELETE /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: same route. | Path `slug`; no body required. | Success response is ignored by the app; route removes subscription. | No pagination. Empty state is unsubscribed membership. Same auth/error contract as subscribe. |
+| `POST /api/members/working-groups/:slug/resource-submissions` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | JSON `WorkingGroupResourceSubmissionInput`: `title`, optional `resourceType`, `sourceUrl`, `summary`, `contributorNotes`, `tags`, `files`. | `WorkingGroupResourceSubmissionResponse`: `{ status, submission: { id, status, submittedAt } }`. | No pagination. Validation `400`; group/subscription auth failure `401`/`403`; write failure `500`. |
+| `POST /api/members/working-groups/events/rsvp` | Current / Member bearer-ready. Source: `members/working-groups/events/rsvp/route.ts`. | JSON `{ threadId, groupSlug, status: "attending" | "not_attending" }`. | `{ status: "success", message }`. | No pagination. Empty state is no RSVP. Mobile writes optimistically; route should be idempotent per member/event. |
+
+#### Forum and posts
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `POST /api/members/forum/threads` | Current / Member bearer-ready. Source: `members/forum/threads/route.ts`. | `multipart/form-data` built from `ForumThreadCreateInput`: `groupSlug`, `postType`, `title`, `body`, `tags`, optional event fields and repeated `attachmentIds`. | `{ status: "success", redirectTo }`. The app currently returns `null` after success and refetches later. | No pagination. Validation `400`; must verify active group contribution rights; auth `401`; permission `403`; server errors `500`. |
+| `PATCH /api/members/forum/threads/:threadId` | Current / Member bearer-ready. Source: `members/forum/threads/[threadId]/route.ts`. | JSON `ForumThreadUpdateInput`: `title?`, `body?`, `tags?`, optional event fields. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. Unknown/inaccessible thread should not disclose more than needed. |
+| `DELETE /api/members/forum/threads/:threadId` | Current / Member bearer-ready. Source: same route. | Path `threadId`; no body. | `{ status: "success" }`. | No pagination. Mobile rolls back optimistic deletion on failure. Owner/moderator checks required. |
+| `PATCH /api/members/forum/threads/:threadId/status` | Current / Member bearer-ready. Source: `members/forum/threads/[threadId]/status/route.ts`. | JSON `{ status: "open" | "answered" | "closed" }`. | `{ status: "success", threadStatus }`. | No pagination. Co-lead/moderator authorization required; invalid status `400`; auth `401`/`403`. |
+| `POST /api/members/forum/replies` | Current / Member bearer-ready. Source: `members/forum/replies/route.ts`. | JSON `{ threadId, groupSlug, body, attachmentIds?, parentPostId? }`. | `{ status: "success", message }`. | No pagination. Empty reply rejected. Must verify active member and group contribution rights. |
+| `DELETE /api/members/forum/replies/:replyId` | Prepared / Member bearer-ready. Source: `members/forum/replies/[replyId]/route.ts`. | Path `replyId`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
+| `POST /api/members/forum/uploads/prepare` | Prepared / Member bearer-ready. Source: `members/forum/uploads/prepare/route.ts`. | JSON `{ groupSlug, fileName, contentType, byteSize }`. | `ForumUploadPrepareResponse`: upload `assetId`, bucket, storage path, signed URL, expected content type/size. | No pagination. Validate type/size before issuing URL. |
+| `POST /api/members/forum/uploads/finalize` | Prepared / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | No pagination. Reject mismatched upload metadata; storage errors `500`. |
+| `POST /api/members/forum/summarize` | Current / Member bearer-ready. Source: `members/forum/summarize/route.ts`. | JSON `{ threadId, groupSlug }`. | `ForumSummarizeResponse`: `{ status, message, summary }`. | No pagination. Must verify readable group content; rate-limit/AI errors should return clear `status: "error"` messages. |
+
+#### Polls
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/polls` | Current / Member bearer-ready. Source: `members/polls/route.ts`. | Query `groupSlug?`, `cursor?`, `limit?`. | `MemberPollsResponse`: `{ status, polls, resultsByPoll, answersByPoll, member }`. | Cursor pagination where supplied; default server order is newest/relevant poll order. Empty state is `polls: []`. Invalid query `400`; auth `401`. |
+| `POST /api/members/polls` | Current / Member bearer-ready. Source: same route. | JSON `MemberPollCreateInput`: `title`, `description?`, `tags?`, `closesAt`, `groupSlug?`, `questions[]`. | `{ status: "success", pollId }`. | No pagination. Validate at least one question and options; contributor auth required for group polls. |
+| `GET /api/members/polls/:id` | Prepared / Member bearer-ready. Source: `members/polls/[id]/route.ts`. | Path `id`. | `MemberPollResponse`: `{ status, poll }`. | No pagination. Unknown/inaccessible poll should return not-found/permission-safe error. |
+| `PUT /api/members/polls/:id` | Prepared / Member bearer-ready. Source: same route. | JSON `MemberPollUpdateInput`. | `{ status: "success" }`. | No pagination. Owner/moderator checks required; validation `400`. |
+| `DELETE /api/members/polls/:id` | Prepared / Member bearer-ready. Source: same route. | Path `id`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
+| `POST /api/members/polls/vote` | Current / Member bearer-ready. Source: `members/polls/vote/route.ts`. | JSON `{ pollId, groupSlug?, answers: [{ questionId, optionId }] }`. | `{ status: "success", message }`. | No pagination. Server must enforce one valid vote set per member/question; validation `400`; closed/inaccessible poll errors should fail closed. |
+
+#### Saved content and upvotes
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/saved-content` | Current / Member bearer-ready. Source: `members/saved-content/route.ts`. | Query `targetType?`, `targetId?`, `groupSlug?`, `limit?`, `offset?`. | `MemberContentListResponse`: `{ status, items, meta }`. | Offset pagination. Newest saved first. Empty state is `items: []`, `meta.count: 0`. Invalid filters `400`; auth `401`. |
+| `POST /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`; first-pass target types are `thread`, `event`, `announcement`, `poll`. | `MemberContentMutationResponse`: `{ status, message, targetType, targetId }`. | No pagination. Prefer idempotent save semantics. Must verify visibility/subscription for group content. |
+| `DELETE /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`. | `MemberContentMutationResponse`. | No pagination. Empty state is target not saved. Mobile rolls back optimistic state on failure. |
+| `GET /api/members/upvotes` | Current / Member bearer-ready. Source: `members/upvotes/route.ts`. | Query `targetType?`, `targetId?`, `groupSlug?`, `limit?`, `offset?`. | `MemberContentListResponse`. | Offset pagination. Newest upvote first. Empty state is `items: []`. |
+| `POST /api/members/upvotes` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`; first-pass targets are `thread`, `event`, `announcement`, `poll`. Reply upvotes are a mobile route dependency to verify before relying on persistence. | `MemberContentMutationResponse`. | No pagination. Idempotent upvote preferred; must verify visibility. |
+| `DELETE /api/members/upvotes` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`. | `MemberContentMutationResponse`. | No pagination. Empty state is target not upvoted. |
+
+#### Resources, library, podcasts, jobs, directory, news, and events
+
+The GPFA web routes below exist, but the mobile app still points at legacy
+placeholder paths for these screens. Remap `ROUTES` and adapt the response in
+`portal.ts` before treating them as remote-ready. Most currently use the
+browser-oriented active-member helper, so verify bearer support during the remap.
+
+| Workflow | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- | --- |
+| Resources/library | `GET /api/members/resources` | Deferred / active member, migration needed. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[] }`. Map to `LibraryResource[]`. | Server-defined resource order; no pagination. Empty state `resources: []`. `401` inactive; `500` load failure. |
+| Podcasts | `GET /api/members/podcasts` | Deferred / active member, migration needed. Source: `members/podcasts/route.ts`. | No query params. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. |
+| Jobs | `GET /api/members/job-postings` | Deferred / active member, migration needed. Source: `members/job-postings/route.ts`. | Query `page?` default `1`, `pageSize?` default `20`, max `100`. | Active job-posting page from `getCachedActiveJobPostings`. Map to `JobListing[]`. | Page-based pagination. Empty page is an empty jobs array with total metadata. Invalid pagination `400`; auth `401`; load failure `500`. |
+| Jobs write | `POST /api/members/job-postings`, `PATCH/DELETE /api/members/job-postings/:jobId` | Excluded first pass / Organization admin. Sources: job posting routes. | JSON job posting payload for create/update; path `jobId` for update/delete. | `{ status: "success", jobPosting }` or `{ status: "success" }`. | Org-admin mobile workflow does not exist; exclude until it does. |
+| Directory people | `GET /api/members/directory` | Deferred / active member, migration needed. Source: `members/directory/route.ts`. | Query `query?`, `workingGroupSlug?`, `region?`, `limit?` clamped by server. | `{ status: "success", members: DirectoryMember[] }`. Map to `DirectoryPerson[]`. | Sorted by `full_name` ascending before optional region filter. Empty state `members: []`. Invalid/internal query failures return `500`; auth `401`. |
+| Directory detail | `GET /api/members/directory/:memberId` | Deferred / active member, migration needed. Source: `members/directory/[memberId]/route.ts`. | Path `memberId`. | Member profile/detail DTO and organization fields. | No pagination. Unknown/inaccessible profile should return safe not-found. |
+| Directory organizations | `GET /api/members/directory/organizations` | Deferred / active member, migration needed. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations: MemberOrg[] }`. | Server order should be A-Z for mobile grouping. Empty state `organizations: []`. Auth `401`; load failure `500`. |
+| News feed | `GET /api/members/news` | Deferred / active member, migration needed. Source: `members/news/route.ts`. | No query params. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order; no pagination. Empty state `items: []`. |
+| News Radar | `GET /api/members/news-radar` | Deferred / active member, migration needed. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
+| Events | `GET /api/members/events` | Deferred / active member, migration needed. Source: `members/events/route.ts`. | No query params. | `{ status: "success", events }`. | Server event order, includes past per route implementation. Empty state `events: []`. |
+| Event RSVP | `POST /api/members/events/rsvp` | Deferred / active member, migration needed. Source: `members/events/rsvp/route.ts`. | JSON event ID plus RSVP state as defined by the web route. | `{ status: "success", message }`. | Prefer idempotent writes. The current mobile app uses the working-group event RSVP route for feed event posts. |
+
+#### Ask GPFA
+
+The current mobile Ask GPFA screen uses legacy `/ask` and `/ask/suggestions`
+contracts. The web app exposes conversation-based member routes; mobile should
+move to these routes when it can handle conversation IDs and SSE streaming.
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/route.ts`. | No query params. | `{ status: "success", conversations }`. | Sorted by `updated_at` descending, limited to 20. Empty state `conversations: []`. Auth `401`; load failure `500`. |
+| `POST /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: same route. | JSON `{ title?: string }`, max 120 chars. | `{ status: "success", conversation }`. | No pagination. Validation `400`; auth `401`; create failure `500`. |
+| `GET /api/members/knowledge/conversations/:id` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/[id]/route.ts`. | Path `id`; query `before?` cursor for earlier messages. | `{ status, conversation, messages, hasEarlier, earlierCursor }`. | Cursor pagination backward through messages. Empty state `messages: []`. Invalid cursor `400`; unknown/not-owned conversation `404`. |
+| `POST /api/members/knowledge/messages/stream` | Deferred / active member, migration needed. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Server-sent event stream with ready/persisted answer events, plus persisted conversation/message records. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON as implemented. |
+
+#### Public membership
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `POST /api/membership/applications` | Deferred / Public, rate-limited. Source: `membership/applications/route.ts`. | JSON membership application payload for applicant and organization details. | `{ status: "success" }` plus application result fields from the route. | No pagination. Validation `400`; rate limit `429`; server errors `500`. Include only if the mobile app owns public signup. |
+
+#### First-pass exclusions
+
+The following route groups were inventoried and deliberately excluded from the
+first mobile pass. Add them only with a corresponding mobile screen/workflow and
+a fresh auth/privacy review.
+
+| Route group | Examples | Reason for exclusion |
+| --- | --- | --- |
+| Global admin console | `/api/admin/members/*`, `/api/admin/organizations/*`, `/api/admin/content/*`, `/api/admin/knowledge/*`, `/api/admin/surveys/*`, `/api/admin/working-groups/*`, `/api/admin/marketing-campaigns/*`, `/api/admin/search` | Global-admin dashboard workflows. They require `requireAdminMember` and expose privileged state. |
+| Admin annual meeting tooling | `/api/admin/annual-meeting/*` | Complex web dashboard workflow for drafts, assets, registrations, exports, and activation. No mobile admin screen. |
+| Organization member management | `/api/members/organization/members/:id`, `/status`, `/role` | Organization-admin management, not member self-service. Exclude until an org-admin mobile flow exists. |
+| Organization profile mutation | `PATCH /api/members/organization` | Organization-admin self-service. Defer unless the mobile app adds organization settings. |
+| Member setup/email-access | `/api/members/setup-link`, `/api/members/email-access` | Web staged sign-in/setup flows with account-state disclosure rules. Not part of current native session flow. |
+| Annual meeting member registration/assets | `/api/members/annual-meeting/registration`, `/api/members/annual-meeting/assets/:assetId` | Web-specific registration and asset workflows. Add only if a mobile annual meeting screen exists. |
+| Cron and webhooks | `/api/cron/member-search-reconcile`, `/api/cron/news-radar`, `/api/cron/resend-contacts`, `/api/webhooks/resend` | Server automation or third-party callbacks; never called by mobile clients. |
+| Tooling and asset delivery | `/api/openapi`, `/api/content-assets/:id` | Tooling/streaming asset surfaces rather than JSON member workflow endpoints. Mobile should consume resolved asset URLs instead of broad API inventory. |
+| Admin resource submissions | `/api/admin/resource-submissions/*` | Moderation/approval workflow, global-admin only even though submissions themselves are member-facing. |
+
+Implementation rule for future routes: if a screen starts calling a new remote
+endpoint, update this contract in the same change and mark whether the route is
+member bearer-ready, migration-needed, or intentionally excluded.
 
 ---
 
