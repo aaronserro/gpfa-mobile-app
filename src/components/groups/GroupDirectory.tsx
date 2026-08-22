@@ -4,15 +4,24 @@
  *
  * Presentational — subscription state and the post counts arrive resolved.
  */
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Pressable } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ArrowRight, Fire, MagnifyingGlass, UsersThree } from '../../ds/icons';
 import { ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { alpha, sans, trackDisplay } from '../../ds/tokens';
+import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
 import { HatchBanner } from './parts';
 import type { Group } from '../../api/types';
+
+export type GroupSortId = 'recommended' | 'active' | 'members' | 'name';
+
+const SORTS: Array<{ id: GroupSortId; label: string }> = [
+  { id: 'recommended', label: 'Recommended' },
+  { id: 'active', label: 'Active' },
+  { id: 'members', label: 'Members' },
+  { id: 'name', label: 'A-Z' },
+];
 
 export interface GroupDirectoryProps {
   /** Groups the member subscribes to — the "Your groups" section. */
@@ -23,6 +32,8 @@ export interface GroupDirectoryProps {
   postCounts: Record<string, number>;
   query: string;
   onQuery: (query: string) => void;
+  sort: GroupSortId;
+  onSort: (sort: GroupSortId) => void;
   onOpen: (groupId: string) => void;
 }
 
@@ -32,14 +43,18 @@ export default function GroupDirectory({
   postCounts,
   query,
   onQuery,
+  sort,
+  onSort,
   onOpen,
 }: GroupDirectoryProps) {
   const { t } = useTheme();
+  const [failedImages, setFailedImages] = useState<Record<string, boolean | undefined>>({});
 
   const sections = [
     { label: 'Your groups', groups: subscribed },
     { label: 'All groups', groups: rest },
   ].filter((s) => s.groups.length > 0);
+  const totalGroups = subscribed.length + rest.length;
 
   return (
     <View style={styles.fill}>
@@ -61,6 +76,32 @@ export default function GroupDirectory({
       </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.directoryControls}>
+          <Text style={[styles.resultCount, { color: t.inkMuted }]}>Showing {totalGroups} working groups</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortStrip}>
+            {SORTS.map((option) => {
+              const active = option.id === sort;
+              return (
+                <Pressable
+                  key={option.id}
+                  onPress={() => onSort(option.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.sortChip,
+                    {
+                      backgroundColor: active ? t.surfaceAnchor : pressed ? alpha(t.surfaceSoft, 0.65) : t.surfacePaper,
+                      borderColor: active ? t.surfaceAnchor : t.ruleHairline,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.sortChipText, { color: active ? t.inkInverse : t.inkMuted }]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {sections.map((s) => (
           <View key={s.label}>
             <View style={styles.sectionHead}>
@@ -83,7 +124,18 @@ export default function GroupDirectory({
                       },
                     ]}
                   >
-                    <HatchBanner />
+                    <View style={styles.bannerFrame}>
+                      <HatchBanner />
+                      {!!g.cardImageUrl && !failedImages[g.id] && (
+                        <Image
+                          source={{ uri: g.cardImageUrl }}
+                          style={styles.bannerImage}
+                          resizeMode="cover"
+                          accessibilityIgnoresInvertColors
+                          onError={() => setFailedImages((prev) => ({ ...prev, [g.id]: true }))}
+                        />
+                      )}
+                    </View>
                     <View style={styles.cardBody}>
                       <View style={styles.cardTop}>
                         <Text style={[styles.groupName, { color: t.inkStrong }]}>{g.n}</Text>
@@ -110,9 +162,14 @@ export default function GroupDirectory({
                       )}
 
                       <View style={styles.cardFoot}>
-                        <Text style={[styles.cardCount, { color: t.inkMuted }]}>
-                          {`${posts} active post${posts === 1 ? '' : 's'}`}
-                        </Text>
+                        <View style={styles.metaStack}>
+                          <Text style={[styles.cardCount, { color: t.inkMuted }]}>
+                            {`${posts} active post${posts === 1 ? '' : 's'}`}
+                          </Text>
+                          <Text style={[styles.cardSubCount, { color: t.inkFaint }]}>
+                            {g.joined ? 'Subscribed' : 'Available to join'}
+                          </Text>
+                        </View>
                         <View style={[styles.openBtn, { backgroundColor: t.surfaceAnchor }]}>
                           <Text style={styles.openBtnText}>Open</Text>
                           <ArrowRight size={12} color="#fff" />
@@ -154,6 +211,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 13 },
+  directoryControls: { paddingTop: 14, paddingHorizontal: 16, gap: 9 },
+  resultCount: { fontFamily: mono(400), fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.7 },
+  sortStrip: { gap: 8 },
+  sortChip: {
+    minHeight: 30,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortChipText: { fontFamily: sans(600), fontSize: 12 },
 
   scroll: { paddingBottom: 26 },
   sectionHead: {
@@ -169,6 +238,8 @@ const styles = StyleSheet.create({
 
   cards: { gap: 12, paddingTop: 8, paddingBottom: 4, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  bannerFrame: { height: 112, position: 'relative', overflow: 'hidden' },
+  bannerImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   cardBody: { paddingTop: 13, paddingHorizontal: 14, paddingBottom: 14 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   groupName: {
@@ -200,6 +271,8 @@ const styles = StyleSheet.create({
   memberChipText: { fontFamily: sans(500), fontSize: 10.5, fontVariant: ['tabular-nums'] },
   groupBio: { marginTop: 8, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.75 },
   cardCount: { fontFamily: sans(400), fontSize: 12 },
+  cardSubCount: { fontFamily: mono(400), fontSize: 10.5, marginTop: 2 },
+  metaStack: { flex: 1, minWidth: 0 },
   cardFoot: {
     marginTop: 12,
     flexDirection: 'row',

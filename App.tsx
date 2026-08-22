@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -33,6 +33,7 @@ import {
   createPost as createPostRequest,
   createReply,
   deleteForumThread,
+  dismissNotifications,
   getDirectoryPeople,
   getFeed,
   getGroups,
@@ -46,10 +47,12 @@ import {
   getPodcasts,
   getSavedResources,
   getWorkingGroupCoLeadMembers,
+  getWorkingGroupDirectoryMembers,
   getWorkingGroupTagUsage,
   getWorkingGroupThreadFeed,
   getWorkingGroupMembership,
-  setReplyUpvote,
+  getWorkingGroupFeedItemDetail,
+  markNotificationsRead,
   setRsvp as setRsvpRequest,
   setSaved as setSavedRequest,
   setSubscribed as setSubscribedRequest,
@@ -57,18 +60,21 @@ import {
   summarizeForum,
   updateForumThread,
   updateForumThreadStatus,
+  workingGroupFeedItemResponseToEntry,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
 import type {
   FeedEntry,
   GroupMember,
   Member,
+  MemberNotification,
   MemberOrg,
   NewPostInput,
   NewsStory,
   Reply,
   RsvpChoice,
   Thread,
+  WorkingGroupFeedItemResponse,
 } from './src/api/types';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import { MemberProvider } from './src/auth/MemberProvider';
@@ -82,8 +88,10 @@ const SHOW_BADGES = true;
 interface GroupDetailState {
   items: FeedEntry[];
   nextCursor: string | null;
+  snapshotAt: string | null;
   totalMatching: number;
   coLeads: GroupMember[];
+  members: GroupMember[];
   tagSuggestions: string[];
   loading: boolean;
   loadingMore: boolean;
@@ -93,8 +101,10 @@ interface GroupDetailState {
 const EMPTY_GROUP_DETAIL: GroupDetailState = {
   items: [],
   nextCursor: null,
+  snapshotAt: null,
   totalMatching: 0,
   coLeads: [],
+  members: [],
   tagSuggestions: [],
   loading: false,
   loadingMore: false,
@@ -121,7 +131,6 @@ function Portal() {
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
   const [votes, setVotes] = useState<Record<string, number | undefined>>({});
   const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
-  const [replyUpvoted, setReplyUpvoted] = useState<Record<string, boolean | undefined>>({});
   const [saved, setSaved] = useState<Record<string, boolean | undefined>>({});
   // Overrides on each group's own `joined`; absent means unchanged this session.
   const [subscribed, setSubscribed] = useState<Record<string, boolean | undefined>>({});
@@ -134,6 +143,8 @@ function Portal() {
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [localNotifications, setLocalNotifications] = useState<MemberNotification[]>([]);
+  const [pendingNotifications, setPendingNotifications] = useState<Record<string, boolean | undefined>>({});
 
   // Portal data. Member-scoped ready routes wait for sign-in; the rest can stay
   // fixture-backed while EXPO_PUBLIC_FIXTURE_PORTAL_DATA is true.
@@ -152,6 +163,14 @@ function Portal() {
     () => (isSignedIn ? getNotifications() : Promise.resolve([])),
     [isSignedIn]
   );
+
+  useEffect(() => {
+    setLocalNotifications(notificationsQuery.data ?? []);
+  }, [notificationsQuery.data]);
+
+  useEffect(() => {
+    if (!isSignedIn) setLocalNotifications([]);
+  }, [isSignedIn]);
 
   // What another screen asked Resources to open: an episode from the
   // now-playing bar, or a posting from an organization's directory profile.
@@ -211,9 +230,44 @@ function Portal() {
   const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
-  const notifications = notificationsQuery.data ?? [];
+  const notifications = localNotifications;
   const unreadNotifications = notifications.filter((n) => !n.read).length;
   const selectedGroupDetail = groupId ? groupDetails[groupId] : undefined;
+
+  const setNotificationPending = useCallback((ids: string[], pending: boolean) => {
+    setPendingNotifications((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (pending) next[id] = true;
+        else delete next[id];
+      }
+      return next;
+    });
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    const ids = notifications.filter((n) => !n.read).map((n) => n.id);
+    if (!ids.length) return;
+    const previous = notifications;
+
+    setNotificationPending(ids, true);
+    setLocalNotifications((prev) =>
+      prev.map((notification) => (ids.includes(notification.id) ? { ...notification, read: true } : notification))
+    );
+    void markNotificationsRead(ids)
+      .catch(() => setLocalNotifications(previous))
+      .finally(() => setNotificationPending(ids, false));
+  }, [notifications, setNotificationPending]);
+
+  const dismissNotification = useCallback((id: string) => {
+    const previous = notifications;
+
+    setNotificationPending([id], true);
+    setLocalNotifications((prev) => prev.filter((notification) => notification.id !== id));
+    void dismissNotifications([id])
+      .catch(() => setLocalNotifications(previous))
+      .finally(() => setNotificationPending([id], false));
+  }, [notifications, setNotificationPending]);
 
   const loadGroupDetail = useCallback(
     (id: string, cursor?: string | null) => {
@@ -232,16 +286,24 @@ function Portal() {
         },
       }));
 
-      const feedPromise = getWorkingGroupThreadFeed(slug, id, { limit: 20, cursor: cursor ?? undefined });
+      const currentDetail = groupDetails[id];
+      const feedPromise = getWorkingGroupThreadFeed(slug, id, {
+        limit: 20,
+        cursor: cursor ?? undefined,
+        snapshotAt: cursor ? currentDetail?.snapshotAt ?? undefined : undefined,
+      });
       const coLeadsPromise = append
-        ? Promise.resolve(groupDetails[id]?.coLeads ?? [])
+        ? Promise.resolve(currentDetail?.coLeads ?? [])
         : getWorkingGroupCoLeadMembers(slug);
+      const membersPromise = append
+        ? Promise.resolve(currentDetail?.members ?? [])
+        : getWorkingGroupDirectoryMembers(slug);
       const tagsPromise = append
-        ? Promise.resolve(groupDetails[id]?.tagSuggestions ?? [])
+        ? Promise.resolve(currentDetail?.tagSuggestions ?? [])
         : getWorkingGroupTagUsage(slug, { limit: 24 }).then((res) => res.tags.map((tag) => tag.label));
 
-      void Promise.all([feedPromise, coLeadsPromise, tagsPromise])
-        .then(([feed, coLeads, tagSuggestions]) => {
+      void Promise.all([feedPromise, coLeadsPromise, membersPromise, tagsPromise])
+        .then(([feed, coLeads, members, tagSuggestions]) => {
           setGroupDetails((prev) => {
             const current = prev[id] ?? EMPTY_GROUP_DETAIL;
             const existingIds = new Set(current.items.map((entry) => entry.post.id));
@@ -256,8 +318,10 @@ function Portal() {
               [id]: {
                 items: merged,
                 nextCursor: feed.nextCursor,
+                snapshotAt: feed.snapshotAt,
                 totalMatching: feed.totalMatching,
                 coLeads,
+                members,
                 tagSuggestions,
                 loading: false,
                 loadingMore: false,
@@ -321,7 +385,7 @@ function Portal() {
     [groupDetails, newPosts, posts]
   );
 
-  const targetTypeForThread = useCallback((thread: Thread | undefined): string => {
+  const targetTypeForThread = useCallback((thread: Thread | undefined) => {
     if (!thread) return 'thread';
     return thread.targetType ?? (thread.type === 'discussion' || !thread.type ? 'thread' : thread.type);
   }, []);
@@ -406,21 +470,6 @@ function Portal() {
     });
   }, [entryForThread, targetTypeForThread]);
 
-  const toggleReplyUpvote = useCallback(
-    (postId: string, key: string, replyId: string | undefined) => {
-      setReplyUpvoted((prev) => {
-        const next = !prev[key];
-        // A reply with no id has nowhere to send this; the repository resolves
-        // it as a no-op and the toggle stays on the device.
-        void setReplyUpvote(postId, replyId, next).catch(() => {
-          setReplyUpvoted((current) => ({ ...current, [key]: !next }));
-        });
-        return { ...prev, [key]: next };
-      });
-    },
-    []
-  );
-
   const toggleSave = useCallback((id: string) => {
     const entry = entryForThread(id);
     const targetType = targetTypeForThread(entry?.post);
@@ -456,6 +505,26 @@ function Portal() {
       return { ...prev, [id]: choice };
     });
   }, [entryForThread]);
+
+  const openThread = useCallback((id: string) => {
+    setThreadId(id);
+    const entry = entryForThread(id);
+    if (!entry) return;
+    const group = groups.find((candidate) => candidate.id === entry.groupId);
+    const slug = entry.post.groupSlug ?? group?.slug ?? entry.groupId;
+    const itemType = entry.post.type ?? 'discussion';
+
+    void getWorkingGroupFeedItemDetail(slug, itemType, id)
+      .then((response) => {
+        const hydrated = workingGroupFeedItemResponseToEntry(response, entry.groupId);
+        setGroupDetails((prev) => replaceThreadInGroupDetails(prev, hydrated));
+        setNewPosts((prev) =>
+          prev.map((candidate) => (candidate.post.id === id ? { ...candidate, post: hydrated.post } : candidate))
+        );
+        reconcileThreadDetailState(id, response, hydrated.post, setUpvoted, setSaved, setVotes);
+      })
+      .catch(() => {});
+  }, [entryForThread, groups]);
 
   const createPost = useCallback(
     (draft: NewPostInput, member: Member) => {
@@ -698,12 +767,13 @@ function Portal() {
                 selectedGroupError={selectedGroupDetail?.error ?? null}
                 selectedGroupNextCursor={selectedGroupDetail?.nextCursor ?? null}
                 selectedGroupCoLeads={selectedGroupDetail?.coLeads ?? []}
+                selectedGroupMembers={selectedGroupDetail?.members ?? []}
                 onLoadMoreGroupFeed={loadMoreGroupFeed}
                 groupId={groupId}
                 onOpenGroup={openGroup}
                 onCloseGroup={() => setGroupId(null)}
                 threadId={threadId}
-                onOpenThread={setThreadId}
+                onOpenThread={openThread}
                 onCloseThread={() => setThreadId(null)}
                 postSummaries={postSummaries}
                 summarizing={summarizing}
@@ -717,8 +787,6 @@ function Portal() {
                 onVote={vote}
                 upvoted={upvoted}
                 onToggleUpvote={toggleUpvote}
-                replyUpvoted={replyUpvoted}
-                onToggleReplyUpvote={toggleReplyUpvote}
                 saved={saved}
                 onToggleSave={toggleSave}
                 subscribed={subscribed}
@@ -798,6 +866,9 @@ function Portal() {
               notifications={notifications}
               loading={notificationsQuery.loading || notificationsQuery.refreshing}
               error={notificationsQuery.error}
+              pendingIds={Object.keys(pendingNotifications)}
+              onMarkAllRead={markAllNotificationsRead}
+              onDismiss={dismissNotification}
               onRetry={notificationsQuery.refetch}
               onClose={() => setNotificationsOpen(false)}
             />
@@ -863,6 +934,62 @@ function appendThreadToGroupDetails(
       items: [entry, ...current.items.filter((item) => item.post.id !== entry.post.id)],
     },
   };
+}
+
+function replaceThreadInGroupDetails(
+  details: Record<string, GroupDetailState | undefined>,
+  entry: FeedEntry
+): Record<string, GroupDetailState | undefined> {
+  return Object.fromEntries(
+    Object.entries(details).map(([id, detail]) => [
+      id,
+      detail
+        ? {
+            ...detail,
+            items: detail.items.map((item) => (item.post.id === entry.post.id ? entry : item)),
+          }
+        : detail,
+    ])
+  );
+}
+
+function reconcileThreadDetailState(
+  threadId: string,
+  response: WorkingGroupFeedItemResponse,
+  post: Thread,
+  setUpvoted: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
+  setSaved: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
+  setVotes: Dispatch<SetStateAction<Record<string, number | undefined>>>
+): void {
+  const target = response.detail.kind === 'thread' ? response.detail.thread : response.detail.poll;
+  const hasUpvoted = target.hasUpvoted;
+  const hasSaved = target.hasSaved;
+
+  if (typeof hasUpvoted === 'boolean') {
+    setUpvoted((prev) => ({ ...prev, [threadId]: hasUpvoted }));
+  }
+  if (typeof hasSaved === 'boolean') {
+    setSaved((prev) => ({ ...prev, [threadId]: hasSaved }));
+  }
+
+  if (response.detail.kind !== 'poll') return;
+  const selectedOptionId = recordsFrom(response.detail.answers)
+    .map((answer) => firstStringValue(answer.optionId, answer.option_id, answer.pollOptionId, answer.poll_option_id))
+    .find((value): value is string => !!value);
+  if (!selectedOptionId) return;
+
+  const selectedIndex = post.poll?.options.findIndex((option) => option.id === selectedOptionId) ?? -1;
+  if (selectedIndex >= 0) {
+    setVotes((prev) => ({ ...prev, [threadId]: selectedIndex }));
+  }
+}
+
+function recordsFrom(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object') : [];
+}
+
+function firstStringValue(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
 }
 
 export default function App() {

@@ -13,6 +13,7 @@ import { StyleSheet, View } from 'react-native';
 
 import GroupDirectory from '../components/groups/GroupDirectory';
 import GroupView, { type GroupTab, type PostFilterId } from '../components/groups/GroupView';
+import type { GroupSortId } from '../components/groups/GroupDirectory';
 import PostDetail from '../components/groups/PostDetail';
 import { initials } from '../lib/format';
 import type {
@@ -40,6 +41,7 @@ export interface GroupsScreenProps {
   selectedGroupError?: Error | null;
   selectedGroupNextCursor?: string | null;
   selectedGroupCoLeads?: Group['members'];
+  selectedGroupMembers?: Group['members'];
   onLoadMoreGroupFeed?: () => void;
   /** The group whose page is open; null shows the directory. */
   groupId: string | null;
@@ -63,9 +65,6 @@ export interface GroupsScreenProps {
   /** Whether this member has upvoted a post; adds 1 to its stored count. */
   upvoted: Record<string, boolean | undefined>;
   onToggleUpvote: (threadId: string) => void;
-  /** Whether this member has upvoted a reply, keyed by reply id or position. */
-  replyUpvoted: Record<string, boolean | undefined>;
-  onToggleReplyUpvote: (threadId: string, key: string, replyId: string | undefined) => void;
   /** Whether this member has saved a post. */
   saved: Record<string, boolean | undefined>;
   onToggleSave: (threadId: string) => void;
@@ -92,6 +91,7 @@ export default function GroupsScreen({
   selectedGroupError = null,
   selectedGroupNextCursor = null,
   selectedGroupCoLeads = [],
+  selectedGroupMembers = [],
   onLoadMoreGroupFeed,
   groupId,
   onOpenGroup,
@@ -111,8 +111,6 @@ export default function GroupsScreen({
   onVote,
   upvoted,
   onToggleUpvote,
-  replyUpvoted,
-  onToggleReplyUpvote,
   saved,
   onToggleSave,
   subscribed,
@@ -124,6 +122,7 @@ export default function GroupsScreen({
   defaultGroupTab = 'posts',
 }: GroupsScreenProps) {
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<GroupSortId>('recommended');
   const [tab, setTab] = useState<GroupTab>(defaultGroupTab);
   const [filter, setFilter] = useState<PostFilterId>('all');
 
@@ -156,8 +155,6 @@ export default function GroupsScreen({
         onToggleUpvote={() => onToggleUpvote(thread.id)}
         saved={!!saved[thread.id]}
         onToggleSave={() => onToggleSave(thread.id)}
-        replyUpvoted={replyUpvoted}
-        onToggleReplyUpvote={(key, replyId) => onToggleReplyUpvote(thread.id, key, replyId)}
         vote={votes[thread.id]}
         onVote={(option) => onVote(thread.id, option)}
         rsvp={rsvps[thread.id]}
@@ -198,6 +195,7 @@ export default function GroupsScreen({
         totalPosts={groupPosts.length}
         typeCounts={typeCounts}
         coLeads={selectedGroupCoLeads}
+        members={selectedGroupMembers}
         loading={selectedGroupLoading}
         loadingMore={selectedGroupLoadingMore}
         error={selectedGroupError}
@@ -227,15 +225,21 @@ export default function GroupsScreen({
   const matches = q
     ? groups.filter((g) => `${g.n} ${g.short} ${g.meta}`.toLowerCase().includes(q))
     : groups;
+  const postCounts = Object.fromEntries(
+    groups.map((g) => [g.id, g.threads.length + newPosts.filter((entry) => entry.groupId === g.id).length])
+  );
+  const sorted = sortGroups(matches, sort, postCounts);
 
   return (
     <View style={styles.fill}>
       <GroupDirectory
-        subscribed={matches.filter(isSubscribed)}
-        rest={matches.filter((g) => !isSubscribed(g))}
-        postCounts={Object.fromEntries(groups.map((g) => [g.id, g.threads.length]))}
+        subscribed={sorted.filter(isSubscribed)}
+        rest={sorted.filter((g) => !isSubscribed(g))}
+        postCounts={postCounts}
         query={query}
         onQuery={setQuery}
+        sort={sort}
+        onSort={setSort}
         onOpen={(id) => {
           // A group always opens on the configured tab with the filter cleared.
           setTab(defaultGroupTab);
@@ -250,3 +254,13 @@ export default function GroupsScreen({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
 });
+
+function sortGroups(groups: Group[], sort: GroupSortId, postCounts: Record<string, number>): Group[] {
+  const originalIndex = new Map(groups.map((group, index) => [group.id, index]));
+  return [...groups].sort((a, b) => {
+    if (sort === 'name') return a.n.localeCompare(b.n);
+    if (sort === 'members') return (b.memberCount ?? b.members.length) - (a.memberCount ?? a.members.length);
+    if (sort === 'active') return (b.unread || postCounts[b.id] || 0) - (a.unread || postCounts[a.id] || 0);
+    return (originalIndex.get(a.id) ?? 0) - (originalIndex.get(b.id) ?? 0);
+  });
+}

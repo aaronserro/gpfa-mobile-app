@@ -51,6 +51,7 @@ export default function AskScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const scroller = useRef<ScrollView>(null);
   const alive = useRef(true);
 
@@ -70,11 +71,13 @@ export default function AskScreen() {
     setDraft('');
     setTyping(true);
     try {
-      const answer = await askGpfa(question);
+      const answer = await askGpfa(question, conversationId);
       if (!alive.current) return;
+      if (answer.conversationId) setConversationId(answer.conversationId);
       setMessages((prev) => [...prev, { user: false, text: answer.text, sources: answer.sources }]);
-    } catch {
+    } catch (cause) {
       if (!alive.current) return;
+      if (__DEV__) console.warn('[ask] Ask GPFA request failed', cause);
       setMessages((prev) => [
         ...prev,
         { user: false, text: 'Ask GPFA is unavailable right now. Please try again.' },

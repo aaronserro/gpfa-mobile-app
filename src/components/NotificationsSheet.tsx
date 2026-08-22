@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { MemberNotification } from '../api/types';
-import { ArrowClockwise, Bell, X } from '../ds/icons';
+import { ArrowClockwise, Bell, CheckCircle, X } from '../ds/icons';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 
@@ -20,12 +20,18 @@ export default function NotificationsSheet({
   notifications,
   loading,
   error,
+  pendingIds = [],
+  onMarkAllRead,
+  onDismiss,
   onRetry,
   onClose,
 }: {
   notifications: MemberNotification[];
   loading: boolean;
   error?: Error;
+  pendingIds?: string[];
+  onMarkAllRead?: () => void;
+  onDismiss?: (id: string) => void;
   onRetry: () => void;
   onClose: () => void;
 }) {
@@ -34,6 +40,8 @@ export default function NotificationsSheet({
   const p = useRef(new Animated.Value(0)).current;
   const [height, setHeight] = useState(0);
   const unread = notifications.filter((n) => !n.read).length;
+  const pending = new Set(pendingIds);
+  const hasPending = pendingIds.length > 0;
 
   useEffect(() => {
     if (!height) return;
@@ -85,6 +93,26 @@ export default function NotificationsSheet({
               {unread ? `${unread} unread` : 'All caught up'}
             </Text>
           </View>
+          {!!unread && !!onMarkAllRead && (
+            <Pressable
+              onPress={onMarkAllRead}
+              disabled={hasPending}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.markAll,
+                {
+                  borderColor: t.ruleHairline,
+                  backgroundColor: pressed ? alpha(t.surfaceSoft, 0.6) : 'transparent',
+                  opacity: hasPending ? 0.45 : 1,
+                },
+              ]}
+            >
+              <CheckCircle size={14} color={t.brandGreen} />
+              <Text style={[styles.markAllText, { color: t.inkStrong }]}>Mark all</Text>
+            </Pressable>
+          )}
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
@@ -145,6 +173,25 @@ export default function NotificationsSheet({
                   {!!notification.time && (
                     <Text style={[styles.time, { color: t.inkFaint }]}>{notification.time}</Text>
                   )}
+                  {!!onDismiss && (
+                    <Pressable
+                      onPress={() => onDismiss(notification.id)}
+                      disabled={pending.has(notification.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss notification"
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.dismiss,
+                        {
+                          borderColor: t.ruleHairline,
+                          backgroundColor: pressed ? alpha(t.surfaceSoft, 0.6) : 'transparent',
+                          opacity: pending.has(notification.id) ? 0.35 : 1,
+                        },
+                      ]}
+                    >
+                      <X size={12} color={t.inkMuted} />
+                    </Pressable>
+                  )}
                 </View>
                 {!!notification.body && (
                   <Text style={[styles.body, { color: t.inkMuted }]}>{notification.body}</Text>
@@ -183,6 +230,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  markAll: {
+    minHeight: 32,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  markAllText: { fontFamily: sans(600), fontSize: 12 },
   divider: { height: 1 },
 
   state: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 10, minHeight: 190 },
@@ -206,5 +263,13 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 3.5 },
   itemTitle: { flex: 1, fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
   time: { fontFamily: mono(400), fontSize: 10, letterSpacing: 0.4 },
+  dismiss: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   body: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18, paddingLeft: 15 },
 });

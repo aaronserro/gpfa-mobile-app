@@ -23,6 +23,7 @@ import {
   ArrowFatUp,
   ArrowUp,
   BookmarkSimple,
+  CalendarDots,
   ChartBar,
   ChatCircle,
   CheckCircle,
@@ -36,7 +37,7 @@ import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
-import type { Reply, RsvpChoice, Thread } from '../../api/types';
+import type { Poll, PostType, Reply, RsvpChoice, Thread } from '../../api/types';
 
 /** One reply plus anything hanging under it. */
 export interface ReplyNode {
@@ -75,9 +76,6 @@ export interface PostDetailProps {
   onToggleUpvote: () => void;
   saved: boolean;
   onToggleSave: () => void;
-  /** Keyed by `ReplyNode.key`. */
-  replyUpvoted: Record<string, boolean | undefined>;
-  onToggleReplyUpvote: (key: string, replyId: string | undefined) => void;
   /** Chosen option index; absent means this member has not voted. */
   vote: number | undefined;
   onVote: (option: number) => void;
@@ -102,8 +100,6 @@ export default function PostDetail({
   onToggleUpvote,
   saved,
   onToggleSave,
-  replyUpvoted,
-  onToggleReplyUpvote,
   vote,
   onVote,
   rsvp,
@@ -123,12 +119,15 @@ export default function PostDetail({
   const kind = postTypeStyle(t, type);
   const TypeIcon = TYPE_ICON[type];
   const isAnnouncement = type === 'announcement';
+  const isEvent = type === 'event';
+  const hasStructuredDetailCard = isAnnouncement || isEvent;
 
   const voted = vote !== undefined;
   const counts = post.poll?.options.map((o, i) => o.votes + (vote === i ? 1 : 0)) ?? [];
   const total = counts.reduce((a, b) => a + b, 0);
 
   const roots = replyTree(post.id, replies);
+  const canReply = post.canReply ?? !isAnnouncement;
   const canEdit = !!post.canEdit && !!onUpdate;
   const canDelete = !!post.canDelete && !!onDelete;
   const canChangeStatus = !!post.canChangeStatus && !!onChangeStatus;
@@ -165,14 +164,12 @@ export default function PostDetail({
       />
 
       <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
-        {/* The left rule and chip take the post type's colour, not the group's. */}
         <View
           style={[
             styles.post,
             {
               backgroundColor: t.surfacePaper,
               borderBottomColor: t.ruleHairline,
-              borderLeftColor: kind.ink,
             },
           ]}
         >
@@ -219,22 +216,29 @@ export default function PostDetail({
           ) : (
             <>
               <Text style={[styles.postTitle, { color: t.inkStrong }]}>{post.title}</Text>
-              <Text style={[styles.postBody, { color: t.inkBody }]}>{post.body}</Text>
+
+              {hasStructuredDetailCard ? (
+                <TypeDetailCard groupName={groupName} post={post} type={type} />
+              ) : (
+                <Text style={[styles.postBody, { color: t.inkBody }]}>{post.body}</Text>
+              )}
             </>
           )}
 
-          <View style={styles.byline}>
-            <AnchorAvatar initials={post.initials ?? initialsOf(post.author)} size={36} />
-            <View>
-              <View style={styles.bylineTop}>
-                <Text style={[styles.author, { color: t.inkStrong }]}>{post.author}</Text>
-                <RoleBadge>Author</RoleBadge>
+          {!hasStructuredDetailCard && (
+            <View style={[styles.byline, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+              <AnchorAvatar initials={post.initials ?? initialsOf(post.author)} size={34} />
+              <View style={styles.flex}>
+                <View style={styles.bylineTop}>
+                  <Text style={[styles.author, { color: t.inkStrong }]}>{post.author}</Text>
+                  <RoleBadge>Author</RoleBadge>
+                </View>
+                <MastheadMeta size={10} style={styles.bylineMeta}>
+                  {`${post.org} · ${post.time}`}
+                </MastheadMeta>
               </View>
-              <MastheadMeta size={10} style={styles.bylineMeta}>
-                {`${post.org} · ${post.time}`}
-              </MastheadMeta>
             </View>
-          </View>
+          )}
 
           {!!post.file && (
             <Pressable
@@ -257,7 +261,16 @@ export default function PostDetail({
 
           {!!post.eventRows && (
             <>
-              <View style={styles.eventRows}>
+              <View
+                style={[
+                  styles.eventRows,
+                  {
+                    borderColor: t.ruleHairline,
+                    backgroundColor: post.lifecycle === 'closed' ? 'transparent' : alpha(t.surfaceSoft, 0.45),
+                  },
+                ]}
+              >
+                <CalendarDots size={14} color={t.inkMuted} />
                 {post.eventRows.map((e) => {
                   const RIcon = ROW_ICON[e.icon];
                   return (
@@ -265,7 +278,7 @@ export default function PostDetail({
                       key={e.text}
                       style={[
                         styles.eventChip,
-                        { borderColor: t.ruleHairline, backgroundColor: t.surfacePage },
+                        { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
                       ]}
                     >
                       <RIcon size={13} color={t.inkMuted} />
@@ -312,6 +325,14 @@ export default function PostDetail({
 
           {!!post.poll && (
             <>
+              <PollFilePanel
+                groupName={groupName}
+                poll={post.poll}
+                total={total}
+                answered={voted}
+                status={post.lifecycle === 'closed' ? 'Closed' : 'Open'}
+              />
+
               <View style={[styles.poll, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
                 <View style={styles.pollQRow}>
                   <ChartBar size={15} color={t.brandAmber} />
@@ -366,25 +387,6 @@ export default function PostDetail({
                   {(voted ? `${total} votes · ` : '') + post.poll.closes}
                 </MastheadMeta>
               </View>
-
-              <View style={[styles.pollStats, { borderColor: t.ruleHairline }]}>
-                {[
-                  { k: 'Responses', v: String(total) },
-                  { k: 'Of orgs', v: '87%' },
-                  { k: 'Status', v: 'Open' },
-                ].map((stat, i) => (
-                  <View
-                    key={stat.k}
-                    style={[
-                      styles.pollStat,
-                      i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline },
-                    ]}
-                  >
-                    <MastheadMeta size={9.5}>{stat.k}</MastheadMeta>
-                    <Text style={[styles.pollStatValue, { color: t.inkStrong }]}>{stat.v}</Text>
-                  </View>
-                ))}
-              </View>
             </>
           )}
 
@@ -397,7 +399,7 @@ export default function PostDetail({
           )}
 
           <View style={styles.actions}>
-            <Pressable style={styles.action} onPress={onToggleUpvote} hitSlop={6}>
+            <Pressable style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]} onPress={onToggleUpvote} hitSlop={6}>
               <ArrowFatUp
                 size={15}
                 weight={upvoted ? 'fill' : 'regular'}
@@ -407,11 +409,11 @@ export default function PostDetail({
                 {(post.upvotes ?? 0) + (upvoted ? 1 : 0)}
               </Text>
             </Pressable>
-            <View style={styles.action}>
+            <View style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
               <ChatCircle size={15} color={t.inkMuted} />
               <Text style={[styles.actionText, { color: t.inkMuted }]}>{replies.length}</Text>
             </View>
-            <Pressable style={[styles.action, styles.actionEnd]} onPress={onToggleSave} hitSlop={6}>
+            <Pressable style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]} onPress={onToggleSave} hitSlop={6}>
               <BookmarkSimple
                 size={15}
                 weight={saved ? 'fill' : 'regular'}
@@ -469,11 +471,10 @@ export default function PostDetail({
           )}
         </View>
 
-        {isAnnouncement ? (
+        {!canReply ? (
           <View style={[styles.readOnly, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
             <Text style={[styles.readOnlyText, { color: t.inkMuted }]}>
-              Announcements are read-only. Reply in the linked discussion thread if you have
-              questions for the co-leads.
+              Replies are closed for this post.
             </Text>
           </View>
         ) : (
@@ -506,8 +507,6 @@ export default function PostDetail({
                   <View style={styles.flex}>
                     <ReplyBody
                       node={node}
-                      upvoted={!!replyUpvoted[node.key]}
-                      onToggleUpvote={() => onToggleReplyUpvote(node.key, node.reply.id)}
                       onReplyTo={() => setReplyTarget(node.reply.a)}
                     />
 
@@ -524,8 +523,6 @@ export default function PostDetail({
                             <ReplyBody
                               node={child}
                               nested
-                              upvoted={!!replyUpvoted[child.key]}
-                              onToggleUpvote={() => onToggleReplyUpvote(child.key, child.reply.id)}
                             />
                           </View>
                         </View>
@@ -541,7 +538,7 @@ export default function PostDetail({
         )}
       </ScrollView>
 
-      {!isAnnouncement && (
+      {canReply && (
         <View
           style={[
             styles.composer,
@@ -593,14 +590,10 @@ export default function PostDetail({
 function ReplyBody({
   node,
   nested = false,
-  upvoted,
-  onToggleUpvote,
   onReplyTo,
 }: {
   node: ReplyNode;
   nested?: boolean;
-  upvoted: boolean;
-  onToggleUpvote: () => void;
   /** Absent on a nested reply — the design only offers Reply at the top level. */
   onReplyTo?: () => void;
 }) {
@@ -626,16 +619,6 @@ function ReplyBody({
         {r.text}
       </Text>
       <View style={[styles.replyActions, nested && styles.childActions]}>
-        <Pressable style={styles.replyAction} onPress={onToggleUpvote} hitSlop={6}>
-          <ArrowFatUp
-            size={nested ? 12 : 13}
-            weight={upvoted ? 'fill' : 'regular'}
-            color={upvoted ? t.brandLeaf : t.inkFaint}
-          />
-          <Text style={[styles.replyActionText, { color: upvoted ? t.brandLeaf : t.inkFaint }]}>
-            {(r.up ?? 0) + (upvoted ? 1 : 0)}
-          </Text>
-        </Pressable>
         {!!onReplyTo && (
           <Pressable style={styles.replyAction} onPress={onReplyTo} hitSlop={6}>
             <ArrowBendUpLeft size={13} color={t.inkFaint} />
@@ -644,6 +627,111 @@ function ReplyBody({
         )}
       </View>
     </>
+  );
+}
+
+function TypeDetailCard({
+  groupName,
+  post,
+  type,
+}: {
+  groupName: string;
+  post: Thread;
+  type: Extract<PostType, 'announcement' | 'event'>;
+}) {
+  const { t } = useTheme();
+  const kind = postTypeStyle(t, type);
+  const TypeIcon = TYPE_ICON[type];
+  const noun = type === 'announcement' ? 'notice' : 'event';
+  const sectionLabel = type === 'announcement' ? 'Announcement' : 'About this event';
+
+  return (
+    <View style={[styles.typeDetailCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+      <View style={[styles.typeDetailHeader, { borderBottomColor: t.ruleHairline }]}>
+        <View style={[styles.typeIconTile, { backgroundColor: kind.chipBg }]}>
+          <TypeIcon size={20} color={kind.ink} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={[styles.typeDetailEyebrow, { color: t.inkMuted }]}>
+            {`${groupName} ${noun}`}
+          </Text>
+          <View style={styles.typeDetailByline}>
+            <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.author}</Text>
+            <Text style={[styles.typeDetailDot, { color: t.inkFaint }]}>·</Text>
+            <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.org}</Text>
+            <Text style={[styles.typeDetailDot, { color: t.inkFaint }]}>·</Text>
+            <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.time}</Text>
+          </View>
+        </View>
+      </View>
+
+      {!!post.body && (
+        <View style={styles.typeDetailBodyWrap}>
+          <Text style={[styles.typeDetailSectionLabel, { color: t.inkMuted }]}>{sectionLabel}</Text>
+          <Text style={[styles.typeDetailBody, { color: type === 'event' ? t.inkStrong : t.inkMuted }]}>
+            {post.body}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PollFilePanel({
+  groupName,
+  poll,
+  total,
+  answered,
+  status,
+}: {
+  groupName: string;
+  poll: Poll;
+  total: number;
+  answered: boolean;
+  status: string;
+}) {
+  const { t } = useTheme();
+  const kind = postTypeStyle(t, 'poll');
+  const facts = [
+    { k: 'Questions', v: '1' },
+    { k: 'Responses', v: String(total) },
+    { k: 'Status', v: status },
+    { k: status === 'Closed' ? 'Closed' : 'Closes', v: poll.closes },
+  ];
+
+  return (
+    <View style={[styles.pollFile, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+      <View style={[styles.pollFileHeader, { borderBottomColor: t.ruleHairline }]}>
+        <View style={[styles.typeIconTile, { backgroundColor: kind.chipBg }]}>
+          <ChartBar size={20} color={kind.ink} />
+        </View>
+        <View style={styles.flex}>
+          <View style={styles.pollFileTitleRow}>
+            <Text style={[styles.typeDetailEyebrow, { color: t.inkMuted }]}>Poll file</Text>
+            {answered && <CheckCircle size={14} weight="fill" color={t.brandLeaf} />}
+          </View>
+          <Text style={[styles.pollFileGroup, { color: t.inkStrong }]}>{groupName}</Text>
+        </View>
+      </View>
+
+      <View style={styles.pollFileGrid}>
+        {facts.map((fact, index) => (
+          <View
+            key={`${fact.k}:${index}`}
+            style={[
+              styles.pollFileStat,
+              { borderColor: t.ruleHairline },
+              index % 2 === 1 && styles.pollFileStatRight,
+            ]}
+          >
+            <Text style={[styles.pollFileStatKey, { color: t.inkMuted }]}>{fact.k}</Text>
+            <Text style={[styles.pollFileStatValue, { color: t.inkStrong }]} numberOfLines={2}>
+              {fact.v}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -660,10 +748,9 @@ const styles = StyleSheet.create({
 
   post: {
     borderBottomWidth: 1,
-    borderLeftWidth: 3,
     paddingVertical: 18,
     paddingRight: 20,
-    paddingLeft: 17,
+    paddingLeft: 20,
   },
   kindRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   kindChip: {
@@ -687,17 +774,65 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   postTitle: {
-    marginTop: 12,
+    marginTop: 13,
     fontFamily: sans(600),
-    fontSize: 21,
-    lineHeight: 25.2,
-    letterSpacing: trackDisplay(21),
+    fontSize: 22,
+    lineHeight: 27.5,
+    letterSpacing: trackDisplay(22),
   },
-  byline: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  byline: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, borderWidth: 1, borderRadius: 8, padding: 10 },
   bylineTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   bylineMeta: { marginTop: 1 },
   author: { fontFamily: sans(600), fontSize: 13.5 },
-  postBody: { marginTop: 12, fontFamily: sans(400), fontSize: 14, lineHeight: 23.8 },
+  postBody: { marginTop: 14, fontFamily: sans(400), fontSize: 14, lineHeight: 24 },
+  typeDetailCard: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  typeDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderBottomWidth: 1,
+    paddingBottom: 14,
+  },
+  typeIconTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeDetailEyebrow: {
+    fontFamily: mono(600),
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  typeDetailByline: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  typeDetailBylineText: { fontFamily: sans(500), fontSize: 12.5, lineHeight: 18 },
+  typeDetailDot: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  typeDetailBodyWrap: { marginTop: 16 },
+  typeDetailSectionLabel: {
+    fontFamily: mono(600),
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  typeDetailBody: { marginTop: 9, fontFamily: sans(400), fontSize: 13.5, lineHeight: 23 },
   editPanel: { marginTop: 12, gap: 8 },
   editInput: { minHeight: 44, paddingHorizontal: 12, fontSize: 14 },
   editTextarea: { minHeight: 112, paddingVertical: 10 },
@@ -715,7 +850,17 @@ const styles = StyleSheet.create({
   },
   attachmentName: { fontFamily: sans(600), fontSize: 12.5 },
 
-  eventRows: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  eventRows: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
   eventChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -739,6 +884,42 @@ const styles = StyleSheet.create({
   rsvpNo: { fontFamily: sans(500), fontSize: 13 },
 
   poll: { marginTop: 14, borderWidth: 1, borderRadius: 8, padding: 14 },
+  pollFile: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  pollFileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    padding: 14,
+  },
+  pollFileTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pollFileGroup: { marginTop: 4, fontFamily: sans(600), fontSize: 15 },
+  pollFileGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  pollFileStat: {
+    width: '50%',
+    minHeight: 68,
+    borderTopWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+  },
+  pollFileStatRight: { borderLeftWidth: 1 },
+  pollFileStatKey: {
+    fontFamily: mono(600),
+    fontSize: 9.5,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  pollFileStatValue: { marginTop: 5, fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
   pollQRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pollQ: { flex: 1, fontFamily: sans(600), fontSize: 13 },
   pollOptions: { gap: 7, marginTop: 11 },
@@ -760,15 +941,10 @@ const styles = StyleSheet.create({
   pollLabel: { fontSize: 13 },
   pollPct: { fontFamily: sans(600), fontSize: 12 },
   pollMeta: { marginTop: 10 },
-  pollStats: { flexDirection: 'row', marginTop: 14, borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  pollStat: { flex: 1, paddingVertical: 10, paddingHorizontal: 12 },
-  pollStatValue: { marginTop: 3, fontFamily: sans(600), fontSize: 14 },
-
   tags: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 16 },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actionEnd: { marginLeft: 'auto' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 32, paddingHorizontal: 10, borderWidth: 1, borderRadius: 6 },
   actionText: { fontFamily: mono(400), fontSize: 11 },
   manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   manageBtn: {

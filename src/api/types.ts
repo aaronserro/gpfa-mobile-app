@@ -9,10 +9,7 @@
 import type { JobFunctionKey, OrgSector, WgRuleClass } from '../ds/tokens';
 
 export interface Reply {
-  /**
-   * Stable id. Without one a reply can still be upvoted, but the toggle stays
-   * on the device — there is no address to send it to.
-   */
+  /** Stable backend id when the reply has been persisted. */
   id?: string;
   a: string;
   org: string;
@@ -21,7 +18,7 @@ export interface Reply {
   /** Rendered as a highlighted @-mention prefix before the body text. */
   mention?: string;
   text: string;
-  /** Upvotes on the reply. Absent means none yet. */
+  /** Legacy fixture count only; reply upvote mutations are not supported. */
   up?: number;
 }
 
@@ -78,6 +75,7 @@ export interface Thread {
   canEdit?: boolean;
   canDelete?: boolean;
   canChangeStatus?: boolean;
+  canReply?: boolean;
   replies: Reply[];
 }
 
@@ -101,6 +99,8 @@ export interface Group {
   n: string;
   short: string;
   cls: WgRuleClass;
+  /** Raster image for the working-group directory card; absent uses the hatch fallback. */
+  cardImageUrl?: string;
   unread: number;
   meta: string;
   /** Authoritative count when the listing endpoint returns a summary only. */
@@ -198,6 +198,7 @@ export interface WorkingGroupFeedQuery {
   status?: 'any' | 'open' | 'closed';
   sort?: 'newest' | 'oldest' | 'recently_active' | 'most_upvoted';
   limit?: number;
+  snapshotAt?: string;
   cursor?: string;
 }
 
@@ -207,6 +208,81 @@ export interface WorkingGroupFeedResponse {
   nextCursor: string | null;
   snapshotAt: string;
   totalMatching: number;
+}
+
+export interface WorkingGroupDetailAttachment {
+  id: string;
+  title: string;
+  originalFilename?: string;
+  contentType?: string;
+  byteSize?: number;
+  createdAt: string;
+}
+
+export interface WorkingGroupDetailAuthor {
+  id: string | null;
+  name: string;
+  initials: string;
+  photo: string | null;
+  profileHref?: string | null;
+  organization: string;
+  organizationHref?: string | null;
+}
+
+export interface WorkingGroupDetailReply {
+  id: string;
+  parentPostId: string | null;
+  body: string;
+  author: WorkingGroupDetailAuthor;
+  createdAt: string;
+  attachments: WorkingGroupDetailAttachment[];
+}
+
+export interface WorkingGroupDetailPermissions {
+  canReply: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canChangeStatus: boolean;
+}
+
+export interface WorkingGroupThreadDetail {
+  kind: 'thread';
+  thread: Record<string, unknown> & {
+    id: string;
+    postType: 'discussion' | 'announcement' | 'event';
+    groupSlug: string;
+    title: string;
+    body: string;
+    attachments?: WorkingGroupDetailAttachment[];
+    hasSaved?: boolean;
+    savedCount?: number;
+  };
+  replies: WorkingGroupDetailReply[];
+  participants: Array<{ name: string; initials: string; photo: string | null }>;
+  permissions: WorkingGroupDetailPermissions;
+}
+
+export interface WorkingGroupPollDetail {
+  kind: 'poll';
+  poll: Record<string, unknown> & {
+    id: string;
+    groupSlug?: string;
+    title: string;
+    description?: string;
+    hasSaved?: boolean;
+    savedCount?: number;
+  };
+  results: unknown[];
+  answers: unknown[];
+  permissions: WorkingGroupDetailPermissions;
+}
+
+export type WorkingGroupFeedItemDetail = WorkingGroupThreadDetail | WorkingGroupPollDetail;
+
+export interface WorkingGroupFeedItemResponse {
+  status: 'success';
+  item: WorkingGroupFeedItem;
+  detail: WorkingGroupFeedItemDetail;
 }
 
 export interface WorkingGroupTagUsageResponse {
@@ -235,7 +311,15 @@ export interface WorkingGroupResourceSubmissionInput {
   summary?: string;
   contributorNotes?: string;
   tags?: string | string[];
-  files?: unknown[];
+  files?: WorkingGroupResourceSubmissionFile[];
+}
+
+export interface WorkingGroupResourceSubmissionFile {
+  uri?: string;
+  name?: string;
+  type?: string;
+  fileName?: string;
+  mimeType?: string;
 }
 
 export interface WorkingGroupResourceSubmissionResponse {
@@ -412,7 +496,7 @@ export interface MemberPollVoteInput {
   answers: Array<{ questionId: string; optionId: string }>;
 }
 
-export type MemberContentTargetType = 'thread' | 'event' | 'announcement' | 'poll' | string;
+export type MemberContentTargetType = 'thread' | 'event' | 'announcement' | 'poll';
 
 export interface MemberContentTargetInput {
   targetType: MemberContentTargetType;
@@ -517,6 +601,7 @@ export interface FeedEntry {
 export interface WorkingGroupThreadFeed {
   items: FeedEntry[];
   nextCursor: string | null;
+  snapshotAt: string;
   totalMatching: number;
 }
 
@@ -544,6 +629,7 @@ export interface NewPostInput {
 export interface AskAnswer {
   text: string;
   sources: string[];
+  conversationId?: string;
 }
 
 /** RSVP state for an event post. */

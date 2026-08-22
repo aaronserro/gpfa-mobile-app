@@ -1,16 +1,19 @@
+import { useState } from 'react';
+
 /**
  * Groups tab, level two: one working group, across Posts, About and Members.
  *
  * Presentational. The post list arrives filtered and ordered; the tab and the
  * type filter are held by the caller so a trip into a post and back keeps them.
  */
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
 
 import {
   ArrowFatUp,
   BookmarkSimple,
   ChatCircle,
   CheckCircle,
+  MagnifyingGlass,
   Plus,
 } from '../../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
@@ -41,6 +44,7 @@ export interface GroupViewProps {
   /** Counts per type, for the About tab's stats grid. */
   typeCounts: Record<PostType, number>;
   coLeads?: Group['members'];
+  members?: Group['members'];
   loading?: boolean;
   loadingMore?: boolean;
   error?: Error | null;
@@ -71,6 +75,7 @@ export default function GroupView({
   totalPosts,
   typeCounts,
   coLeads: routeCoLeads = [],
+  members: routeMembers = [],
   loading = false,
   loadingMore = false,
   error = null,
@@ -93,9 +98,12 @@ export default function GroupView({
   onCompose,
 }: GroupViewProps) {
   const { t } = useTheme();
+  const [memberQuery, setMemberQuery] = useState('');
 
   const coLeads = routeCoLeads.length ? routeCoLeads : group.members.filter((m) => m.isLead);
-  const memberCount = group.memberCount ?? group.members.length;
+  const members = mergeGroupMembers(routeMembers.length ? routeMembers : group.members, coLeads);
+  const memberCount = members.length || group.memberCount || group.members.length;
+  const visibleMembers = filterGroupMembers(members, memberQuery);
   const topics: string[] = [];
   for (const p of posts) for (const tag of p.tags ?? []) if (!topics.includes(tag)) topics.push(tag);
 
@@ -369,10 +377,24 @@ export default function GroupView({
 
         {tab === 'members' && (
           <ScrollView contentContainerStyle={styles.members} showsVerticalScrollIndicator={false}>
+            <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+              <MagnifyingGlass size={15} color={t.inkMuted} />
+              <TextInput
+                value={memberQuery}
+                onChangeText={setMemberQuery}
+                placeholder="Search members"
+                placeholderTextColor={t.inkFaint}
+                style={[styles.memberSearchInput, { color: t.inkStrong }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+            </View>
             <MastheadMeta size={9.5} color={t.inkFaint} style={styles.membersMeta}>
-              {`${memberCount} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
+              {`${visibleMembers.length} OF ${memberCount} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
             </MastheadMeta>
-            {group.members.map((m) => (
+            {visibleMembers.map((m) => (
               <View
                 key={m.name}
                 style={[
@@ -393,6 +415,9 @@ export default function GroupView({
                 </MastheadMeta>
               </View>
             ))}
+            {visibleMembers.length === 0 && (
+              <Text style={[styles.personEmpty, { color: t.inkMuted }]}>No members match this search.</Text>
+            )}
           </ScrollView>
         )}
       </View>
@@ -424,6 +449,7 @@ function PostCard({
   const { t } = useTheme();
   const type = post.type ?? 'discussion';
   const TypeIcon = TYPE_ICON[type];
+  const kindLabel = type === 'announcement' ? 'Announcement' : type[0].toUpperCase() + type.slice(1);
 
   // The design collapses an event's rows or a poll's shape into one meta strip.
   let strip = '';
@@ -445,7 +471,7 @@ function PostCard({
           <View style={styles.cardType}>
             <TypeIcon size={13} color={alpha(t.inkStrong, 0.8)} />
             <Text style={[styles.cardTypeText, { color: alpha(t.inkStrong, 0.8) }]}>
-              {type === 'announcement' ? 'Announcement' : type[0].toUpperCase() + type.slice(1)}
+              {kindLabel}
             </Text>
           </View>
           <Text style={[styles.cardDot, { color: t.inkMuted }]}>·</Text>
@@ -508,11 +534,8 @@ function PostCard({
         <Pressable
           onPress={onToggleSave}
           accessibilityRole="button"
-          style={[
-            styles.cardAction,
-            styles.cardActionEnd,
-            { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
-          ]}
+          accessibilityLabel={saved ? 'Unsave post' : 'Save post'}
+          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
         >
           <BookmarkSimple
             size={13}
@@ -581,7 +604,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  cards: { gap: 10, paddingTop: 12, paddingHorizontal: 16 },
+  cards: { gap: 12, paddingTop: 12, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 8, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   cardAuthor: { flexShrink: 1, fontFamily: mono(400), fontSize: 11 },
@@ -590,13 +613,13 @@ const styles = StyleSheet.create({
   cardTypeText: { fontFamily: mono(400), fontSize: 11 },
   cardTime: { fontFamily: mono(400), fontSize: 11 },
   cardTitle: {
-    marginTop: 8,
+    marginTop: 10,
     fontFamily: sans(600),
-    fontSize: 15.5,
-    lineHeight: 20.9,
-    letterSpacing: trackDisplay(15.5),
+    fontSize: 16,
+    lineHeight: 21.6,
+    letterSpacing: trackDisplay(16),
   },
-  cardBody: { marginTop: 6, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
+  cardBody: { marginTop: 6, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
   strip: {
     marginTop: 11,
     flexDirection: 'row',
@@ -621,7 +644,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
   },
-  cardActionEnd: { marginLeft: 'auto' },
   cardActionText: { fontFamily: mono(400), fontSize: 11 },
 
   emptyCard: {
@@ -704,6 +726,18 @@ const styles = StyleSheet.create({
   notifBtnText: { fontFamily: sans(600), fontSize: 13 },
 
   members: { paddingTop: 14, paddingBottom: 40 },
+  memberSearch: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  memberSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 13.5, paddingVertical: 8 },
   membersMeta: { paddingHorizontal: 16, paddingBottom: 10 },
   memberRow: {
     flexDirection: 'row',
@@ -715,3 +749,33 @@ const styles = StyleSheet.create({
   },
   memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
 });
+
+function mergeGroupMembers(groupMembers: Group['members'], coLeads: Group['members']): Group['members'] {
+  const byName = new Map<string, Group['members'][number]>();
+
+  for (const member of groupMembers) {
+    byName.set(member.name, member);
+  }
+
+  for (const coLead of coLeads) {
+    const existing = byName.get(coLead.name);
+    byName.set(coLead.name, { ...(existing ?? coLead), ...coLead, isLead: true });
+  }
+
+  return [...byName.values()].sort((first, second) => {
+    if (first.isLead !== second.isLead) return first.isLead ? -1 : 1;
+    return first.name.localeCompare(second.name);
+  });
+}
+
+function filterGroupMembers(members: Group['members'], query: string): Group['members'] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return members;
+
+  return members.filter((member) =>
+    [member.name, member.role, member.org]
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}

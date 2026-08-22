@@ -1,4 +1,4 @@
-import { API_BASE_URL, REQUEST_TIMEOUT_MS } from './config';
+import { AI_REQUEST_TIMEOUT_MS, API_BASE_URL, REQUEST_TIMEOUT_MS } from './config';
 import { getAccessToken } from './tokens';
 
 /** A failed request, carrying enough for the UI to decide what to show. */
@@ -37,6 +37,11 @@ export interface RequestOptions {
   /** Optional host override for routes served from a different origin. */
   baseUrl?: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+export interface StreamRequestOptions extends Omit<RequestOptions, 'method'> {
+  method?: 'POST';
 }
 
 /**
@@ -47,7 +52,7 @@ export interface RequestOptions {
  * iOS App Transport Security will reject plain http:// in release builds.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, anonymous = false, baseUrl, signal } = options;
+  const { method = 'GET', body, anonymous = false, baseUrl, signal, timeoutMs = REQUEST_TIMEOUT_MS } = options;
   const resolvedBaseUrl = baseUrl ?? API_BASE_URL;
   const formData = isFormData(body);
 
@@ -65,7 +70,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   // Time out slow requests without losing an externally supplied abort signal.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort);
 
@@ -102,6 +107,63 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   return payload as T;
+}
+
+export async function requestStream(path: string, options: StreamRequestOptions = {}): Promise<Response> {
+  const { method = 'POST', body, anonymous = false, baseUrl, signal, timeoutMs = AI_REQUEST_TIMEOUT_MS } = options;
+  const resolvedBaseUrl = baseUrl ?? API_BASE_URL;
+
+  if (!resolvedBaseUrl) {
+    throw new ApiError('No API base URL configured (EXPO_PUBLIC_API_URL).', 0);
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'text/event-stream',
+    'Content-Type': 'application/json',
+  };
+  if (resolvedBaseUrl.includes('ngrok-free.')) headers['ngrok-skip-browser-warning'] = 'true';
+  if (!anonymous) {
+    const token = await getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort);
+
+  const target = `${resolvedBaseUrl}${path}`;
+  try {
+    if (__DEV__) console.info(`[api] ${method} ${target}`);
+    const response = await fetch(target, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (__DEV__) console.info(`[api] ${response.status} ${method} ${target}`);
+
+    if (!response.ok) {
+      const text = await response.text();
+      const payload = text ? safeJson(text) : null;
+      if (response.status === 401 || response.status === 403) onUnauthorized?.();
+      throw new ApiError(messageFrom(payload) ?? `Request failed (${response.status}).`, response.status, payload);
+    }
+
+    return response;
+  } catch (cause) {
+    if (cause instanceof ApiError) throw cause;
+    const aborted = cause instanceof Error && cause.name === 'AbortError';
+    if (__DEV__) console.warn(`[api] ${aborted ? 'timeout' : 'network'} ${method} ${target}`);
+    throw new ApiError(
+      aborted ? `The request timed out (${target}).` : `Could not reach the server (${target}).`,
+      0,
+      cause
+    );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
 }
 
 function isFormData(body: unknown): body is FormData {

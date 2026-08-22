@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, requestStream } from './client';
 import { ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
@@ -23,6 +23,7 @@ import type {
   MemberContentMutationResponse,
   MemberContentQuery,
   MemberContentTargetInput,
+  MemberContentTargetType,
   Member,
   MemberNotification,
   MemberPollCreateInput,
@@ -36,6 +37,8 @@ import type {
   NewPostInput,
   NewsStory,
   PodcastEpisode,
+  Poll,
+  PollOption,
   RedirectResponse,
   Reply,
   RsvpChoice,
@@ -44,7 +47,10 @@ import type {
   WorkingGroupMembership,
   WorkingGroupCoLead,
   WorkingGroupEventRsvpInput,
+  WorkingGroupDetailAttachment,
+  WorkingGroupDetailReply,
   WorkingGroupFeedItem,
+  WorkingGroupFeedItemResponse,
   WorkingGroupFeedQuery,
   WorkingGroupFeedResponse,
   WorkingGroupResourceSubmissionInput,
@@ -138,6 +144,20 @@ interface WorkingGroupMembershipResponse {
   membership: WorkingGroupMembership | null;
 }
 
+interface MemberDirectoryResponse {
+  status: 'success';
+  members: MemberDirectoryRow[];
+}
+
+interface MemberDirectoryRow {
+  id: string;
+  name: string;
+  role: string;
+  organization: string;
+  initials?: string;
+  photo?: string;
+}
+
 /** The signed-in member. Everything that shows "who am I" reads this. */
 export function getMe(): Promise<Member> {
   if (USING_PORTAL_FIXTURES) return local(MEMBER);
@@ -157,6 +177,24 @@ export function getSavedResources(): Promise<LibraryResource[]> {
 export function getNotifications(): Promise<MemberNotification[]> {
   if (!USING_REMOTE_API) return local(NOTIFICATIONS);
   return request<unknown>(ROUTES.notifications).then(normalizeNotifications);
+}
+
+export function markNotificationsRead(notificationIds: string[]): Promise<void> {
+  if (!notificationIds.length) return local(undefined);
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<MessageResponse>(ROUTES.notificationsRead, {
+    method: 'POST',
+    body: { notificationIds },
+  }).then(() => undefined);
+}
+
+export function dismissNotifications(notificationIds: string[]): Promise<void> {
+  if (!notificationIds.length) return local(undefined);
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<MessageResponse>(ROUTES.notificationsDismiss, {
+    method: 'POST',
+    body: { notificationIds },
+  }).then(() => undefined);
 }
 
 /** The Home calendar card. Resolve null to hide it. */
@@ -229,17 +267,23 @@ export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
   return request<DirectoryPerson[]>(ROUTES.directoryPeople);
 }
 
-export function getAskSuggestions(): Promise<string[]> {
-  if (USING_PORTAL_FIXTURES) return local(SUGGESTIONS);
-  return request<string[]>(`${ROUTES.ask}/suggestions`);
+export function getWorkingGroupDirectoryMembers(slug: string): Promise<GroupMember[]> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<GroupMember[]>();
+  return request<MemberDirectoryResponse>(
+    `${ROUTES.memberDirectory}${queryString({ workingGroupSlug: slug, limit: 500 })}`
+  ).then((res) => res.members.map(directoryRowToGroupMember));
 }
 
-export function askGpfa(question: string): Promise<AskAnswer> {
-  if (USING_PORTAL_FIXTURES) {
+export function getAskSuggestions(): Promise<string[]> {
+  return local(SUGGESTIONS);
+}
+
+export function askGpfa(question: string, conversationId?: string): Promise<AskAnswer> {
+  if (!USING_REMOTE_API) {
     // Matches the design's 1100ms think before answering.
     return new Promise((resolve) => setTimeout(() => resolve(findAnswer(question)), 1100));
   }
-  return request<AskAnswer>(ROUTES.ask, { method: 'POST', body: { question } });
+  return requestStream(ROUTES.askStream, { body: { conversationId, message: question } }).then(askAnswerFromStream);
 }
 
 /* ── mutations ───────────────────────────────────────────────────────────── */
@@ -301,32 +345,25 @@ export function createReply(
   }).then(() => null);
 }
 
-export function setUpvote(targetId: string, upvoted: boolean, targetType = 'thread'): Promise<void> {
+export function setUpvote(
+  targetId: string,
+  upvoted: boolean,
+  targetType: MemberContentTargetType = 'thread'
+): Promise<void> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<void>();
   const body = { targetType, targetId };
   return (upvoted ? createMemberUpvote(body) : deleteMemberUpvote(body)).then(() => undefined);
 }
 
 /** Bookmark a post to the member's saved list. */
-export function setSaved(targetId: string, saved: boolean, targetType = 'thread'): Promise<void> {
+export function setSaved(
+  targetId: string,
+  saved: boolean,
+  targetType: MemberContentTargetType = 'thread'
+): Promise<void> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<void>();
   const body = { targetType, targetId };
   return (saved ? createMemberSavedContent(body) : deleteMemberSavedContent(body)).then(() => undefined);
-}
-
-/**
- * Upvote a reply. Replies without an `id` have no address, so the toggle stays
- * on the device and no request is made.
- */
-export function setReplyUpvote(
-  postId: string,
-  replyId: string | undefined,
-  upvoted: boolean
-): Promise<void> {
-  if (!USING_REMOTE_API) return workingGroupsRequireApi<void>();
-  if (!replyId) return workingGroupsRequireApi<void>();
-  const body = { targetType: 'reply', targetId: replyId };
-  return (upvoted ? createMemberUpvote(body) : deleteMemberUpvote(body)).then(() => undefined);
 }
 
 /** Subscribe to a working group's digest, or unsubscribe from it. */
@@ -374,6 +411,7 @@ export function getWorkingGroupThreadFeed(
   return getWorkingGroupFeed(slug, query).then((res) => ({
     items: res.items.map((item) => ({ post: workingGroupFeedItemToThread(item), groupId })),
     nextCursor: res.nextCursor,
+    snapshotAt: res.snapshotAt,
     totalMatching: res.totalMatching,
   }));
 }
@@ -384,9 +422,66 @@ export function getWorkingGroupFeedItem(
   itemId: string
 ): Promise<WorkingGroupFeedItem | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupFeedItem | null>();
-  return request<{ status: 'success'; item: WorkingGroupFeedItem }>(
+  return getWorkingGroupFeedItemDetail(slug, itemType, itemId).then((res) => res.item);
+}
+
+export function getWorkingGroupFeedItemDetail(
+  slug: string,
+  itemType: string,
+  itemId: string
+): Promise<WorkingGroupFeedItemResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupFeedItemResponse>();
+  return request<WorkingGroupFeedItemResponse>(
     ROUTES.workingGroupFeedItem(slug, itemType, itemId)
-  ).then((res) => res.item);
+  );
+}
+
+export function workingGroupFeedItemResponseToEntry(
+  response: WorkingGroupFeedItemResponse,
+  groupId: string
+): FeedEntry {
+  const post = workingGroupFeedItemToThread(response.item);
+  const detail = response.detail;
+
+  if (detail.kind === 'thread') {
+    const thread = detail.thread as Record<string, unknown>;
+    const attachments = detail.thread.attachments ?? [];
+    const firstAttachment = attachments[0];
+
+    return {
+      groupId,
+      post: {
+        ...post,
+        title: firstString(thread.title) ?? post.title,
+        body: firstString(thread.body) ?? post.body,
+        upvotes: numberFrom(thread.upvoteCount, post.upvotes),
+        file: firstAttachment ? attachmentTitle(firstAttachment) : post.file,
+        fileMeta: firstAttachment ? attachmentMeta(firstAttachment) : post.fileMeta,
+        canReply: detail.permissions.canReply,
+        canEdit: detail.permissions.canEdit,
+        canDelete: detail.permissions.canDelete,
+        canChangeStatus: detail.permissions.canChangeStatus,
+        replies: detail.replies.map(workingGroupDetailReplyToReply),
+      },
+    };
+  }
+
+  const poll = detail.poll as Record<string, unknown>;
+  return {
+    groupId,
+    post: {
+      ...post,
+      title: firstString(poll.title) ?? post.title,
+      body: firstString(poll.description, poll.body) ?? post.body,
+      upvotes: numberFrom(poll.upvoteCount, post.upvotes),
+      poll: workingGroupPollDetailToPoll(detail, post.poll),
+      canReply: detail.permissions.canReply,
+      canEdit: detail.permissions.canEdit,
+      canDelete: detail.permissions.canDelete,
+      canChangeStatus: detail.permissions.canChangeStatus,
+      replies: [],
+    },
+  };
 }
 
 export function getWorkingGroupTagUsage(
@@ -404,7 +499,7 @@ export function submitWorkingGroupResource(
   if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceSubmissionResponse | null>();
   return request<WorkingGroupResourceSubmissionResponse>(ROUTES.workingGroupResourceSubmissions(slug), {
     method: 'POST',
-    body: input,
+    body: workingGroupResourceSubmissionFormData(input),
   });
 }
 
@@ -458,7 +553,10 @@ export function finalizeForumUpload(input: ForumUploadFinalizeInput): Promise<Fo
 
 export function summarizeForum(input: ForumSummarizeInput): Promise<ForumSummarizeResponse | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<ForumSummarizeResponse | null>();
-  return request<ForumSummarizeResponse>(ROUTES.forumSummarize, { method: 'POST', body: input });
+  const form = new FormData();
+  form.append('threadId', input.threadId);
+  form.append('groupSlug', input.groupSlug);
+  return request<ForumSummarizeResponse>(ROUTES.forumSummarize, { method: 'POST', body: form });
 }
 
 export function getMemberPolls(query: { groupSlug?: string } = {}): Promise<MemberPollsResponse> {
@@ -549,6 +647,112 @@ export function setRsvp(postId: string, choice: RsvpChoice, groupSlug?: string):
   }).then(() => undefined);
 }
 
+async function askAnswerFromStream(response: Response): Promise<AskAnswer> {
+  const events = parseServerSentEvents(await responseStreamText(response));
+  let streamedText = '';
+  let finalAnswer: AskAnswer | null = null;
+  let conversationId: string | undefined;
+
+  for (const event of events) {
+    const type = firstString(event.data.type, event.event);
+
+    if (type === 'ready') {
+      conversationId = firstString(event.data.conversationId) ?? conversationId;
+      continue;
+    }
+
+    if (type === 'text_delta') {
+      streamedText += firstString(event.data.text) ?? '';
+      continue;
+    }
+
+    if (type === 'done') {
+      const answer = recordFrom(event.data.answer);
+      finalAnswer = {
+        text: firstString(answer.content, answer.text) ?? streamedText,
+        sources: sourceLabels(answer.sources),
+        ...(conversationId ? { conversationId } : {}),
+      };
+      continue;
+    }
+
+    if (type === 'persisted') {
+      const conversation = recordFrom(event.data.conversation);
+      const message = recordFrom(event.data.assistantMessage);
+      conversationId = firstString(conversation.id) ?? conversationId;
+      finalAnswer = {
+        text: firstString(message.text, message.content) ?? finalAnswer?.text ?? streamedText,
+        sources: sourceLabels(message.sources),
+        ...(conversationId ? { conversationId } : {}),
+      };
+      continue;
+    }
+
+    if (type === 'error') {
+      throw new Error(firstString(event.data.message) ?? 'Ask GPFA could not answer.');
+    }
+  }
+
+  const text = finalAnswer?.text?.trim() || streamedText.trim();
+  if (!text) throw new Error('Ask GPFA did not return an answer.');
+  return { text, sources: finalAnswer?.sources ?? [], ...(conversationId ? { conversationId } : {}) };
+}
+
+async function responseStreamText(response: Response): Promise<string> {
+  const reader = response.body?.getReader?.();
+  if (!reader || typeof TextDecoder === 'undefined') return response.text();
+
+  const decoder = new TextDecoder();
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function parseServerSentEvents(text: string): Array<{ event?: string; data: Record<string, unknown> }> {
+  return text
+    .split(/\n\n+/)
+    .map((chunk) => {
+      const event = firstString(
+        chunk
+          .split(/\n/)
+          .find((line) => line.startsWith('event:'))
+          ?.slice('event:'.length)
+          .trim()
+      );
+      const dataText = chunk
+        .split(/\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice('data:'.length).trimStart())
+        .join('\n');
+      const data = safeRecordJson(dataText);
+      return data ? { ...(event ? { event } : {}), data } : null;
+    })
+    .filter((event): event is { event?: string; data: Record<string, unknown> } => event !== null);
+}
+
+function safeRecordJson(text: string): Record<string, unknown> | null {
+  if (!text) return null;
+  try {
+    return recordFrom(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+function recordFrom(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function sourceLabels(value: unknown): string[] {
+  return arrayOfRecords(value)
+    .map((source) => firstString(source.label, source.title))
+    .filter((label): label is string => !!label);
+}
+
 function normalizeWorkingGroups(payload: WorkingGroupsResponse): Group[] {
   if (!payload || payload.status !== 'success' || !Array.isArray(payload.groups)) return [];
 
@@ -567,6 +771,7 @@ function normalizeWorkingGroups(payload: WorkingGroupsResponse): Group[] {
       n: row.name,
       short: shortGroupName(row.name),
       cls: groupRuleClass(row, index),
+      cardImageUrl: row.cardImageUrl,
       unread,
       meta: row.description || `${unread} unread`,
       memberCount: row.members,
@@ -575,6 +780,15 @@ function normalizeWorkingGroups(payload: WorkingGroupsResponse): Group[] {
       threads,
     } satisfies Group;
   });
+}
+
+function directoryRowToGroupMember(member: MemberDirectoryRow): GroupMember {
+  return {
+    name: member.name,
+    role: member.role,
+    org: member.organization,
+    initials: member.initials ?? initialsFromName(member.name),
+  };
 }
 
 function queryString(params: object): string {
@@ -631,8 +845,82 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
     canEdit: booleanFrom(record.canEdit, record.viewerCanEdit, record.canManage),
     canDelete: booleanFrom(record.canDelete, record.viewerCanDelete, record.canManage),
     canChangeStatus: booleanFrom(record.canChangeStatus, record.viewerCanChangeStatus, record.canManage),
+    canReply: booleanFrom(record.canReply, record.viewerCanReply),
     replies: [],
   };
+}
+
+function workingGroupDetailReplyToReply(reply: WorkingGroupDetailReply): Reply {
+  return {
+    id: reply.id,
+    a: reply.author.name,
+    org: reply.author.organization,
+    time: relativeTime(reply.createdAt),
+    initials: reply.author.initials,
+    text: reply.body,
+  };
+}
+
+function workingGroupPollDetailToPoll(
+  detail: Extract<WorkingGroupFeedItemResponse['detail'], { kind: 'poll' }>,
+  fallback: Poll | undefined
+): Poll {
+  const poll = detail.poll as Record<string, unknown>;
+  const questions = arrayOfRecords(poll.questions);
+  const question = questions[0];
+  const options = arrayOfRecords(question?.options).length
+    ? arrayOfRecords(question?.options)
+    : arrayOfRecords(poll.options);
+
+  return {
+    id: firstString(poll.id) ?? fallback?.id,
+    questionId: firstString(question?.id, question?.questionId) ?? fallback?.questionId,
+    q: firstString(question?.text, question?.title, poll.title) ?? fallback?.q ?? 'Poll',
+    closes: poll.closedAt ? 'Closed' : firstString(poll.closesLabel, poll.closesAt) ?? fallback?.closes ?? 'Open',
+    options: options.length ? options.map((option) => pollOptionFromDetail(option, detail.results)) : fallback?.options ?? [],
+  };
+}
+
+function pollOptionFromDetail(option: Record<string, unknown>, results: unknown[]): PollOption {
+  const id = firstString(option.id, option.optionId) ?? '';
+  return {
+    ...(id ? { id } : {}),
+    label: firstString(option.label, option.text, option.title) ?? 'Option',
+    votes: numberFrom(option.votes, option.voteCount, option.responseCount, resultVotesForOption(id, results)) ?? 0,
+  };
+}
+
+function resultVotesForOption(optionId: string, results: unknown[]): number | undefined {
+  if (!optionId) return undefined;
+  const row = arrayOfRecords(results).find((result) => firstString(result.optionId, result.option_id, result.id) === optionId);
+  return row ? numberFrom(row.votes, row.voteCount, row.count, row.responses) : undefined;
+}
+
+function attachmentTitle(attachment: WorkingGroupDetailAttachment): string {
+  return attachment.originalFilename ?? attachment.title;
+}
+
+function attachmentMeta(attachment: WorkingGroupDetailAttachment): string {
+  return [attachment.contentType, formatBytes(attachment.byteSize)].filter(Boolean).join(' · ');
+}
+
+function formatBytes(bytes: number | undefined): string | undefined {
+  if (!bytes || bytes < 0) return undefined;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function relativeTime(value: string): string {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return value;
+  const minutes = Math.max(0, Math.round((Date.now() - time) / 60000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 function initialsFromName(name: string): string {
@@ -647,6 +935,15 @@ function initialsFromName(name: string): string {
 function booleanFrom(...values: unknown[]): boolean | undefined {
   const value = values.find((candidate) => typeof candidate === 'boolean');
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function numberFrom(...values: unknown[]): number | undefined {
+  const value = values.find((candidate) => typeof candidate === 'number' && Number.isFinite(candidate));
+  return typeof value === 'number' ? value : undefined;
+}
+
+function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object') : [];
 }
 
 function mergeGroupThreads(
@@ -719,6 +1016,31 @@ function forumThreadFormData(input: ForumThreadCreateInput): FormData {
 
   for (const id of input.attachmentIds ?? []) {
     form.append('attachmentIds', id);
+  }
+
+  return form;
+}
+
+function workingGroupResourceSubmissionFormData(input: WorkingGroupResourceSubmissionInput): FormData {
+  const form = new FormData();
+  form.append('title', input.title);
+  if (input.resourceType) form.append('resourceType', input.resourceType);
+  if (input.sourceUrl) form.append('sourceUrl', input.sourceUrl);
+  if (input.summary) form.append('summary', input.summary);
+  if (input.contributorNotes) form.append('contributorNotes', input.contributorNotes);
+
+  const tags = Array.isArray(input.tags) ? input.tags : input.tags?.split(',') ?? [];
+  for (const tag of tags.map((value) => value.trim()).filter(Boolean)) {
+    form.append('tags', tag);
+  }
+
+  for (const file of input.files ?? []) {
+    if (!file.uri) continue;
+    form.append('files', {
+      uri: file.uri,
+      name: file.name ?? file.fileName ?? 'resource-upload',
+      type: file.type ?? file.mimeType ?? 'application/octet-stream',
+    } as unknown as Blob);
   }
 
   return form;

@@ -33,6 +33,9 @@ export const USING_FIXTURE_PORTAL_DATA = rawFixturePortalData.trim().toLowerCase
 /** Abort a request that hasn't responded in this long. */
 export const REQUEST_TIMEOUT_MS = 15000;
 
+/** Ask GPFA can spend longer retrieving context and generating an answer. */
+export const AI_REQUEST_TIMEOUT_MS = 60000;
+
 /**
  * Paths are collected here so a backend whose routes differ can be adapted in
  * one place rather than across the call sites.
@@ -42,6 +45,8 @@ export const ROUTES = {
   logout: '/auth/logout',
   session: '/auth/session',
   notifications: '/api/members/notifications',
+  notificationsRead: '/api/members/notifications/read',
+  notificationsDismiss: '/api/members/notifications/dismiss',
   workingGroups: '/api/members/working-groups',
   workingGroupMembership: (slug: string) => `/api/members/working-groups/${slug}/membership`,
   workingGroupCoLeads: (slug: string) => `/api/members/working-groups/${slug}/co-leads`,
@@ -66,6 +71,8 @@ export const ROUTES = {
   memberPollVote: '/api/members/polls/vote',
   memberUpvotes: '/api/members/upvotes',
   memberSavedContent: '/api/members/saved-content',
+  memberDirectory: '/api/members/directory',
+  askStream: '/api/members/knowledge/messages/stream',
   me: '/me',
   savedResources: '/me/saved',
   groups: '/groups',
@@ -83,7 +90,6 @@ export const ROUTES = {
   replies: (id: string) => `/posts/${id}/replies`,
   upvote: (id: string) => `/posts/${id}/upvote`,
   save: (id: string) => `/posts/${id}/save`,
-  replyUpvote: (postId: string, replyId: string) => `/posts/${postId}/replies/${replyId}/upvote`,
   subscribe: (groupId: string) => `/groups/${groupId}/subscribe`,
   vote: (id: string) => `/posts/${id}/vote`,
   rsvp: (id: string) => `/posts/${id}/rsvp`,

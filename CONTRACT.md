@@ -155,9 +155,12 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | --- | --- | --- | --- |
 | `POST` | `/api/members/sign-in` | Sign-in | `{ accessToken, refreshToken? }` or `{ auth: { accessToken, refreshToken? } }` |
 | `GET` | `/api/members/notifications` | Header notification bell | `MemberNotification[]`, newest first |
+| `POST` | `/api/members/notifications/read` | Notification sheet mark-read action | `{ status, readAt }` |
+| `POST` | `/api/members/notifications/dismiss` | Notification sheet dismiss action | `{ status, dismissedAt }` |
 | `GET` | `/api/members/working-groups` | Home + Groups directory | `WorkingGroupsResponse` |
 | `GET` | `/api/members/working-groups/:slug/membership` | Group subscribe state | `WorkingGroupMembershipResponse` |
 | `GET` | `/api/members/working-groups/:slug/co-leads` | Group detail About/Members | `{ status, members: WorkingGroupCoLead[] }` |
+| `GET` | `/api/members/directory?workingGroupSlug=:slug&query=&limit=500` | Group detail Members tab | `{ status, members: DirectoryMember[] }` |
 | `GET` | `/api/members/working-groups/:slug/feed` | Group detail infinite feed | `WorkingGroupFeedResponse` |
 | `GET` | `/api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared route | `{ status, item: WorkingGroupFeedItem }` |
 | `GET` | `/api/members/working-groups/:slug/tag-usage` | Create post tag suggestions | `WorkingGroupTagUsageResponse` |
@@ -189,8 +192,8 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
 | `GET` | `/directory/orgs` | Directory index + profile | `MemberOrg[]`, A–Z by `name` |
 | `GET` | `/directory/people` | Directory search + profile | `DirectoryPerson[]` |
-| `GET` | `/ask/suggestions` | Ask GPFA empty state | `string[]` |
-| `POST` | `/ask` | Ask GPFA | `AskAnswer` |
+| local only | Ask suggestions | Ask GPFA empty state | `string[]` from fixtures/static prompts |
+| `POST` | `/api/members/knowledge/messages/stream` | Ask GPFA | SSE stream mapped to `AskAnswer` |
 | `POST` | `/posts` | Composer | `Thread` |
 | `POST` | `/posts/:id/replies` | Post detail | `Reply` |
 | `POST`/`DELETE` | `/posts/:id/upvote` | Feed + detail | ignored |
@@ -281,6 +284,31 @@ this is the target shape:
 `read: false` or a missing `read` value counts toward the bell badge. `href` is
 stored from `navigation_href` for a later open action; the current sheet only
 displays the list.
+
+**`POST /api/members/notifications/read` → `{ status, readAt }`**
+
+Marks one or more notifications as read. The app sends the stored bearer token
+and this JSON body:
+
+```json
+{ "notificationIds": ["notif-cl1"] }
+```
+
+The app optimistically sets matching notifications to `read: true`, which also
+updates the header badge. If the request fails, it restores the previous list.
+
+**`POST /api/members/notifications/dismiss` → `{ status, dismissedAt }`**
+
+Dismisses one or more notifications for the signed-in member. The app sends the
+same body shape as mark-read:
+
+```json
+{ "notificationIds": ["notif-cl1"] }
+```
+
+The app optimistically removes matching notifications from the sheet. If the
+request fails, it restores the previous list. Dismissing the last notification
+renders the sheet's empty state.
 
 **`GET /api/members/working-groups` → `WorkingGroupsResponse`**
 
@@ -401,18 +429,24 @@ The cross-group feed. Flat, not nested:
 Return every post the member may see. **Filtering, sorting, and search are all
 client-side today** (§6), so pagination is not supported — see §8.
 
-**`POST /ask` → `AskAnswer`**
+**`POST /api/members/knowledge/messages/stream` → Server-sent events → `AskAnswer`**
 
 ```http
-POST /ask
-{ "question": "How do peers structure indemnification?" }
-```
-```json
-{ "text": "Across responding members…", "sources": ["Matrix v3 — Collateral & Liquidity"] }
+POST /api/members/knowledge/messages/stream
+Accept: text/event-stream
+Authorization: Bearer <accessToken>
+
+{ "conversationId": "optional-existing-conversation", "message": "How do peers structure indemnification?" }
 ```
 
+The app understands `ready`, `text_delta`, `done`, `persisted`, and `error`
+events. It stores the returned `conversationId` in `AskScreen` state and sends
+it with the next question in the same screen session. Ask suggestions are local
+until a real member suggestions endpoint exists.
+
 Failures are caught and rendered as a chat message: *"Ask GPFA is unavailable
-right now."* — the screen does not throw.
+right now."* — the screen does not throw. Development builds log the underlying
+error so auth, network, timeout, parser, and backend failures can be separated.
 
 **`POST /posts` → `Thread`**
 
@@ -573,8 +607,8 @@ from legacy placeholders to `/api/members/*` paths.
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
 | `GET /api/members/notifications` | Current / Member bearer-ready. Source: `members/notifications/route.ts`. | No query params. | `{ status: "success", memberCreatedAt, notifications: MemberNotification[] }`. `portal.ts` normalizes `notifications` into `MemberNotification[]`. | Newest first, route-limited to the latest notification window. Empty state is `notifications: []`. `401` when not active; malformed rows are logged/dropped rather than rendered. |
-| `POST /api/members/notifications/read` | Deferred / active member, migration needed. Source: `members/notifications/read/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", readAt }`. | No pagination. Validation `400`; `401` when not active; `500` on write failure. Add when the mobile sheet supports mark-read sync. |
-| `POST /api/members/notifications/dismiss` | Deferred / active member, migration needed. Source: `members/notifications/dismiss/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", dismissedAt }`. | No pagination. Same validation/auth/write errors as mark-read. Empty state after dismissal is a shorter notifications list. |
+| `POST /api/members/notifications/read` | Current / Member bearer-ready. Source: `members/notifications/read/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", readAt }`. | No pagination. Validation `400`; `401` when not active; `500` on write failure. Mobile marks all unread optimistically and rolls back on failure. |
+| `POST /api/members/notifications/dismiss` | Current / Member bearer-ready. Source: `members/notifications/dismiss/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", dismissedAt }`. | No pagination. Same validation/auth/write errors as mark-read. Empty state after dismissal is a shorter notifications list; mobile rolls back on failure. |
 
 #### Working groups
 
@@ -586,12 +620,12 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `GET /api/members/working-groups` | Current / Member bearer-ready. Source: `members/working-groups/route.ts`. | No query params. | `{ status, groups, threads, joinedSlugs, home }`; mapped to `Group[]` in `portal.ts`. | Server returns summary order for the directory/home. Empty state is `groups: []`, `threads: []`, `joinedSlugs: []`. `401` when not active; `500` on load failure. |
 | `GET /api/members/working-groups/:slug/membership` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/membership/route.ts`. | Path `slug`. | `{ status: "success", membership: WorkingGroupMembership | null }`. | No pagination. `membership: null` means not subscribed. Invalid/inaccessible slug returns an error without granting mutation rights. |
 | `GET /api/members/working-groups/:slug/co-leads` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/co-leads/route.ts`. | Path `slug`. | `{ status: "success", members: WorkingGroupCoLead[] }`. | Sorted by server helper; no pagination. Empty state is `members: []`. `401` when inactive; inaccessible group should fail closed. |
-| `GET /api/members/working-groups/:slug/feed` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/route.ts`. | Query `query?`, `type?`, `status?`, `sort?`, `limit?`, `cursor?`; path `slug`. | `WorkingGroupFeedResponse`: `{ status, items, nextCursor, snapshotAt, totalMatching }`. | Cursor pagination. Sort values are `newest`, `oldest`, `recently_active`, `most_upvoted`. Empty page is `items: []`, `nextCursor: null`, `totalMatching: 0`. Invalid filters/cursors return `400`; auth errors `401`; group visibility errors should not leak private data. |
-| `GET /api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/feed/items/[itemType]/[itemId]/route.ts`. | Path `slug`, `itemType`, `itemId`. | `{ status: "success", item: WorkingGroupFeedItem }`. | No pagination. Unknown or inaccessible items should return the same not-found shape where practical. |
+| `GET /api/members/working-groups/:slug/feed` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/route.ts`. | Query `query?`, `type?`, `status?`, `sort?`, `limit?`, `snapshotAt?`, `cursor?`; path `slug`. When sending `cursor`, send the `snapshotAt` returned with the first page. | `WorkingGroupFeedResponse`: `{ status, items, nextCursor, snapshotAt, totalMatching }`. | Cursor pagination. Sort values are `newest`, `oldest`, `recently_active`, `most_upvoted`. Empty page is `items: []`, `nextCursor: null`, `totalMatching: 0`. Invalid filters/cursors return `400`; auth errors `401`; group visibility errors should not leak private data. |
+| `GET /api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/items/[itemType]/[itemId]/route.ts`. | Path `slug`, `itemType`, `itemId`. | `WorkingGroupFeedItemResponse`: `{ status: "success", item, detail }`. Thread details include full thread body, attachments, replies, participants, saved/upvoted counts, and `permissions: { canReply, canEdit, canDelete, canChangeStatus }`. Poll details include full poll, results, current member answers, saved/upvoted counts, and the same permission block. | No pagination. Unknown, mismatched, or inaccessible items return `404`; invalid params return `400`; auth errors return `401`. Reply upvotes are not included yet because the web upvote target union does not support `reply`. |
 | `GET /api/members/working-groups/:slug/tag-usage` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/tag-usage/route.ts`. | Query `query?`/`q?`, `limit?`; path `slug`. | `WorkingGroupTagUsageResponse`: `{ status, group, tags: [{ key, label, count }] }`. | Server-ranked tag suggestions, limited by query. Empty state is `tags: []`. Validation/auth errors as above. |
 | `POST /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/subscription/route.ts`. | Path `slug`; no body required. | Success response is ignored by the app; route records subscription. | No pagination. Idempotent subscribe semantics are preferred because mobile writes optimistically. `401` inactive; `404`/`403` for invalid group; write errors `500`. |
 | `DELETE /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: same route. | Path `slug`; no body required. | Success response is ignored by the app; route removes subscription. | No pagination. Empty state is unsubscribed membership. Same auth/error contract as subscribe. |
-| `POST /api/members/working-groups/:slug/resource-submissions` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | JSON `WorkingGroupResourceSubmissionInput`: `title`, optional `resourceType`, `sourceUrl`, `summary`, `contributorNotes`, `tags`, `files`. | `WorkingGroupResourceSubmissionResponse`: `{ status, submission: { id, status, submittedAt } }`. | No pagination. Validation `400`; group/subscription auth failure `401`/`403`; write failure `500`. |
+| `POST /api/members/working-groups/:slug/resource-submissions` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | `multipart/form-data`: `title`, optional `resourceType`, `sourceUrl`, `summary`, `contributorNotes`, repeated `tags`, repeated `files`. | `WorkingGroupResourceSubmissionResponse`: `{ status, submission: { id, status, submittedAt } }`. | No pagination. Validation `400`; missing file/source URL `409`; unsupported media `415`; oversized file `413`; group/subscription auth failure `401`/`403`; write failure `500`. Mobile helper currently needs to be changed from JSON before this UI is built. |
 | `POST /api/members/working-groups/events/rsvp` | Current / Member bearer-ready. Source: `members/working-groups/events/rsvp/route.ts`. | JSON `{ threadId, groupSlug, status: "attending" | "not_attending" }`. | `{ status: "success", message }`. | No pagination. Empty state is no RSVP. Mobile writes optimistically; route should be idempotent per member/event. |
 
 #### Forum and posts
@@ -606,7 +640,7 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `DELETE /api/members/forum/replies/:replyId` | Prepared / Member bearer-ready. Source: `members/forum/replies/[replyId]/route.ts`. | Path `replyId`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
 | `POST /api/members/forum/uploads/prepare` | Prepared / Member bearer-ready. Source: `members/forum/uploads/prepare/route.ts`. | JSON `{ groupSlug, fileName, contentType, byteSize }`. | `ForumUploadPrepareResponse`: upload `assetId`, bucket, storage path, signed URL, expected content type/size. | No pagination. Validate type/size before issuing URL. |
 | `POST /api/members/forum/uploads/finalize` | Prepared / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | No pagination. Reject mismatched upload metadata; storage errors `500`. |
-| `POST /api/members/forum/summarize` | Current / Member bearer-ready. Source: `members/forum/summarize/route.ts`. | JSON `{ threadId, groupSlug }`. | `ForumSummarizeResponse`: `{ status, message, summary }`. | No pagination. Must verify readable group content; rate-limit/AI errors should return clear `status: "error"` messages. |
+| `POST /api/members/forum/summarize` | Current / Member bearer-ready. Source: `members/forum/summarize/route.ts`. | `multipart/form-data` with `threadId`, `groupSlug`. | `ForumSummarizeResponse`: `{ status, message, summary }`. | No pagination. Must verify readable group content; rate-limit/AI errors should return clear `status: "error"` messages. |
 
 #### Polls
 
@@ -653,16 +687,16 @@ browser-oriented active-member helper, so verify bearer support during the remap
 
 #### Ask GPFA
 
-The current mobile Ask GPFA screen uses legacy `/ask` and `/ask/suggestions`
-contracts. The web app exposes conversation-based member routes; mobile should
-move to these routes when it can handle conversation IDs and SSE streaming.
+The current mobile Ask GPFA screen uses the conversation-based member stream
+route. Suggestions remain local/static because there is no real web member
+suggestions API yet.
 
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
 | `GET /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/route.ts`. | No query params. | `{ status: "success", conversations }`. | Sorted by `updated_at` descending, limited to 20. Empty state `conversations: []`. Auth `401`; load failure `500`. |
 | `POST /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: same route. | JSON `{ title?: string }`, max 120 chars. | `{ status: "success", conversation }`. | No pagination. Validation `400`; auth `401`; create failure `500`. |
 | `GET /api/members/knowledge/conversations/:id` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/[id]/route.ts`. | Path `id`; query `before?` cursor for earlier messages. | `{ status, conversation, messages, hasEarlier, earlierCursor }`. | Cursor pagination backward through messages. Empty state `messages: []`. Invalid cursor `400`; unknown/not-owned conversation `404`. |
-| `POST /api/members/knowledge/messages/stream` | Deferred / active member, migration needed. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Server-sent event stream with ready/persisted answer events, plus persisted conversation/message records. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON as implemented. |
+| `POST /api/members/knowledge/messages/stream` | Current / Member bearer-ready. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Server-sent event stream with ready/persisted answer events, plus persisted conversation/message records. Mobile maps the final answer to `{ text, sources }`. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON as implemented. |
 
 #### Public membership
 
@@ -708,6 +742,7 @@ renaming across the UI.
   n: string;           // "Collateral & Liquidity" — display name
   short: string;       // "Collateral & Liq" — chips and composer
   cls: WgRuleClass;    // colour key, see below
+  cardImageUrl?: string; // raster directory card image; hatch fallback when absent
   unread: number;      // Home badge and the About tab's Unread stat; 0 hides the badge
   meta: string;        // "12 new posts this week"
   members: GroupMember[];  // the Members tab; its length is the members count
@@ -978,6 +1013,7 @@ These are **client-side over the already-loaded feed**:
 | --- | --- |
 | Working group search (name) | `GroupsScreen.tsx` |
 | Splitting the directory into subscribed / not | `GroupsScreen.tsx` |
+| Working group directory sort: recommended, active, members, A-Z | `GroupsScreen.tsx` |
 | Per-group post-type filter, newest-first (`mins`) order | `groups/GroupView.tsx` |
 | A group's stats grid and topics list | `groups/GroupView.tsx` |
 | One-level reply nesting, from `mention` | `groups/PostDetail.tsx` |
@@ -1087,7 +1123,9 @@ class ApiError extends Error {
 - Messages are read from `message`, `error`, or `detail` on the response body,
   in that order. Sending one of those gives users a real message instead of
   *"Request failed (500)."*
-- Requests time out after **15s** (`REQUEST_TIMEOUT_MS`).
+- Requests time out after **15s** (`REQUEST_TIMEOUT_MS`). Ask GPFA stream
+  requests use **60s** (`AI_REQUEST_TIMEOUT_MS`) because retrieval and model
+  generation can take longer than ordinary JSON endpoints.
 - Read failures on Home and Groups render `DataGate`'s retry screen. Mutation
   failures roll the optimistic update back silently.
 
