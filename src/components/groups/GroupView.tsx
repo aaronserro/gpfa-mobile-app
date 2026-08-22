@@ -13,6 +13,7 @@ import {
   BookmarkSimple,
   ChatCircle,
   CheckCircle,
+  FileText,
   MagnifyingGlass,
   Plus,
 } from '../../ds/icons';
@@ -67,6 +68,7 @@ export interface GroupViewProps {
   onBack: () => void;
   onOpenPost: (postId: string) => void;
   onCompose: () => void;
+  onOpenResourceSubmission: () => void;
 }
 
 export default function GroupView({
@@ -96,6 +98,7 @@ export default function GroupView({
   onBack,
   onOpenPost,
   onCompose,
+  onOpenResourceSubmission,
 }: GroupViewProps) {
   const { t } = useTheme();
   const [memberQuery, setMemberQuery] = useState('');
@@ -272,6 +275,28 @@ export default function GroupView({
             >
               <Plus size={18} weight="bold" color="#fff" />
               <Text style={styles.fabText}>Post</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onOpenResourceSubmission}
+              disabled={!subscribed}
+              accessibilityRole="button"
+              accessibilityLabel="Submit resource"
+              accessibilityState={{ disabled: !subscribed }}
+              style={({ pressed }) => [
+                styles.resourceFab,
+                {
+                  borderColor: t.ruleHairline,
+                  backgroundColor: !subscribed
+                    ? t.muted
+                    : pressed
+                      ? alpha(t.surfaceAnchor, 0.14)
+                      : t.surfacePaper,
+                },
+              ]}
+            >
+              <FileText size={16} color={subscribed ? t.surfaceAnchor : t.inkFaint} />
+              <Text style={[styles.resourceFabText, { color: subscribed ? t.surfaceAnchor : t.inkFaint }]}>Resource</Text>
             </Pressable>
           </>
         )}
@@ -675,6 +700,24 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { fontFamily: sans(600), fontSize: 14, color: '#fff' },
+  resourceFab: {
+    position: 'absolute',
+    left: 16,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 22,
+    shadowColor: '#132329',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  resourceFabText: { fontFamily: sans(600), fontSize: 13 },
 
   about: { padding: 16, paddingBottom: 40, gap: 18 },
   aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },

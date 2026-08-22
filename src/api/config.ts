@@ -80,7 +80,7 @@ export const ROUTES = {
   feed: '/posts',
   news: '/news',
   ask: '/ask',
-  library: '/library',
+  library: '/api/members/resources',
   podcasts: '/podcasts',
   jobs: '/jobs',
   directoryOrgs: '/directory/orgs',

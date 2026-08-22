@@ -38,11 +38,13 @@ export { FireIcon as Fire } from 'phosphor-react-native/lib/commonjs/icons/Fire'
 export { HashIcon as Hash } from 'phosphor-react-native/lib/commonjs/icons/Hash';
 export { FileXlsIcon as FileXls } from 'phosphor-react-native/lib/commonjs/icons/FileXls';
 export { HouseIcon as House } from 'phosphor-react-native/lib/commonjs/icons/House';
+export { LinkIcon as Link } from 'phosphor-react-native/lib/commonjs/icons/Link';
 export { LockSimpleIcon as LockSimple } from 'phosphor-react-native/lib/commonjs/icons/LockSimple';
 export { MagnifyingGlassIcon as MagnifyingGlass } from 'phosphor-react-native/lib/commonjs/icons/MagnifyingGlass';
 export { MapPinIcon as MapPin } from 'phosphor-react-native/lib/commonjs/icons/MapPin';
 export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/icons/Megaphone';
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
+export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
 export { PauseIcon as Pause } from 'phosphor-react-native/lib/commonjs/icons/Pause';
 export { PlayIcon as Play } from 'phosphor-react-native/lib/commonjs/icons/Play';
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';

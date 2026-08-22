@@ -75,6 +75,7 @@ export interface GroupsScreenProps {
   rsvps: Record<string, RsvpChoice | undefined>;
   onRsvp: (threadId: string, choice: RsvpChoice) => void;
   onCompose: () => void;
+  onOpenResourceSubmission: (group: Group) => void;
   /** Design prop: show the #topic chips on feed cards. */
   showTagsInFeed?: boolean;
   /** Design prop: which tab a group opens on. */
@@ -118,6 +119,7 @@ export default function GroupsScreen({
   rsvps,
   onRsvp,
   onCompose,
+  onOpenResourceSubmission,
   showTagsInFeed = true,
   defaultGroupTab = 'posts',
 }: GroupsScreenProps) {
@@ -216,6 +218,7 @@ export default function GroupsScreen({
         onBack={onCloseGroup}
         onOpenPost={onOpenThread}
         onCompose={onCompose}
+        onOpenResourceSubmission={() => onOpenResourceSubmission(group)}
       />
     );
   }

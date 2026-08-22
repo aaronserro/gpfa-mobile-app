@@ -41,6 +41,7 @@ import type {
   PollOption,
   RedirectResponse,
   Reply,
+  ResourceType,
   RsvpChoice,
   StatusResponse,
   Thread,
@@ -237,7 +238,7 @@ export function getNews(): Promise<NewsStory[]> {
 
 export function getLibrary(): Promise<LibraryResource[]> {
   if (USING_PORTAL_FIXTURES) return local(LIBRARY);
-  return request<LibraryResource[]>(ROUTES.library);
+  return request<unknown>(ROUTES.library).then(normalizeLibraryResources);
 }
 
 /** Newest first — the screen features the first entry and never re-sorts it. */
@@ -789,6 +790,57 @@ function directoryRowToGroupMember(member: MemberDirectoryRow): GroupMember {
     org: member.organization,
     initials: member.initials ?? initialsFromName(member.name),
   };
+}
+
+function normalizeLibraryResources(payload: unknown): LibraryResource[] {
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).resources)
+      ? ((payload as Record<string, unknown>).resources as unknown[])
+      : [];
+
+  return rows.map(normalizeLibraryResource).filter((resource): resource is LibraryResource => resource !== null);
+}
+
+function normalizeLibraryResource(row: unknown, index: number): LibraryResource | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const title = firstString(record.title, record.name);
+  if (!title) return null;
+
+  const updatedAt = firstString(record.updatedAt, record.updated_at, record.date, record.publishedAt, record.published_at) ?? 'Recent';
+  const parsedUpdatedAt = Date.parse(updatedAt);
+
+  return {
+    id: firstString(record.id, record._id, record.uuid, record.slug) ?? `resource-${index}`,
+    title,
+    type: resourceTypeFrom(record.type, record.category),
+    summary: firstString(record.summary, record.description, record.excerpt) ?? '',
+    authors: firstString(record.authors, record.sourceLabel, record.source_label, record.author, record.source) ?? 'GPFA',
+    updatedAt,
+    ...(Number.isFinite(parsedUpdatedAt)
+      ? { mins: Math.max(0, Math.round((Date.now() - parsedUpdatedAt) / 60000)) }
+      : {}),
+    ...(numberFrom(record.pages, record.pageCount, record.page_count) ? { pages: numberFrom(record.pages, record.pageCount, record.page_count) } : {}),
+    tags: arrayOfStrings(record.tags),
+    ...(firstString(record.href, record.url, record.link, record.sourceUrl, record.source_url) ? { href: firstString(record.href, record.url, record.link, record.sourceUrl, record.source_url) } : {}),
+  };
+}
+
+function resourceTypeFrom(...values: unknown[]): ResourceType {
+  const value = firstString(...values)?.toLowerCase();
+  if (value === 'podcast') return 'Podcast';
+  if (value === 'briefing' || value === 'presentation') return 'Briefing';
+  if (value === 'template') return 'Template';
+  if (value === 'external link' || value === 'external_link' || value === 'industry body') return 'External Link';
+  if (value === 'explainer' || value === 'guide') return 'Explainer';
+  if (value === 'event notes' || value === 'event_notes' || value === 'meeting material' || value === 'meeting_material' || value === 'agenda' || value === 'minutes') return 'Event Notes';
+  return 'Working Paper';
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
 }
 
 function queryString(params: object): string {

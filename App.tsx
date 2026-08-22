@@ -19,6 +19,7 @@ import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
 import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar';
 import { PodcastPlayerProvider } from './src/components/podcast/PlayerProvider';
+import ResourceSubmissionComposer from './src/components/groups/ResourceSubmissionComposer';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
 import DirectoryScreen from './src/screens/DirectoryScreen';
@@ -57,6 +58,7 @@ import {
   setSaved as setSavedRequest,
   setSubscribed as setSubscribedRequest,
   setUpvote,
+  submitWorkingGroupResource,
   summarizeForum,
   updateForumThread,
   updateForumThreadStatus,
@@ -75,6 +77,7 @@ import type {
   RsvpChoice,
   Thread,
   WorkingGroupFeedItemResponse,
+  WorkingGroupResourceSubmissionInput,
 } from './src/api/types';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import { MemberProvider } from './src/auth/MemberProvider';
@@ -138,6 +141,8 @@ function Portal() {
   // Posts composed this session, newest first. Kept out of the static data.
   const [newPosts, setNewPosts] = useState<FeedEntry[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [resourceComposerGroupId, setResourceComposerGroupId] = useState<string | null>(null);
+  const [resourceSubmitting, setResourceSubmitting] = useState(false);
   // The member's own profile, reached from the header avatar on any tab: the
   // quick sheet first, then the full profile over whichever tab is underneath.
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -581,6 +586,23 @@ function Portal() {
     [groups, loadGroupDetail]
   );
 
+  const submitResource = useCallback(
+    async (input: WorkingGroupResourceSubmissionInput) => {
+      const selectedGroupId = resourceComposerGroupId ?? groupId;
+      const group = selectedGroupId ? groups.find((candidate) => candidate.id === selectedGroupId) : null;
+      const slug = group?.slug ?? selectedGroupId;
+      if (!slug) throw new Error('Choose a working group before submitting a resource.');
+
+      setResourceSubmitting(true);
+      try {
+        await submitWorkingGroupResource(slug, input);
+      } finally {
+        setResourceSubmitting(false);
+      }
+    },
+    [groupId, groups, resourceComposerGroupId]
+  );
+
   const summarizePost = useCallback((id: string) => {
     const entry = entryForThread(id);
     if (!entry?.post.groupSlug) return;
@@ -794,6 +816,9 @@ function Portal() {
                 rsvps={rsvps}
                 onRsvp={setRsvp}
                 onCompose={() => setComposerOpen(true)}
+                onOpenResourceSubmission={(group) => {
+                  setResourceComposerGroupId(group.id);
+                }}
               />
               </DataGate>
             )}
@@ -881,6 +906,14 @@ function Portal() {
               tagSuggestions={groupId ? (groupDetails[groupId]?.tagSuggestions ?? []) : []}
               onClose={() => setComposerOpen(false)}
               onCreate={(draft) => createPost(draft, member)}
+            />
+          )}
+          {resourceComposerGroupId && (
+            <ResourceSubmissionComposer
+              groupName={groups.find((group) => group.id === resourceComposerGroupId)?.n ?? 'this group'}
+              submitting={resourceSubmitting}
+              onClose={() => setResourceComposerGroupId(null)}
+              onSubmit={submitResource}
             />
           )}
         </>

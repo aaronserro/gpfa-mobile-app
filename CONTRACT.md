@@ -186,7 +186,7 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
 | `GET` | `/news` | News screen + Home digest + Resources → News | `NewsStory[]`, newest first |
-| `GET` | `/library` | Resources → Library | `LibraryResource[]` |
+| `GET` | `/api/members/resources` | Resources → Library | `{ status: "success", resources: ResourceItem[] }`, mapped to `LibraryResource[]` |
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
 | `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
