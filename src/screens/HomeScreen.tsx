@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Badge, Card, LiveDot, MastheadMeta, RelevanceDot, ScreenHeader } from '../ds/primitives';
+import { ArrowRight } from '../ds/icons';
+import { Badge, Card, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, trackDisplay, wgRule } from '../ds/tokens';
 import type { CalendarEvent, Group, Member, NewsStory } from '../api/types';
@@ -12,55 +13,74 @@ export default function HomeScreen({
   onGoNews,
   onGoGroups,
   onPickGroup,
+  onOpenNewsStory,
   showBadges,
 }: {
   member: Member;
   event: CalendarEvent | null;
   groups: Group[];
-  /** The whole radar; the digest shows the industry coverage from it. */
+  /** Resource-backed News Radar stories shown on the dashboard. */
   news: NewsStory[];
   onGoNews: () => void;
   onGoGroups: () => void;
   onPickGroup: (groupId: string) => void;
+  onOpenNewsStory: (story: NewsStory) => void;
   showBadges: boolean;
 }) {
   const { t } = useTheme();
-
-  // GPFA's own material has its own place on the News screen; the digest here
-  // is the industry read.
-  const digest = news.filter((n) => n.kind === 'radar');
 
   return (
     <View style={styles.fill}>
       <ScreenHeader title="Good morning, " accent={`${member.firstName}.`} />
 
       <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.sectionHead}>
-        <View style={styles.sectionTitleRow}>
-          <LiveDot />
-          <Text style={[styles.h3, { color: t.inkStrong }]}>News Radar</Text>
-        </View>
-        <Pressable onPress={onGoNews} hitSlop={8}>
-          <Text style={[styles.link, { color: t.brandGreen }]}>All coverage →</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-        {digest.map((n, i) => (
-          <View key={n.id} style={[styles.newsRow, i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}>
-            <RelevanceDot level={n.rel ?? 'low'} style={styles.newsDot} />
-            <View style={styles.newsBody}>
-              <Text style={[styles.newsTitle, { color: t.inkStrong }]}>{n.title}</Text>
-              <View style={styles.newsMetaRow}>
-                <Badge variant="tag-green" size={9.5} style={styles.newsTag}>
-                  {n.tag ?? n.topic}
-                </Badge>
-                <MastheadMeta size={10}>{n.meta}</MastheadMeta>
-              </View>
-            </View>
+      {news.length > 0 && (
+        <View style={styles.radarSection}>
+          <View style={styles.radarHead}>
+            <Text style={[styles.h3, { color: t.inkStrong }]}>News Radar</Text>
+            <Pressable
+              onPress={onGoNews}
+              style={({ pressed }) => [
+                styles.sectionAction,
+                pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
+              ]}
+            >
+              <Text style={[styles.sectionActionText, { color: t.brandGreen }]}>All coverage</Text>
+              <ArrowRight size={14} color={t.brandGreen} />
+            </Pressable>
           </View>
-        ))}
-      </View>
+
+          <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}> 
+            {news.slice(0, 4).map((story, index) => (
+              <Pressable
+                key={story.id}
+                onPress={() => onOpenNewsStory(story)}
+                style={({ pressed }) => [
+                  styles.radarRow,
+                  index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                  pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
+                ]}
+              >
+                <View style={styles.radarBody}>
+                  <View style={styles.radarMetaRow}>
+                    <Text style={[styles.radarTopic, { color: t.brandAmber }]} numberOfLines={1}>
+                      {story.tag ?? story.topic}
+                    </Text>
+                    <MastheadMeta size={10}>{story.meta}</MastheadMeta>
+                  </View>
+                  <Text style={[styles.radarTitle, { color: t.inkStrong }]} numberOfLines={2}>
+                    {story.title}
+                  </Text>
+                  <Text style={[styles.radarSummary, { color: t.inkMuted }]} numberOfLines={1}>
+                    {story.body}
+                  </Text>
+                </View>
+                <ArrowRight size={16} color={t.brandGreen} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
 
       <View style={styles.sectionHead}>
         <Text style={[styles.h3, { color: t.inkStrong }]}>My groups</Text>
@@ -124,6 +144,17 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { paddingBottom: 8 },
+  radarSection: {
+    paddingTop: 22,
+  },
+  radarHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -132,10 +163,17 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 10,
   },
-  sectionTitleRow: {
+  sectionAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
+    minHeight: 32,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  sectionActionText: {
+    fontFamily: sans(500),
+    fontSize: 12.5,
   },
   h3: {
     fontFamily: sans(600),
@@ -150,26 +188,36 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
-  newsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-  },
-  newsDot: { marginTop: 6 },
-  newsBody: { flex: 1 },
-  newsTitle: {
-    fontFamily: sans(500),
-    fontSize: 13.5,
-    lineHeight: 19.6,
-  },
-  newsMetaRow: {
+  radarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 5,
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
-  newsTag: { height: 17 },
+  radarBody: { flex: 1 },
+  radarMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 3,
+  },
+  radarTopic: {
+    maxWidth: 124,
+    fontFamily: sans(600),
+    fontSize: 10.5,
+  },
+  radarTitle: {
+    fontFamily: sans(500),
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  radarSummary: {
+    marginTop: 3,
+    fontFamily: sans(400),
+    fontSize: 12,
+    lineHeight: 16,
+  },
   groupRow: {
     flexDirection: 'row',
     alignItems: 'center',

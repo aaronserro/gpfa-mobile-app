@@ -248,6 +248,13 @@ export function getLibrary(): Promise<ResourceHubData> {
   return request<unknown>(ROUTES.library).then(normalizeResourceHubData);
 }
 
+export function getWorkingGroupResources(slug: string, groupId?: string): Promise<LibraryResource[]> {
+  if (!USING_REMOTE_API) {
+    return local(LIBRARY.filter((resource) => resourceMatchesWorkingGroup(resource, slug, groupId)));
+  }
+  return request<unknown>(ROUTES.workingGroupResourceSubmissions(slug)).then(normalizeLibraryResources);
+}
+
 /** Newest first — the screen features the first entry and never re-sorts it. */
 export function getPodcasts(): Promise<PodcastEpisode[]> {
   if (USING_PORTAL_FIXTURES) return local(PODCASTS);
@@ -256,8 +263,8 @@ export function getPodcasts(): Promise<PodcastEpisode[]> {
 
 /** Open roles on the member job board. The screen sorts and filters them. */
 export function getJobs(): Promise<JobListing[]> {
-  if (USING_PORTAL_FIXTURES) return local(JOBS);
-  return request<JobListing[]>(ROUTES.jobs);
+  if (!USING_REMOTE_API) return local(JOBS);
+  return request<unknown>(`${ROUTES.jobs}${queryString({ pageSize: 100 })}`).then(normalizeJobListings);
 }
 
 /**
@@ -961,6 +968,136 @@ function resourceTypeFrom(...values: unknown[]): ResourceType {
   if (value === 'explainer' || value === 'guide') return 'Explainer';
   if (value === 'event notes' || value === 'event_notes' || value === 'meeting material' || value === 'meeting_material' || value === 'agenda' || value === 'minutes') return 'Event Notes';
   return 'Working Paper';
+}
+
+function normalizeJobListings(payload: unknown): JobListing[] {
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).jobPostings)
+      ? ((payload as Record<string, unknown>).jobPostings as unknown[])
+      : [];
+
+  return rows.map(normalizeJobListing).filter((job): job is JobListing => job !== null);
+}
+
+function normalizeJobListing(row: unknown, index: number): JobListing | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const organization = recordFrom(record.organization);
+  const title = firstString(record.title) ?? 'Untitled role';
+  const org = firstString(organization.name, record.organizationName, record.organization_name, record.org) ?? 'Member organization';
+  const location = firstString(record.location) ?? 'Location not provided';
+  const compensation = firstString(record.compensation) ?? 'Compensation not provided';
+  const createdAt = firstString(record.created_at, record.createdAt);
+  const requirements = firstString(record.requirements);
+  const description = firstString(record.description) ?? '';
+  const fnKey = jobFunctionKeyFrom([title, description, requirements].filter(Boolean).join(' '));
+  const orgCountry = firstString(organization.country);
+  const orgMeta = ['MEMBER ORG', orgCountry].filter(Boolean).join(' · ').toUpperCase();
+  const applyUrl = absoluteResourceHref(firstString(record.url));
+  const mins = ageMinutes(createdAt);
+
+  return {
+    id: firstString(record.id, record.uuid) ?? `job-${index}`,
+    title,
+    org,
+    initials: orgInitialsFromName(org),
+    orgMeta: orgMeta || 'MEMBER ORG',
+    source: 'member',
+    fn: jobFunctionLabel(fnKey),
+    fnKey,
+    loc: location,
+    comp: compensation,
+    posted: shortDateLabel(createdAt),
+    closes: booleanFrom(record.accepting_applications, record.acceptingApplications) === false ? 'Applications closed' : 'Applications open',
+    ...(mins !== undefined ? { mins } : {}),
+    blurb: description || 'No description provided.',
+    bullets: splitJobRequirements(requirements),
+    about: firstString(organization.description) ?? `${org} is a GPFA member organization.`,
+    stats: jobStatsFromOrganization(organization),
+    ...(applyUrl ? { applyUrl } : {}),
+  };
+}
+
+function jobFunctionKeyFrom(value: string): JobListing['fnKey'] {
+  const text = value.toLowerCase();
+  if (/collateral|liquidity|securities lending|treasury|financing/.test(text)) return 'collateral';
+  if (/risk|margin|capital|compliance/.test(text)) return 'risk';
+  if (/legal|counsel|documentation|regulatory|contract/.test(text)) return 'legal';
+  if (/tech|technology|data|engineer|platform|software|systems|developer/.test(text)) return 'tech';
+  if (/operations|ops|settlement|trade support|middle office/.test(text)) return 'ops';
+  return 'ops';
+}
+
+function jobFunctionLabel(key: JobListing['fnKey']): string {
+  switch (key) {
+    case 'collateral':
+      return 'Collateral & liquidity';
+    case 'risk':
+      return 'Risk';
+    case 'legal':
+      return 'Legal & documentation';
+    case 'tech':
+      return 'Technology';
+    case 'ops':
+      return 'Operations';
+  }
+}
+
+function splitJobRequirements(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/\r?\n|(?:^|\s)[•·\-*]\s+/)
+    .map((line) => line.replace(/^[•·\-*]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function jobStatsFromOrganization(organization: Record<string, unknown>): JobListing['stats'] {
+  return [
+    ['Country', firstString(organization.country)],
+    ['AUM', firstString(organization.assets_label, organization.assetsLabel)],
+    ['Type', firstString(organization.organization_type, organization.organizationType)],
+  ]
+    .filter((stat): stat is [string, string] => Boolean(stat[1]))
+    .slice(0, 3)
+    .map(([label, value]) => ({ label, value }));
+}
+
+function shortDateLabel(value: string | undefined): string {
+  if (!value) return 'Recent';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short' }).format(date);
+}
+
+function ageMinutes(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? Math.max(0, Math.round((Date.now() - time) / 60000)) : undefined;
+}
+
+function orgInitialsFromName(name: string): string {
+  const compact = name.replace(/[^A-Za-z0-9]/g, '');
+  if (compact.length > 0 && compact.length <= 5 && compact === compact.toUpperCase()) return compact;
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? words.map((word) => word[0]).join('') : (words[0] ?? '').slice(0, 2);
+  return letters.slice(0, 4).toUpperCase();
+}
+
+function normalizeWorkingGroupResourceText(value: string): string {
+  return value.toLowerCase().replace(/&/g, 'and').replace(/\bwg\b/g, 'working group');
+}
+
+function resourceMatchesWorkingGroup(resource: LibraryResource, slug: string, groupId?: string): boolean {
+  const tokens = [slug, groupId]
+    .filter((value): value is string => !!value)
+    .map((value) => normalizeWorkingGroupResourceText(value.replace(/-/g, ' ')));
+  const haystack = normalizeWorkingGroupResourceText(
+    [resource.title, resource.summary, resource.authors, ...resource.tags].join(' ')
+  );
+
+  return tokens.some((token) => token.length > 2 && haystack.includes(token));
 }
 
 function relevanceFrom(...values: unknown[]): Relevance | undefined {

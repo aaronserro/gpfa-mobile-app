@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
 /**
- * Groups tab, level two: one working group, across Posts, About and Members.
+ * Groups tab, level two: one working group, across Activity, About, Resources,
+ * Members and the co-lead moderation queue.
  *
  * Presentational. The post list arrives filtered and ordered; the tab and the
  * type filter are held by the caller so a trip into a post and back keeps them.
@@ -16,15 +17,16 @@ import {
   FileText,
   MagnifyingGlass,
   Plus,
+  type Icon,
 } from '../../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
-import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
+import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, TYPE_ICON, ROW_ICON } from './parts';
-import type { Group, PostType, Thread } from '../../api/types';
+import type { Group, LibraryResource, PostType, Thread } from '../../api/types';
 
-export type GroupTab = 'posts' | 'about' | 'members';
+export type GroupTab = 'posts' | 'about' | 'resources' | 'members' | 'moderation';
 
 export type PostFilterId = 'all' | PostType;
 
@@ -40,12 +42,13 @@ export interface GroupViewProps {
   group: Group;
   /** The group's posts, already filtered and newest-first. */
   posts: Thread[];
-  /** How many posts the group has before the type filter — drives the meta line. */
-  totalPosts: number;
-  /** Counts per type, for the About tab's stats grid. */
+  /** The group's unfiltered posts, used by About and Moderation. */
+  allPosts?: Thread[];
+  /** Counts per type, for the About tab's Activity panel. */
   typeCounts: Record<PostType, number>;
   coLeads?: Group['members'];
   members?: Group['members'];
+  resources?: LibraryResource[];
   loading?: boolean;
   loadingMore?: boolean;
   error?: Error | null;
@@ -57,6 +60,7 @@ export interface GroupViewProps {
   onFilter: (filter: PostFilterId) => void;
   subscribed: boolean;
   onToggleSubscribe: () => void;
+  canModerate?: boolean;
   /** Reply count per post id, counting anything added this session. */
   replyCounts: Record<string, number>;
   upvoted: Record<string, boolean | undefined>;
@@ -69,15 +73,17 @@ export interface GroupViewProps {
   onOpenPost: (postId: string) => void;
   onCompose: () => void;
   onOpenResourceSubmission: () => void;
+  onOpenResource?: (resource: LibraryResource) => void;
 }
 
 export default function GroupView({
   group,
   posts,
-  totalPosts,
+  allPosts = posts,
   typeCounts,
   coLeads: routeCoLeads = [],
   members: routeMembers = [],
+  resources = [],
   loading = false,
   loadingMore = false,
   error = null,
@@ -89,6 +95,7 @@ export default function GroupView({
   onFilter,
   subscribed,
   onToggleSubscribe,
+  canModerate = false,
   replyCounts,
   upvoted,
   onToggleUpvote,
@@ -99,6 +106,7 @@ export default function GroupView({
   onOpenPost,
   onCompose,
   onOpenResourceSubmission,
+  onOpenResource,
 }: GroupViewProps) {
   const { t } = useTheme();
   const [memberQuery, setMemberQuery] = useState('');
@@ -107,8 +115,17 @@ export default function GroupView({
   const members = mergeGroupMembers(routeMembers.length ? routeMembers : group.members, coLeads);
   const memberCount = members.length || group.memberCount || group.members.length;
   const visibleMembers = filterGroupMembers(members, memberQuery);
+  const groupResources = resources;
+  const moderationPosts = allPosts.filter((post) => (post.lifecycle ?? 'open') === 'open');
   const topics: string[] = [];
-  for (const p of posts) for (const tag of p.tags ?? []) if (!topics.includes(tag)) topics.push(tag);
+  for (const p of allPosts) for (const tag of p.tags ?? []) if (!topics.includes(tag)) topics.push(tag);
+  const groupTabs: [GroupTab, string][] = [
+    ['posts', 'Activity'],
+    ['about', 'About'],
+    ['resources', 'Resources'],
+    ['members', 'Members'],
+    ...(canModerate ? ([['moderation', 'Moderation']] as [GroupTab, string][]) : []),
+  ];
 
   return (
     <View style={styles.fill}>
@@ -141,14 +158,8 @@ export default function GroupView({
         }
       >
 
-        <View style={styles.tabs}>
-          {(
-            [
-              ['posts', 'Posts'],
-              ['about', 'About'],
-              ['members', 'Members'],
-            ] as [GroupTab, string][]
-          ).map(([id, label]) => {
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {groupTabs.map(([id, label]) => {
             const on = id === tab;
             return (
               <Pressable
@@ -162,7 +173,7 @@ export default function GroupView({
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       </ScreenHeader>
 
       <View style={styles.fill}>
@@ -304,61 +315,41 @@ export default function GroupView({
         {tab === 'about' && (
           <ScrollView contentContainerStyle={styles.about} showsVerticalScrollIndicator={false}>
             {!!group.meta && (
-              <View>
-                <Text style={[styles.aboutHead, { color: t.inkFaint }]}>ABOUT THIS GROUP</Text>
+              <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                <Text style={[styles.panelTitle, { color: t.inkStrong }]}>About</Text>
                 <Text style={[styles.aboutBio, { color: t.inkMuted }]}>{group.meta}</Text>
               </View>
             )}
 
-            <View style={[styles.statGrid, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-              {(
-                [
-                  ['Members', memberCount],
-                  ['Discussions', typeCounts.discussion],
-                  ['Polls', typeCounts.poll],
-                  ['Events', typeCounts.event],
-                  ['Notices', typeCounts.announcement],
-                  ['Unread', group.unread],
-                ] as [string, number][]
-              ).map(([k, v], i) => (
-                <View
-                  key={k}
-                  style={[
-                    styles.statCell,
-                    {
-                      borderRightColor: i % 3 === 2 ? 'transparent' : t.ruleHairline,
-                      borderBottomColor: i < 3 ? t.ruleHairline : 'transparent',
-                    },
-                  ]}
-                >
-                  <MastheadMeta size={9.5}>{k}</MastheadMeta>
-                  <Text style={[styles.statValue, { color: t.inkStrong }]}>{String(v)}</Text>
-                </View>
-              ))}
+            <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+              <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Activity</Text>
+              <InfoRow Icon={ChatCircle} label="Threads" value={typeCounts.discussion} />
+              <InfoRow Icon={TYPE_ICON.announcement} label="Announcements" value={typeCounts.announcement} />
+              <InfoRow Icon={TYPE_ICON.event} label="Events" value={typeCounts.event} />
+              <InfoRow Icon={TYPE_ICON.poll} label="Polls" value={typeCounts.poll} />
             </View>
 
-            <View>
-              <Text style={[styles.aboutHead, { color: t.inkFaint }]}>CO-LEADS</Text>
-              <View style={[styles.personCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            {coLeads.length > 0 && (
+              <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Leadership</Text>
                 {coLeads.map((c) => (
-                  <View key={c.name} style={[styles.personRow, { borderBottomColor: t.ruleHairline }]}>
+                  <View key={c.name} style={styles.leadRow}>
                     <AnchorAvatar initials={c.initials ?? initialsOf(c.name)} size={34} />
                     <View style={styles.flex}>
                       <Text style={[styles.personName, { color: t.inkStrong }]}>{c.name}</Text>
-                      <Text style={[styles.personRole, { color: t.inkMuted }]}>{c.role}</Text>
+                      <Text style={[styles.personRole, { color: t.inkMuted }]}>Co-lead · {c.org}</Text>
                     </View>
-                    <MastheadMeta size={9.5} color={t.inkFaint}>
-                      {c.org}
-                    </MastheadMeta>
                   </View>
                 ))}
-                {coLeads.length === 0 && (
-                  <Text style={[styles.personEmpty, { color: t.inkMuted }]}>
-                    No co-leads named for this group.
-                  </Text>
-                )}
               </View>
-            </View>
+            )}
+
+            {canModerate && (
+              <View style={[styles.infoPanel, styles.dashedPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Admin Actions</Text>
+                <InfoActionRow Icon={FileText} label="Moderation queue" value={moderationPosts.length} onPress={() => onTab('moderation')} />
+              </View>
+            )}
 
             <View>
               <Text style={[styles.aboutHead, { color: t.inkFaint }]}>TOPICS IN THIS GROUP</Text>
@@ -398,6 +389,23 @@ export default function GroupView({
               </Pressable>
             </View>
           </ScrollView>
+        )}
+
+        {tab === 'resources' && (
+          <GroupResourcesPanel
+            resources={groupResources}
+            subscribed={subscribed}
+            onSubmit={onOpenResourceSubmission}
+            onOpenResource={onOpenResource}
+          />
+        )}
+
+        {tab === 'moderation' && canModerate && (
+          <ModerationPanel
+            posts={moderationPosts}
+            openThreadCount={moderationPosts.length}
+            onOpenPost={onOpenPost}
+          />
         )}
 
         {tab === 'members' && (
@@ -447,6 +455,237 @@ export default function GroupView({
         )}
       </View>
     </View>
+  );
+}
+
+function InfoRow({
+  Icon,
+  label,
+  value,
+}: {
+  Icon: Icon;
+  label: string;
+  value: number | string;
+}) {
+  const { t } = useTheme();
+  return (
+    <View style={styles.infoRow}>
+      <View style={[styles.infoIcon, { backgroundColor: t.surfaceSoft }]}>
+        <Icon size={16} color={t.inkMuted} />
+      </View>
+      <Text style={[styles.infoLabel, { color: t.inkStrong }]}>{label}</Text>
+      <Text style={[styles.infoValue, { color: t.inkStrong }]}>{String(value)}</Text>
+    </View>
+  );
+}
+
+function InfoActionRow({
+  Icon,
+  label,
+  value,
+  onPress,
+}: {
+  Icon: Icon;
+  label: string;
+  value?: number | string;
+  onPress: () => void;
+}) {
+  const { t } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.infoActionRow, pressed && { backgroundColor: alpha(t.surfaceSoft, 0.7) }]}
+    >
+      <View style={[styles.infoIcon, { backgroundColor: t.surfaceSoft }]}>
+        <Icon size={16} color={t.inkMuted} />
+      </View>
+      <Text style={[styles.infoLabel, { color: t.inkStrong }]}>{label}</Text>
+      {value !== undefined && <Text style={[styles.infoValue, { color: t.inkMuted }]}>{String(value)}</Text>}
+    </Pressable>
+  );
+}
+
+function GroupResourcesPanel({
+  resources,
+  subscribed,
+  onSubmit,
+  onOpenResource,
+}: {
+  resources: LibraryResource[];
+  subscribed: boolean;
+  onSubmit: () => void;
+  onOpenResource?: (resource: LibraryResource) => void;
+}) {
+  const { t } = useTheme();
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = resources.filter((resource) => {
+    if (!q) return true;
+    return [resource.title, resource.summary, resource.authors, resource.type, ...resource.tags]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+  const tags = uniqueTags(resources);
+
+  return (
+    <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+      <View style={styles.resourceHeaderRow}>
+        <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Group Resources</Text>
+        <View style={[styles.countPill, { backgroundColor: t.surfaceSoft }]}>
+          <Text style={[styles.countPillText, { color: t.inkMuted }]}>{filtered.length}</Text>
+        </View>
+      </View>
+
+      <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+        <MagnifyingGlass size={15} color={t.inkMuted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search resources"
+          placeholderTextColor={t.inkFaint}
+          style={[styles.memberSearchInput, { color: t.inkStrong }]}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {tags.length > 0 && (
+        <View style={styles.topics}>
+          {tags.map((tag) => (
+            <TagChip key={tag} label={tag} size={11} height={23} />
+          ))}
+        </View>
+      )}
+
+      {resources.length === 0 ? (
+        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+          <FileText size={22} color={t.inkMuted} />
+          <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No group resources yet</Text>
+          <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Approved resources for this working group will appear here.</Text>
+        </View>
+      ) : filtered.length === 0 ? (
+        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+          <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No matching resources</Text>
+          <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Adjust the search to show all group resources.</Text>
+        </View>
+      ) : (
+        <View style={styles.resourceList}>
+          {filtered.map((resource) => (
+            <ResourceCard key={resource.id} resource={resource} onOpen={() => onOpenResource?.(resource)} />
+          ))}
+        </View>
+      )}
+
+      <Pressable
+        onPress={onSubmit}
+        disabled={!subscribed}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !subscribed }}
+        style={[
+          styles.submitResourceButton,
+          {
+            backgroundColor: subscribed ? t.surfaceAnchor : t.muted,
+            borderColor: subscribed ? t.surfaceAnchor : t.ruleHairline,
+          },
+        ]}
+      >
+        <Plus size={16} weight="bold" color={subscribed ? '#fff' : t.inkFaint} />
+        <Text style={[styles.submitResourceText, { color: subscribed ? '#fff' : t.inkFaint }]}>Submit a resource</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+function ResourceCard({ resource, onOpen }: { resource: LibraryResource; onOpen: () => void }) {
+  const { t } = useTheme();
+  const skin = resourceTypeStyle(t, resource.type);
+  return (
+    <Pressable
+      onPress={onOpen}
+      disabled={!resource.href}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !resource.href }}
+      style={({ pressed }) => [
+        styles.resourceCard,
+        { borderColor: t.ruleHairline, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
+      ]}
+    >
+      <View style={styles.resourceCardHead}>
+        <View style={styles.flex}>
+          <Text style={[styles.resourceTitle, { color: t.inkStrong }]}>{resource.title}</Text>
+          <View style={styles.resourceChips}>
+            <View style={[styles.resourceTypeChip, { borderColor: skin.chipBd, backgroundColor: skin.chipBg }]}>
+              <Text style={[styles.resourceTypeText, { color: skin.ink }]}>{resource.type}</Text>
+            </View>
+          </View>
+        </View>
+        {!!resource.href && <FileText size={16} color={t.inkMuted} />}
+      </View>
+      <Text numberOfLines={2} style={[styles.resourceSummary, { color: t.inkMuted }]}>{resource.summary}</Text>
+      <Text numberOfLines={1} style={[styles.resourceMeta, { color: t.inkFaint }]}>
+        {resource.authors} · {resource.updatedAt}{resource.pages ? ` · ${resource.pages} pages` : ''}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ModerationPanel({
+  posts,
+  openThreadCount,
+  onOpenPost,
+}: {
+  posts: Thread[];
+  openThreadCount: number;
+  onOpenPost: (postId: string) => void;
+}) {
+  const { t } = useTheme();
+  return (
+    <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+      <View style={styles.resourceHeaderRow}>
+        <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Moderation queue</Text>
+        <View style={[styles.countPill, { backgroundColor: t.surfaceSoft }]}>
+          <Text style={[styles.countPillText, { color: t.inkMuted }]}>{openThreadCount}</Text>
+        </View>
+      </View>
+
+      {posts.length === 0 ? (
+        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+          <FileText size={22} color={t.inkMuted} />
+          <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Nothing needs review</Text>
+          <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Open group posts that need co-lead attention will appear here.</Text>
+        </View>
+      ) : (
+        <View style={styles.resourceList}>
+          {posts.map((post) => {
+            const type = post.type ?? 'discussion';
+            const TypeIcon = TYPE_ICON[type];
+            return (
+              <Pressable
+                key={post.id}
+                onPress={() => onOpenPost(post.id)}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.moderationCard,
+                  { borderColor: t.ruleHairline, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
+                ]}
+              >
+                <View style={styles.cardType}>
+                  <TypeIcon size={14} color={t.inkMuted} />
+                  <Text style={[styles.cardTypeText, { color: t.inkMuted }]}>{type}</Text>
+                </View>
+                <Text style={[styles.resourceTitle, { color: t.inkStrong }]}>{post.title}</Text>
+                <Text numberOfLines={2} style={[styles.resourceSummary, { color: t.inkMuted }]}>{post.body}</Text>
+                <Text style={[styles.resourceMeta, { color: t.inkFaint }]}>{post.author} · {post.time}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
@@ -721,36 +960,16 @@ const styles = StyleSheet.create({
 
   about: { padding: 16, paddingBottom: 40, gap: 18 },
   aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  statCell: {
-    width: '33.333%',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-  },
-  statValue: {
-    marginTop: 3,
-    fontFamily: sans(600),
-    fontSize: 16,
-    fontVariant: ['tabular-nums'],
-  },
+  infoPanel: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
+  dashedPanel: { borderStyle: 'dashed' },
+  panelTitle: { fontFamily: sans(600), fontSize: 14, letterSpacing: trackDisplay(14) },
+  infoRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
+  infoActionRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, paddingHorizontal: 2 },
+  infoIcon: { width: 30, height: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  infoLabel: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 13 },
+  infoValue: { fontFamily: mono(600), fontSize: 12, fontVariant: ['tabular-nums'] },
+  leadRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 4 },
   aboutHead: { fontFamily: mono(600), fontSize: 9.5, letterSpacing: 1.7 },
-  personCard: { marginTop: 10, borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  personRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    paddingVertical: 12,
-    paddingHorizontal: 13,
-    borderBottomWidth: 1,
-  },
   personName: { fontFamily: sans(600), fontSize: 13 },
   personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   personEmpty: { padding: 14, fontFamily: sans(400), fontSize: 12.5 },
@@ -767,6 +986,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   notifBtnText: { fontFamily: sans(600), fontSize: 13 },
+
+  resources: { padding: 16, paddingBottom: 40, gap: 12 },
+  resourceHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countPill: { minWidth: 28, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  countPillText: { fontFamily: mono(600), fontSize: 11, fontVariant: ['tabular-nums'] },
+  resourceList: { gap: 10 },
+  resourceCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 8 },
+  resourceCardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  resourceTitle: { fontFamily: sans(600), fontSize: 14, lineHeight: 19.6, letterSpacing: trackDisplay(14) },
+  resourceChips: { marginTop: 7, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  resourceTypeChip: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 32, paddingVertical: 3, paddingHorizontal: 8 },
+  resourceTypeText: { fontFamily: mono(400), fontSize: 9.5, letterSpacing: 0.55, textTransform: 'uppercase' },
+  resourceSummary: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
+  resourceMeta: { fontFamily: mono(400), fontSize: 10.5 },
+  submitResourceButton: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  submitResourceText: { fontFamily: sans(600), fontSize: 13 },
+  moderationCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 8 },
 
   members: { paddingTop: 14, paddingBottom: 40 },
   memberSearch: {
@@ -821,4 +1065,22 @@ function filterGroupMembers(members: Group['members'], query: string): Group['me
       .toLowerCase()
       .includes(normalizedQuery)
   );
+}
+
+function uniqueTags(resources: LibraryResource[]): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const resource of resources) {
+    for (const tag of resource.tags) {
+      const key = normalizeMatchText(tag);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tags.push(tag);
+    }
+  }
+  return tags.slice(0, 12);
+}
+
+function normalizeMatchText(value: string): string {
+  return value.toLowerCase().replace(/&/g, 'and').replace(/\bwg\b/g, 'working group');
 }

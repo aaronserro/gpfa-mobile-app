@@ -19,6 +19,7 @@ import { initials } from '../lib/format';
 import type {
   FeedEntry,
   Group,
+  LibraryResource,
   Member,
   PostType,
   Reply,
@@ -42,6 +43,7 @@ export interface GroupsScreenProps {
   selectedGroupNextCursor?: string | null;
   selectedGroupCoLeads?: Group['members'];
   selectedGroupMembers?: Group['members'];
+  resources?: LibraryResource[];
   onLoadMoreGroupFeed?: () => void;
   /** The group whose page is open; null shows the directory. */
   groupId: string | null;
@@ -76,6 +78,7 @@ export interface GroupsScreenProps {
   onRsvp: (threadId: string, choice: RsvpChoice) => void;
   onCompose: () => void;
   onOpenResourceSubmission: (group: Group) => void;
+  onOpenResource?: (resource: LibraryResource) => void;
   /** Design prop: show the #topic chips on feed cards. */
   showTagsInFeed?: boolean;
   /** Design prop: which tab a group opens on. */
@@ -93,6 +96,7 @@ export default function GroupsScreen({
   selectedGroupNextCursor = null,
   selectedGroupCoLeads = [],
   selectedGroupMembers = [],
+  resources = [],
   onLoadMoreGroupFeed,
   groupId,
   onOpenGroup,
@@ -120,6 +124,7 @@ export default function GroupsScreen({
   onRsvp,
   onCompose,
   onOpenResourceSubmission,
+  onOpenResource,
   showTagsInFeed = true,
   defaultGroupTab = 'posts',
 }: GroupsScreenProps) {
@@ -189,15 +194,19 @@ export default function GroupsScreen({
     const replyCounts = Object.fromEntries(
       groupPosts.map((p) => [p.id, repliesFor(p.id).length])
     );
+    const canModerate =
+      member.role?.toLowerCase() === 'admin' ||
+      selectedGroupCoLeads.some((coLead) => coLead.name === member.name || coLead.initials === member.initials);
 
     return (
       <GroupView
         group={group}
         posts={shown}
-        totalPosts={groupPosts.length}
+        allPosts={groupPosts}
         typeCounts={typeCounts}
         coLeads={selectedGroupCoLeads}
         members={selectedGroupMembers}
+        resources={resources}
         loading={selectedGroupLoading}
         loadingMore={selectedGroupLoadingMore}
         error={selectedGroupError}
@@ -209,6 +218,7 @@ export default function GroupsScreen({
         onFilter={setFilter}
         subscribed={isSubscribed(group)}
         onToggleSubscribe={() => onToggleSubscribe(group.id)}
+        canModerate={canModerate}
         replyCounts={replyCounts}
         upvoted={upvoted}
         onToggleUpvote={onToggleUpvote}
@@ -219,6 +229,7 @@ export default function GroupsScreen({
         onOpenPost={onOpenThread}
         onCompose={onCompose}
         onOpenResourceSubmission={() => onOpenResourceSubmission(group)}
+        onOpenResource={onOpenResource}
       />
     );
   }

@@ -82,7 +82,7 @@ export const ROUTES = {
   ask: '/ask',
   library: '/api/members/resources',
   podcasts: '/podcasts',
-  jobs: '/jobs',
+  jobs: '/api/members/job-postings',
   directoryOrgs: '/directory/orgs',
   directoryPeople: '/directory/people',
   podcastTranscript: (slug: string) => `/podcasts/${slug}/transcript`,

@@ -69,8 +69,6 @@ export interface ResourcesScreenProps {
   onApplyToJob?: (job: JobListing) => void;
   /** Opens News Radar. It renders outside this screen, as it does from Home. */
   onGoNews?: () => void;
-  /** Opens a specific News Radar story. */
-  onOpenNewsStory?: (story: NewsStory) => void;
 }
 
 export default function ResourcesScreen({
@@ -86,7 +84,6 @@ export default function ResourcesScreen({
   onOpenTranscript,
   onApplyToJob,
   onGoNews,
-  onOpenNewsStory,
 }: ResourcesScreenProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -202,59 +199,6 @@ export default function ResourcesScreen({
           onPress={() => onGoNews?.()}
         />
       </View>
-
-      {news.length > 0 && (
-        <View style={styles.radarSection}>
-          <View style={styles.radarHead}>
-            <Text style={[styles.sectionTitle, { color: t.inkStrong }]}>News Radar</Text>
-            <Pressable
-              onPress={() => onGoNews?.()}
-              style={({ pressed }) => [
-                styles.sectionAction,
-                pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
-              ]}
-            >
-              <Text style={[styles.sectionActionText, { color: t.brandGreen }]}>All coverage</Text>
-              <ArrowRight size={14} color={t.brandGreen} />
-            </Pressable>
-          </View>
-
-          <View
-            style={[
-              styles.radarList,
-              { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
-            ]}
-          >
-            {news.slice(0, 4).map((story, index) => (
-              <Pressable
-                key={story.id}
-                onPress={() => onOpenNewsStory?.(story)}
-                style={({ pressed }) => [
-                  styles.radarRow,
-                  index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                  pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
-                ]}
-              >
-                <View style={styles.radarBody}>
-                  <View style={styles.radarMetaRow}>
-                    <Text style={[styles.radarTopic, { color: t.brandAmber }]} numberOfLines={1}>
-                      {story.tag ?? story.topic}
-                    </Text>
-                    <MastheadMeta size={10}>{story.meta}</MastheadMeta>
-                  </View>
-                  <Text style={[styles.radarTitle, { color: t.inkStrong }]} numberOfLines={2}>
-                    {story.title}
-                  </Text>
-                  <Text style={[styles.radarSummary, { color: t.inkMuted }]} numberOfLines={2}>
-                    {story.body}
-                  </Text>
-                </View>
-                <ArrowRight size={16} color={t.brandGreen} />
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
     </ScrollView>
   );
 
@@ -742,72 +686,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  radarSection: {
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    gap: 10,
-  },
-  radarHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  sectionTitle: {
-    fontFamily: sans(600),
-    fontSize: 16,
-    letterSpacing: trackDisplay(16),
-  },
-  sectionAction: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-  },
-  sectionActionText: {
-    fontFamily: sans(500),
-    fontSize: 12.5,
-  },
-  radarList: {
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  radarRow: {
-    minHeight: 116,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  radarBody: { flex: 1, minWidth: 0, gap: 5 },
-  radarMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  radarTopic: {
-    maxWidth: 120,
-    fontFamily: mono(500),
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  radarTitle: {
-    fontFamily: sans(600),
-    fontSize: 14.5,
-    lineHeight: 19,
-    letterSpacing: trackDisplay(14.5),
-  },
-  radarSummary: {
-    fontFamily: sans(400),
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-
   controls: { paddingHorizontal: 20, paddingTop: 12, gap: 10 },
   search: {
     flexDirection: 'row',

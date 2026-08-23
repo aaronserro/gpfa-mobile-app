@@ -43,13 +43,13 @@ import {
   getMemberOrgs,
   getLibrary,
   getMe,
-  getNews,
   getNextEvent,
   getNotifications,
   getPodcasts,
   getSavedResources,
   getWorkingGroupCoLeadMembers,
   getWorkingGroupDirectoryMembers,
+  getWorkingGroupResources,
   getWorkingGroupTagUsage,
   getWorkingGroupThreadFeed,
   getWorkingGroupMembership,
@@ -98,6 +98,7 @@ interface GroupDetailState {
   totalMatching: number;
   coLeads: GroupMember[];
   members: GroupMember[];
+  resources: LibraryResource[];
   tagSuggestions: string[];
   loading: boolean;
   loadingMore: boolean;
@@ -111,6 +112,7 @@ const EMPTY_GROUP_DETAIL: GroupDetailState = {
   totalMatching: 0,
   coLeads: [],
   members: [],
+  resources: [],
   tagSuggestions: [],
   loading: false,
   loadingMore: false,
@@ -164,7 +166,6 @@ function Portal() {
   const eventQuery = useQuery(getNextEvent, []);
   const groupsQuery = useQuery(() => (isSignedIn ? getGroups() : Promise.resolve([])), [isSignedIn]);
   const feedQuery = useQuery(getFeed, []);
-  const newsQuery = useQuery(getNews, []);
   const libraryQuery = useQuery(
     () => (isSignedIn ? getLibrary() : Promise.resolve({ resources: [], newsRadar: [] })),
     [isSignedIn]
@@ -252,7 +253,12 @@ function Portal() {
   // only exists to satisfy the type before the first response lands.
   const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
+  const myGroups = useMemo(
+    () => groups.filter((group) => subscribed[group.id] ?? group.joined),
+    [groups, subscribed]
+  );
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
+  const dashboardNews = libraryQuery.data?.newsRadar ?? [];
   const notifications = localNotifications;
   const unreadNotifications = notifications.filter((n) => !n.read).length;
   const selectedGroupDetail = groupId ? groupDetails[groupId] : undefined;
@@ -321,12 +327,15 @@ function Portal() {
       const membersPromise = append
         ? Promise.resolve(currentDetail?.members ?? [])
         : getWorkingGroupDirectoryMembers(slug);
+      const resourcesPromise = append
+        ? Promise.resolve(currentDetail?.resources ?? [])
+        : getWorkingGroupResources(slug, id);
       const tagsPromise = append
         ? Promise.resolve(currentDetail?.tagSuggestions ?? [])
         : getWorkingGroupTagUsage(slug, { limit: 24 }).then((res) => res.tags.map((tag) => tag.label));
 
-      void Promise.all([feedPromise, coLeadsPromise, membersPromise, tagsPromise])
-        .then(([feed, coLeads, members, tagSuggestions]) => {
+      void Promise.all([feedPromise, coLeadsPromise, membersPromise, resourcesPromise, tagsPromise])
+        .then(([feed, coLeads, members, resources, tagSuggestions]) => {
           setGroupDetails((prev) => {
             const current = prev[id] ?? EMPTY_GROUP_DETAIL;
             const existingIds = new Set(current.items.map((entry) => entry.post.id));
@@ -345,6 +354,7 @@ function Portal() {
                 totalMatching: feed.totalMatching,
                 coLeads,
                 members,
+                resources,
                 tagSuggestions,
                 loading: false,
                 loadingMore: false,
@@ -694,17 +704,17 @@ function Portal() {
           <View style={styles.screen}>
             {tab === 'home' && (
               <DataGate
-                loading={meQuery.loading || groupsQuery.loading || newsQuery.loading}
-                error={meQuery.error ?? groupsQuery.error ?? newsQuery.error}
+                loading={meQuery.loading || groupsQuery.loading || libraryQuery.loading}
+                error={meQuery.error ?? groupsQuery.error ?? libraryQuery.error}
                 onRetry={() => {
                   meQuery.refetch();
                   groupsQuery.refetch();
-                  newsQuery.refetch();
+                  libraryQuery.refetch();
                 }}
               >
                 {newsOpen ? (
                   <NewsScreen
-                    stories={newsQuery.data ?? []}
+                    stories={dashboardNews}
                     onBack={() => setNewsOpen(false)}
                     onOpen={openStory}
                   />
@@ -712,12 +722,13 @@ function Portal() {
                   <HomeScreen
                     member={member}
                     event={eventQuery.data ?? null}
-                    groups={groups}
-                    news={newsQuery.data ?? []}
+                    groups={myGroups}
+                    news={dashboardNews}
                     showBadges={SHOW_BADGES}
                     onGoNews={() => setNewsOpen(true)}
                     onGoGroups={() => selectTab('groups')}
                     onPickGroup={pickGroup}
+                    onOpenNewsStory={openStory}
                   />
                 )}
               </DataGate>
@@ -781,7 +792,6 @@ function Portal() {
                     }
                     onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
                     onGoNews={() => setResourcesNewsOpen(true)}
-                    onOpenNewsStory={openStory}
                   />
                 )}
               </DataGate>
@@ -806,6 +816,7 @@ function Portal() {
                 selectedGroupNextCursor={selectedGroupDetail?.nextCursor ?? null}
                 selectedGroupCoLeads={selectedGroupDetail?.coLeads ?? []}
                 selectedGroupMembers={selectedGroupDetail?.members ?? []}
+                resources={selectedGroupDetail?.resources ?? []}
                 onLoadMoreGroupFeed={loadMoreGroupFeed}
                 groupId={groupId}
                 onOpenGroup={openGroup}
@@ -835,6 +846,7 @@ function Portal() {
                 onOpenResourceSubmission={(group) => {
                   setResourceComposerGroupId(group.id);
                 }}
+                onOpenResource={openResource}
               />
               </DataGate>
             )}
