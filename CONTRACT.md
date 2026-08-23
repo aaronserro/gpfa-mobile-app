@@ -185,8 +185,8 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/groups` | Home, Groups drawer | legacy `Group[]` shape, not used while `/api/members/working-groups` is configured |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
-| `GET` | `/news` | News screen + Home digest + Resources → News | `NewsStory[]`, newest first |
-| `GET` | `/api/members/resources` | Resources → Library | `{ status: "success", resources: ResourceItem[] }`, mapped to `LibraryResource[]` |
+| `GET` | `/api/members/news` | News screen + Home digest | `{ status: "success", items, relatedThreads }`, mapped to `NewsStory[]`, newest first |
+| `GET` | `/api/members/resources` | Resources → Library + News Radar | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`, mapped to `ResourceHubData`. Called whenever `EXPO_PUBLIC_API_URL` is set, even if `EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true`. |
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
 | `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
@@ -666,22 +666,21 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 
 #### Resources, library, podcasts, jobs, directory, news, and events
 
-The GPFA web routes below exist, but the mobile app still points at legacy
-placeholder paths for these screens. Remap `ROUTES` and adapt the response in
-`portal.ts` before treating them as remote-ready. Most currently use the
-browser-oriented active-member helper, so verify bearer support during the remap.
+The GPFA web routes below exist, but some mobile surfaces still point at legacy
+placeholder paths. Remap `ROUTES` and adapt the response in `portal.ts` before
+treating the remaining deferred routes as remote-ready.
 
 | Workflow | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- | --- |
-| Resources/library | `GET /api/members/resources` | Deferred / active member, migration needed. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[] }`. Map to `LibraryResource[]`. | Server-defined resource order; no pagination. Empty state `resources: []`. `401` inactive; `500` load failure. |
+| Resources/library | `GET /api/members/resources` | Current / Member bearer-ready. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`. Map to `ResourceHubData`. | Server-defined resource and radar order; no pagination. Empty state `resources: []`, `newsRadar: []`. `401` inactive; `500` load failure. |
 | Podcasts | `GET /api/members/podcasts` | Deferred / active member, migration needed. Source: `members/podcasts/route.ts`. | No query params. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. |
 | Jobs | `GET /api/members/job-postings` | Deferred / active member, migration needed. Source: `members/job-postings/route.ts`. | Query `page?` default `1`, `pageSize?` default `20`, max `100`. | Active job-posting page from `getCachedActiveJobPostings`. Map to `JobListing[]`. | Page-based pagination. Empty page is an empty jobs array with total metadata. Invalid pagination `400`; auth `401`; load failure `500`. |
 | Jobs write | `POST /api/members/job-postings`, `PATCH/DELETE /api/members/job-postings/:jobId` | Excluded first pass / Organization admin. Sources: job posting routes. | JSON job posting payload for create/update; path `jobId` for update/delete. | `{ status: "success", jobPosting }` or `{ status: "success" }`. | Org-admin mobile workflow does not exist; exclude until it does. |
 | Directory people | `GET /api/members/directory` | Deferred / active member, migration needed. Source: `members/directory/route.ts`. | Query `query?`, `workingGroupSlug?`, `region?`, `limit?` clamped by server. | `{ status: "success", members: DirectoryMember[] }`. Map to `DirectoryPerson[]`. | Sorted by `full_name` ascending before optional region filter. Empty state `members: []`. Invalid/internal query failures return `500`; auth `401`. |
 | Directory detail | `GET /api/members/directory/:memberId` | Deferred / active member, migration needed. Source: `members/directory/[memberId]/route.ts`. | Path `memberId`. | Member profile/detail DTO and organization fields. | No pagination. Unknown/inaccessible profile should return safe not-found. |
 | Directory organizations | `GET /api/members/directory/organizations` | Deferred / active member, migration needed. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations: MemberOrg[] }`. | Server order should be A-Z for mobile grouping. Empty state `organizations: []`. Auth `401`; load failure `500`. |
-| News feed | `GET /api/members/news` | Deferred / active member, migration needed. Source: `members/news/route.ts`. | No query params. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order; no pagination. Empty state `items: []`. |
-| News Radar | `GET /api/members/news-radar` | Deferred / active member, migration needed. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
+| News feed | `GET /api/members/news` | Current / Member bearer-ready. Source: `members/news/route.ts`. | Query `topic?`, `source?`, `limit?`, `cursor?`, `snapshotAt?`, `story?`. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order and cursor metadata. Empty state `items: []`. Invalid filters `400`; auth `401`; load failure `500`. |
+| News Radar | `GET /api/members/news-radar` | Current / Member bearer-ready. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
 | Events | `GET /api/members/events` | Deferred / active member, migration needed. Source: `members/events/route.ts`. | No query params. | `{ status: "success", events }`. | Server event order, includes past per route implementation. Empty state `events: []`. |
 | Event RSVP | `POST /api/members/events/rsvp` | Deferred / active member, migration needed. Source: `members/events/rsvp/route.ts`. | JSON event ID plus RSVP state as defined by the web route. | `{ status: "success", message }`. | Prefer idempotent writes. The current mobile app uses the working-group event RSVP route for feed event posts. |
 

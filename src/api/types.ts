@@ -591,6 +591,11 @@ export interface NewsStory {
   memberOnly?: boolean;
 }
 
+export interface ResourceHubData {
+  resources: LibraryResource[];
+  newsRadar: NewsStory[];
+}
+
 
 /** A post paired with the working group it belongs to. */
 export interface FeedEntry {

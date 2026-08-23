@@ -78,7 +78,7 @@ export const ROUTES = {
   groups: '/groups',
   nextEvent: '/events/next',
   feed: '/posts',
-  news: '/news',
+  news: '/api/members/news',
   ask: '/ask',
   library: '/api/members/resources',
   podcasts: '/podcasts',

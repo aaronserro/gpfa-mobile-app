@@ -1,5 +1,5 @@
 import { request, requestStream } from './client';
-import { ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
+import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
   CalendarEvent,
@@ -39,8 +39,10 @@ import type {
   PodcastEpisode,
   Poll,
   PollOption,
+  Relevance,
   RedirectResponse,
   Reply,
+  ResourceHubData,
   ResourceType,
   RsvpChoice,
   StatusResponse,
@@ -233,12 +235,17 @@ export function getFeed(): Promise<FeedEntry[]> {
  */
 export function getNews(): Promise<NewsStory[]> {
   if (USING_PORTAL_FIXTURES) return local(NEWS_STORIES);
-  return request<NewsStory[]>(ROUTES.news);
+  return request<unknown>(ROUTES.news).then(normalizeNewsStories);
 }
 
-export function getLibrary(): Promise<LibraryResource[]> {
-  if (USING_PORTAL_FIXTURES) return local(LIBRARY);
-  return request<unknown>(ROUTES.library).then(normalizeLibraryResources);
+export function getLibrary(): Promise<ResourceHubData> {
+  if (!USING_REMOTE_API) {
+    return local({
+      resources: LIBRARY,
+      newsRadar: NEWS_STORIES.filter((story) => story.kind === 'radar'),
+    });
+  }
+  return request<unknown>(ROUTES.library).then(normalizeResourceHubData);
 }
 
 /** Newest first — the screen features the first entry and never re-sorts it. */
@@ -792,6 +799,97 @@ function directoryRowToGroupMember(member: MemberDirectoryRow): GroupMember {
   };
 }
 
+function normalizeNewsStories(payload: unknown): NewsStory[] {
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).items)
+      ? ((payload as Record<string, unknown>).items as unknown[])
+      : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).articles)
+        ? ((payload as Record<string, unknown>).articles as unknown[])
+        : [];
+
+  return rows.map(normalizeNewsStory).filter((story): story is NewsStory => story !== null);
+}
+
+function normalizeNewsStory(row: unknown, index: number): NewsStory | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const title = firstString(record.title, record.name);
+  if (!title) return null;
+
+  const kind = firstString(record.kind) === 'gpfa' ? 'gpfa' : 'radar';
+  const topics = arrayOfStrings(record.topics);
+  const topic = firstString(record.topic, topics[0]) ?? 'Markets';
+  const sourceName =
+    firstString(
+      record.sourceName,
+      record.source_name,
+      record.sourceLabel,
+      record.source_label,
+      record.source,
+    ) ?? (kind === 'gpfa' ? 'GPFA' : 'News Radar');
+  const dateLabel = firstString(
+    record.publishedAt,
+    record.published_at,
+    record.date,
+    record.updatedAt,
+    record.updated_at,
+  );
+  const body =
+    firstString(
+      record.body,
+      record.summary,
+      record.excerpt,
+      record.whyItMatters,
+      record.why_it_matters,
+    ) ?? '';
+  const imageUrl = firstString(record.imageUrl, record.image_url);
+  const url = absoluteResourceHref(
+    firstString(record.url, record.externalUrl, record.external_url, record.href, record.link),
+  );
+  const threads = numberFrom(record.threads, record.threadCount, record.thread_count);
+  const rel = relevanceFrom(record.relevance, record.rel);
+
+  return {
+    id: firstString(record.id, record._id, record.uuid, record.slug) ?? `story-${index}`,
+    kind,
+    topic,
+    title,
+    meta: [sourceName, dateLabel].filter(Boolean).join(' · ').toUpperCase(),
+    body,
+    ...(rel ? { rel } : {}),
+    tag: firstString(record.tickerTag, record.ticker_tag, record.tag) ?? shortTopicTag(topic),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(url ? { url } : {}),
+    ...(kind === 'radar'
+      ? {
+          ticker:
+            firstString(record.ticker, record.tickerTag, record.ticker_tag, record.sourceName, record.source_name) ??
+            sourceName,
+        }
+      : {}),
+    ...(threads !== undefined ? { threads } : {}),
+    ...(kind === 'gpfa'
+      ? { chip: firstString(record.chip, record.articleType, record.article_type, record.type) ?? 'GPFA' }
+      : {}),
+    ...(kind === 'gpfa' && topics.length ? { topics } : {}),
+    ...(kind === 'gpfa' && typeof record.isMemberOnly === 'boolean'
+      ? { memberOnly: record.isMemberOnly }
+      : {}),
+  };
+}
+
+function normalizeResourceHubData(payload: unknown): ResourceHubData {
+  return {
+    resources: normalizeLibraryResources(payload),
+    newsRadar:
+      payload && typeof payload === 'object'
+        ? normalizeNewsStories((payload as Record<string, unknown>).newsRadar)
+        : [],
+  };
+}
+
 function normalizeLibraryResources(payload: unknown): LibraryResource[] {
   const rows = Array.isArray(payload)
     ? payload
@@ -811,6 +909,23 @@ function normalizeLibraryResource(row: unknown, index: number): LibraryResource 
 
   const updatedAt = firstString(record.updatedAt, record.updated_at, record.date, record.publishedAt, record.published_at) ?? 'Recent';
   const parsedUpdatedAt = Date.parse(updatedAt);
+  const href = absoluteResourceHref(
+    firstString(
+      record.viewerHref,
+      record.viewer_href,
+      record.artifactHref,
+      record.artifact_href,
+      record.fileUrl,
+      record.file_url,
+      record.externalUrl,
+      record.external_url,
+      record.href,
+      record.url,
+      record.link,
+      record.sourceUrl,
+      record.source_url
+    )
+  );
 
   return {
     id: firstString(record.id, record._id, record.uuid, record.slug) ?? `resource-${index}`,
@@ -824,8 +939,17 @@ function normalizeLibraryResource(row: unknown, index: number): LibraryResource 
       : {}),
     ...(numberFrom(record.pages, record.pageCount, record.page_count) ? { pages: numberFrom(record.pages, record.pageCount, record.page_count) } : {}),
     tags: arrayOfStrings(record.tags),
-    ...(firstString(record.href, record.url, record.link, record.sourceUrl, record.source_url) ? { href: firstString(record.href, record.url, record.link, record.sourceUrl, record.source_url) } : {}),
+    ...(href ? { href } : {}),
   };
+}
+
+function absoluteResourceHref(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (!value.startsWith('/')) return value;
+
+  const origin = GPFA_WEB_ORIGIN || API_BASE_URL;
+  return origin ? `${origin}${value}` : value;
 }
 
 function resourceTypeFrom(...values: unknown[]): ResourceType {
@@ -837,6 +961,15 @@ function resourceTypeFrom(...values: unknown[]): ResourceType {
   if (value === 'explainer' || value === 'guide') return 'Explainer';
   if (value === 'event notes' || value === 'event_notes' || value === 'meeting material' || value === 'meeting_material' || value === 'agenda' || value === 'minutes') return 'Event Notes';
   return 'Working Paper';
+}
+
+function relevanceFrom(...values: unknown[]): Relevance | undefined {
+  const value = firstString(...values)?.toLowerCase();
+  return value === 'high' || value === 'medium' || value === 'low' ? value : undefined;
+}
+
+function shortTopicTag(topic: string): string {
+  return topic.replace(/\s*&\s*/g, ' & ').split(/\s+/).slice(0, 2).join(' ');
 }
 
 function arrayOfStrings(value: unknown): string[] {

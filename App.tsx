@@ -17,6 +17,7 @@ import MemberSheet from './src/components/MemberSheet';
 import NotificationsSheet from './src/components/NotificationsSheet';
 import PortalTabBar, { type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
+import ResourceViewer from './src/components/ResourceViewer';
 import PodcastNowPlayingBar from './src/components/podcast/PodcastNowPlayingBar';
 import { PodcastPlayerProvider } from './src/components/podcast/PlayerProvider';
 import ResourceSubmissionComposer from './src/components/groups/ResourceSubmissionComposer';
@@ -65,9 +66,11 @@ import {
   workingGroupFeedItemResponseToEntry,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
+import { getAccessToken } from './src/api/tokens';
 import type {
   FeedEntry,
   GroupMember,
+  LibraryResource,
   Member,
   MemberNotification,
   MemberOrg,
@@ -143,6 +146,10 @@ function Portal() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [resourceComposerGroupId, setResourceComposerGroupId] = useState<string | null>(null);
   const [resourceSubmitting, setResourceSubmitting] = useState(false);
+  const [resourceViewer, setResourceViewer] = useState<{
+    resource: LibraryResource;
+    accessToken: string | null;
+  } | null>(null);
   // The member's own profile, reached from the header avatar on any tab: the
   // quick sheet first, then the full profile over whichever tab is underneath.
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -158,7 +165,10 @@ function Portal() {
   const groupsQuery = useQuery(() => (isSignedIn ? getGroups() : Promise.resolve([])), [isSignedIn]);
   const feedQuery = useQuery(getFeed, []);
   const newsQuery = useQuery(getNews, []);
-  const libraryQuery = useQuery(getLibrary, []);
+  const libraryQuery = useQuery(
+    () => (isSignedIn ? getLibrary() : Promise.resolve({ resources: [], newsRadar: [] })),
+    [isSignedIn]
+  );
   const podcastQuery = useQuery(getPodcasts, []);
   const jobsQuery = useQuery(getJobs, []);
   const orgsQuery = useQuery(getMemberOrgs, []);
@@ -190,6 +200,14 @@ function Portal() {
     setResourcesRequest((prev) => ({ kind, id, n: (prev?.n ?? 0) + 1 }));
     setResourcesNewsOpen(false);
     setTab('resources');
+  }, []);
+
+  const openResource = useCallback((resource: LibraryResource) => {
+    if (!resource.href) return;
+
+    void getAccessToken().then((accessToken) => {
+      setResourceViewer({ resource, accessToken });
+    });
   }, []);
 
   // Which organization the Directory tab should open on when another screen
@@ -711,27 +729,24 @@ function Portal() {
                   meQuery.loading ||
                   libraryQuery.loading ||
                   podcastQuery.loading ||
-                  jobsQuery.loading ||
-                  newsQuery.loading
+                  jobsQuery.loading
                 }
                 error={
                   meQuery.error ??
                   libraryQuery.error ??
                   podcastQuery.error ??
-                  jobsQuery.error ??
-                  newsQuery.error
+                  jobsQuery.error
                 }
                 onRetry={() => {
                   meQuery.refetch();
                   libraryQuery.refetch();
                   podcastQuery.refetch();
                   jobsQuery.refetch();
-                  newsQuery.refetch();
                 }}
               >
                 {resourcesNewsOpen ? (
                   <NewsScreen
-                    stories={newsQuery.data ?? []}
+                    stories={libraryQuery.data?.newsRadar ?? []}
                     onBack={() => setResourcesNewsOpen(false)}
                     onOpen={openStory}
                   />
@@ -745,10 +760,10 @@ function Portal() {
                         : 'resources'
                     }
                     member={member}
-                    resources={libraryQuery.data ?? []}
+                    resources={libraryQuery.data?.resources ?? []}
                     episodes={podcastQuery.data ?? []}
                     jobs={jobsQuery.data ?? []}
-                    news={newsQuery.data ?? []}
+                    news={libraryQuery.data?.newsRadar ?? []}
                     initialView={
                       resourcesRequest?.kind === 'episode'
                         ? 'podcasts'
@@ -760,12 +775,13 @@ function Portal() {
                       resourcesRequest?.kind === 'episode' ? resourcesRequest.id : null
                     }
                     initialJobId={resourcesRequest?.kind === 'job' ? resourcesRequest.id : null}
-                    onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
+                    onOpenResource={openResource}
                     onOpenTranscript={(e) =>
                       e.transcriptUrl && void Linking.openURL(e.transcriptUrl)
                     }
                     onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
                     onGoNews={() => setResourcesNewsOpen(true)}
+                    onOpenNewsStory={openStory}
                   />
                 )}
               </DataGate>
@@ -868,7 +884,7 @@ function Portal() {
                     workingGroups={groups.filter((g) => subscribed[g.id] ?? g.joined).length}
                     org={memberOrg}
                     onBack={() => setProfileOpen(false)}
-                    onOpenResource={(r) => r.href && void Linking.openURL(r.href)}
+                    onOpenResource={openResource}
                     onOpenOrg={openOrgInDirectory}
                   />
                 </DataGate>
@@ -915,6 +931,15 @@ function Portal() {
               onClose={() => setResourceComposerGroupId(null)}
               onSubmit={submitResource}
             />
+          )}
+          {resourceViewer && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+              <ResourceViewer
+                resource={resourceViewer.resource}
+                accessToken={resourceViewer.accessToken}
+                onClose={() => setResourceViewer(null)}
+              />
+            </View>
           )}
         </>
       )}
