@@ -15,17 +15,20 @@
  */
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BookmarkSimple, CaretRight } from '../ds/icons';
+import { BookmarkSimple, CaretRight, Repeat } from '../ds/icons';
 import { Avatar, MastheadMeta, OrgMark, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
+import { alpha, mono, postTypeStyle, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import { initials as initialsOf, orgInitials } from '../lib/format';
-import type { LibraryResource, Member, MemberOrg } from '../api/types';
+import { TYPE_ICON } from '../components/groups/parts';
+import type { LibraryResource, Member, MemberOrg, MemberRepost } from '../api/types';
 
 export interface MemberProfileScreenProps {
   member: Member;
   /** Bookmarked library documents, in the order they should be listed. */
   saved: LibraryResource[];
+  /** Working-group posts the member has reposted, newest repost first. */
+  reposts: MemberRepost[];
   /** How many working groups the member sits on — shown beside the origin line. */
   workingGroups: number;
   /** The member's organization, joined from the directory. Absent hides the card. */
@@ -33,6 +36,8 @@ export interface MemberProfileScreenProps {
   onBack: () => void;
   /** Opens a saved document. Absent leaves the rows inert. */
   onOpenResource?: (resource: LibraryResource) => void;
+  /** Opens a repost in its working group. Absent leaves the cards inert. */
+  onOpenRepost?: (repost: MemberRepost) => void;
   /** Opens the organization's directory profile. Absent leaves the card inert. */
   onOpenOrg?: (org: MemberOrg) => void;
 }
@@ -40,10 +45,12 @@ export interface MemberProfileScreenProps {
 export default function MemberProfileScreen({
   member,
   saved,
+  reposts,
   workingGroups,
   org,
   onBack,
   onOpenResource,
+  onOpenRepost,
   onOpenOrg,
 }: MemberProfileScreenProps) {
   const { t } = useTheme();
@@ -72,7 +79,31 @@ export default function MemberProfileScreen({
       </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <SectionHead label="Saved" count={`${saved.length} item${saved.length === 1 ? '' : 's'}`} />
+        <SectionHead
+          label="Reposts"
+          count={`${reposts.length} post${reposts.length === 1 ? '' : 's'}`}
+        />
+        <View style={styles.repostList}>
+          {reposts.map((repost) => (
+            <RepostCard key={repost.id} repost={repost} onOpen={() => onOpenRepost?.(repost)} />
+          ))}
+          {reposts.length === 0 && (
+            <View
+              style={[
+                styles.repostEmpty,
+                { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
+              ]}
+            >
+              <Repeat size={20} color={t.inkMuted} />
+              <Text style={[styles.empty, { color: t.inkMuted }]}>Reposted working-group posts appear here.</Text>
+            </View>
+          )}
+        </View>
+
+        <SectionHead
+          label="Library bookmarks"
+          count={`${saved.length} item${saved.length === 1 ? '' : 's'}`}
+        />
         <View
           style={[styles.rows, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
         >
@@ -161,6 +192,50 @@ export default function MemberProfileScreen({
   );
 }
 
+function RepostCard({ repost, onOpen }: { repost: MemberRepost; onOpen: () => void }) {
+  const { t } = useTheme();
+  const post = repost.entry.post;
+  const type = post.type ?? 'discussion';
+  const skin = postTypeStyle(t, type);
+  const TypeIcon = TYPE_ICON[type];
+  const repostedOn = new Date(repost.repostedAt).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`Open repost: ${post.title}`}
+      style={({ pressed }) => [
+        styles.repostCard,
+        {
+          backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper,
+          borderColor: t.ruleHairline,
+        },
+      ]}
+    >
+      <View style={styles.repostHead}>
+        <View style={[styles.repostChip, { backgroundColor: skin.chipBg, borderColor: skin.chipBd }]}>
+          <TypeIcon size={12} color={skin.ink} />
+          <Text style={[styles.repostChipText, { color: skin.ink }]}>{skin.label}</Text>
+        </View>
+        <Repeat size={15} weight="bold" color={t.brandGreen} />
+      </View>
+      <Text style={[styles.repostTitle, { color: t.inkStrong }]}>{post.title}</Text>
+      {!!post.body && (
+        <Text numberOfLines={2} style={[styles.repostBody, { color: t.inkMuted }]}>
+          {post.body}
+        </Text>
+      )}
+      <MastheadMeta size={9.5} style={styles.repostMeta}>
+        {`${repost.groupName} · ${post.author} · REPOSTED ${repostedOn}`.toUpperCase()}
+      </MastheadMeta>
+    </Pressable>
+  );
+}
+
 /** The heading above a section. Matches `OrgProfile`'s. */
 function SectionHead({ label, count }: { label: string; count?: string }) {
   const { t } = useTheme();
@@ -181,6 +256,23 @@ const styles = StyleSheet.create({
   originRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
 
   scroll: { paddingBottom: 28 },
+  repostList: { paddingHorizontal: 20, gap: 10 },
+  repostCard: { borderWidth: 1, borderRadius: 8, padding: 14 },
+  repostHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  repostChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 32,
+    borderWidth: 1,
+  },
+  repostChipText: { fontFamily: mono(400), fontSize: 9.5, letterSpacing: 0.48 },
+  repostTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 14, lineHeight: 20 },
+  repostBody: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
+  repostMeta: { marginTop: 9 },
+  repostEmpty: { borderWidth: 1, borderRadius: 8, alignItems: 'center', paddingVertical: 22 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -228,7 +320,7 @@ const styles = StyleSheet.create({
   orgLink: { fontFamily: sans(400), fontSize: 12.5 },
 
   empty: {
-    paddingVertical: 28,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     textAlign: 'center',
     fontFamily: sans(400),

@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ArrowSquareOut, BookmarkSimple, Buildings, CaretRight, User, X, type Icon } from '../ds/icons';
+import { ArrowSquareOut, Buildings, CaretRight, Repeat, User, X, type Icon } from '../ds/icons';
 import { Avatar } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
@@ -18,8 +18,8 @@ import type { Member } from '../api/types';
 
 export interface MemberSheetProps {
   member: Member;
-  /** Shown on the Saved items row. */
-  savedCount: number;
+  /** Shown on the Reposts row. */
+  repostCount: number;
   onClose: () => void;
   /** Every row opens the profile; the design routes all three there. */
   onOpenProfile: () => void;
@@ -29,7 +29,7 @@ export interface MemberSheetProps {
 
 export default function MemberSheet({
   member,
-  savedCount,
+  repostCount,
   onClose,
   onOpenProfile,
   onSignOut,
@@ -112,9 +112,9 @@ export default function MemberSheet({
         <View style={{ borderTopWidth: 1, borderTopColor: t.ruleHairline }}>
           <Row icon={User} label="View profile" onPress={onOpenProfile} />
           <Row
-            icon={BookmarkSimple}
-            label="Saved items"
-            trailing={String(savedCount)}
+            icon={Repeat}
+            label="Reposts"
+            trailing={String(repostCount)}
             onPress={onOpenProfile}
             divided
           />

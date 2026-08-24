@@ -185,8 +185,8 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Prepared route | `MemberPollResponse` / `{ status }` |
 | `POST` | `/api/members/polls/vote` | Poll detail vote action | `{ status, message }` |
 | `GET`/`POST`/`DELETE` | `/api/members/upvotes` | Feed/detail upvote actions | member content list / mutation response |
-| `GET`/`POST`/`DELETE` | `/api/members/saved-content` | Feed/detail save actions | member content list / mutation response |
-| `GET` | `/me` | Greeting, avatars, authorship | `Member` |
+| `GET`/`POST`/`DELETE` | `/api/members/saved-content` | Feed/detail repost actions + profile Reposts | member content list / mutation response |
+| `GET` | `/api/members/profile` | Greeting, avatars, authorship | `{ status: "success", member: Member }` |
 | `GET` | `/me/saved` | Member profile → Saved | `LibraryResource[]`, newest first |
 | `GET` | `/groups` | Home, Groups drawer | legacy `Group[]` shape, not used while `/api/members/working-groups` is configured |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
@@ -218,21 +218,27 @@ references URLs.
 
 ### 4.1 Request/response details
 
-**`GET /me` → `Member`**
+**`GET /api/members/profile` → `{ status: "success", member: Member }`**
 
 The signed-in member. Home and Groups **block on this** — `DataGate` holds the
 spinner until it resolves, because the greeting, top-bar avatar, and the author
-of anything the member posts all come from it.
+of anything the member posts all come from it. The app sends the stored bearer
+token and calls this route whenever a remote API is configured, even when
+`EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true`, so fixture portal content never replaces
+the authenticated member's identity.
 
 ```json
 {
-  "id": "rg",
-  "name": "Robert Goobie",
-  "firstName": "Robert",
-  "initials": "RG",
-  "org": "HOOPP",
-  "role": "Assistant VP, Treasury & Liquidity",
-  "orgId": "hoopp"
+  "status": "success",
+  "member": {
+    "id": "member-uuid",
+    "name": "Robert Goobie",
+    "firstName": "Robert",
+    "initials": "RG",
+    "org": "HOOPP",
+    "role": "Assistant VP, Treasury & Liquidity",
+    "orgId": "organization-uuid"
+  }
 }
 ```
 
@@ -533,7 +539,9 @@ instead, and only runs once the member types something.
 **Upvote / vote / RSVP** — return anything; the app ignores the body and only
 checks for a non-error status.
 
-- Upvote / save / subscribe: `POST` to set, `DELETE` to unset.
+- Upvote / repost / subscribe: `POST` to set, `DELETE` to unset. Reposts use
+  `/api/members/saved-content`; “saved content” is the storage/API name, not the
+  mobile UI label.
 - Reply upvote: `:replyId` is `Reply.id`. **A reply without an `id` is never
   sent** — the member can still tap it, but the state stays on the device and is
   lost on reload. Give every reply an id if you want them to persist.
@@ -599,13 +607,13 @@ Universal response rules for GPFA web API routes:
 
 #### Member profile and onboarding
 
-These routes are mobile workflows, but the current app does not yet have a
-profile/settings tab that calls the GPFA web API. Treat them as deferred until
-`ROUTES.me`, profile editing, avatar upload, and onboarding routes are remapped
-from legacy placeholders to `/api/members/*` paths.
+The current-member read powers the mobile greeting, avatar, and authorship.
+Profile editing, avatar upload, and onboarding mutations remain deferred until
+the corresponding mobile controls are implemented.
 
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
+| `GET /api/members/profile` | Current / Member bearer-ready. Source: `members/profile/route.ts`. | No body. | `{ status: "success", member: { id, name, firstName, initials, org, role?, orgId? } }`. | No pagination. Uses the current authenticated member only and returns `Cache-Control: private, no-store`. Auth errors return `401`; malformed or unavailable profile data returns `500`. |
 | `PATCH /api/members/profile` | Deferred / active member, migration needed. Source: `members/profile/route.ts`. | JSON `{ fullName, roleTitle, country, bio }`. | `{ status: "success" }`. | No pagination. Invalid body returns `400` with field errors; unauthenticated/inactive returns `401`; write failures return `500`. |
 | `PATCH /api/members/email-preferences` | Deferred / active member, migration needed. Source: `members/email-preferences/route.ts`. | JSON preference booleans keyed by email category. | `{ status: "success" }`. | No pagination. Add only with a notifications/settings screen. |
 | `GET /api/members/onboarding/state` | Deferred / active member, migration needed. Source: `members/onboarding/state/route.ts`. | No body. | Current onboarding step/state payload. | No pagination. Empty state is the server-defined incomplete/completed state, not a guessed client fallback. |
@@ -674,13 +682,13 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `DELETE /api/members/polls/:id` | Prepared / Member bearer-ready. Source: same route. | Path `id`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
 | `POST /api/members/polls/vote` | Current / Member bearer-ready. Source: `members/polls/vote/route.ts`. | JSON `{ pollId, groupSlug?, answers: [{ questionId, optionId }] }`. | `{ status: "success", message }`. | No pagination. Server must enforce one valid vote set per member/question; validation `400`; closed/inaccessible poll errors should fail closed. |
 
-#### Saved content and upvotes
+#### Reposts (saved content) and upvotes
 
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
-| `GET /api/members/saved-content` | Current / Member bearer-ready. Source: `members/saved-content/route.ts`. | Query `targetType?`, `targetId?`, `groupSlug?`, `limit?`, `offset?`. | `MemberContentListResponse`: `{ status, items, meta }`. | Offset pagination. Newest saved first. Empty state is `items: []`, `meta.count: 0`. Invalid filters `400`; auth `401`. |
-| `POST /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`; first-pass target types are `thread`, `event`, `announcement`, `poll`. | `MemberContentMutationResponse`: `{ status, message, targetType, targetId }`. | No pagination. Prefer idempotent save semantics. Must verify visibility/subscription for group content. |
-| `DELETE /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`. | `MemberContentMutationResponse`. | No pagination. Empty state is target not saved. Mobile rolls back optimistic state on failure. |
+| `GET /api/members/saved-content` | Current / Member bearer-ready. Source: `members/saved-content/route.ts`. | Query `targetType?`, `targetId?`, `groupSlug?`, `limit?`, `offset?`. | `MemberContentListResponse`: `{ status, items, meta }`. | Offset pagination. Newest repost first. The profile reads every page, then hydrates those references from the existing WG feeds so all visible reposts are shown as cards. Empty state is `items: []`, `meta.count: 0`. Invalid filters `400`; auth `401`. |
+| `POST /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`; target types are `thread`, `event`, `announcement`, `poll`. | `MemberContentMutationResponse`: `{ status, message, targetType, targetId }`. | No pagination. Idempotent repost semantics. Must verify visibility/subscription for group content. |
+| `DELETE /api/members/saved-content` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`. | `MemberContentMutationResponse`. | No pagination. Empty state is target not reposted. Mobile rolls back optimistic state on failure. |
 | `GET /api/members/upvotes` | Current / Member bearer-ready. Source: `members/upvotes/route.ts`. | Query `targetType?`, `targetId?`, `groupSlug?`, `limit?`, `offset?`. | `MemberContentListResponse`. | Offset pagination. Newest upvote first. Empty state is `items: []`. |
 | `POST /api/members/upvotes` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`; first-pass targets are `thread`, `event`, `announcement`, `poll`. Reply upvotes are a mobile route dependency to verify before relying on persistence. | `MemberContentMutationResponse`. | No pagination. Idempotent upvote preferred; must verify visibility. |
 | `DELETE /api/members/upvotes` | Current / Member bearer-ready. Source: same route. | JSON `{ targetType, targetId }`. | `MemberContentMutationResponse`. | No pagination. Empty state is target not upvoted. |
@@ -1162,7 +1170,7 @@ request fires, and the change reverts if it fails.
 | Reply | Appended to thread | Removed |
 | Upvote | Count ±1, icon turns green | Reverted |
 | Reply upvote | Count ±1 | Reverted (no request when the reply has no `id`) |
-| Save | Bookmark fills, label becomes "Saved" | Reverted |
+| Repost | Repeat icon turns green, label becomes "Reposted", count increases | Reverted |
 | Subscribe | Group moves between directory sections | Reverted |
 | Vote | Option selected, percentages shown | Cleared |
 | RSVP | Button state changes | Reverted to previous |

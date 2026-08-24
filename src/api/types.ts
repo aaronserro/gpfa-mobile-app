@@ -71,6 +71,10 @@ export interface Thread {
   groupSlug?: string;
   /** Backend content target type used by saved/upvote routes. */
   targetType?: MemberContentTargetType;
+  /** Canonical repost state returned by the working-group feed. */
+  hasReposted?: boolean;
+  /** Canonical repost total returned by the working-group feed. */
+  repostCount?: number;
   /** Defaults to 'discussion' when the source design didn't classify the post. */
   type?: PostType;
   title: string;
@@ -280,6 +284,8 @@ export interface WorkingGroupThreadDetail {
     attachments?: WorkingGroupDetailAttachment[];
     hasSaved?: boolean;
     savedCount?: number;
+    hasReposted?: boolean;
+    repostCount?: number;
   };
   replies: WorkingGroupDetailReply[];
   participants: Array<{ name: string; initials: string; photo: string | null }>;
@@ -295,6 +301,8 @@ export interface WorkingGroupPollDetail {
     description?: string;
     hasSaved?: boolean;
     savedCount?: number;
+    hasReposted?: boolean;
+    repostCount?: number;
   };
   results: unknown[];
   answers: unknown[];
@@ -574,7 +582,7 @@ export interface MemberContentQuery {
 export interface MemberContentItem {
   id: string;
   member_id: string;
-  target_type: string;
+  target_type: MemberContentTargetType;
   target_id: string;
   created_at: string;
 }
@@ -595,6 +603,14 @@ export interface MemberContentListResponse {
 export interface MemberContentMutationResponse extends MemberContentTargetInput {
   status: 'success';
   message: string;
+}
+
+/** A current member's repost, hydrated into a post card from the WG feed. */
+export interface MemberRepost {
+  id: string;
+  repostedAt: string;
+  groupName: string;
+  entry: FeedEntry;
 }
 
 export interface Answer {

@@ -69,9 +69,9 @@ export interface GroupsScreenProps {
   /** Whether this member has upvoted a post; adds 1 to its stored count. */
   upvoted: Record<string, boolean | undefined>;
   onToggleUpvote: (threadId: string) => void;
-  /** Whether this member has saved a post. */
-  saved: Record<string, boolean | undefined>;
-  onToggleSave: (threadId: string) => void;
+  /** Whether this member has reposted a post. */
+  reposted: Record<string, boolean | undefined>;
+  onToggleRepost: (threadId: string) => void;
   /** Subscription overrides; absent falls back to the group's own `joined`. */
   subscribed: Record<string, boolean | undefined>;
   onToggleSubscribe: (groupId: string) => void;
@@ -119,8 +119,8 @@ export default function GroupsScreen({
   onVote,
   upvoted,
   onToggleUpvote,
-  saved,
-  onToggleSave,
+  reposted,
+  onToggleRepost,
   subscribed,
   onToggleSubscribe,
   rsvps,
@@ -164,8 +164,8 @@ export default function GroupsScreen({
         onChangeStatus={(status) => onChangePostStatus?.(thread.id, status)}
         upvoted={!!upvoted[thread.id]}
         onToggleUpvote={() => onToggleUpvote(thread.id)}
-        saved={!!saved[thread.id]}
-        onToggleSave={() => onToggleSave(thread.id)}
+        reposted={reposted[thread.id] ?? thread.hasReposted ?? false}
+        onToggleRepost={() => onToggleRepost(thread.id)}
         vote={votes[thread.id]}
         onVote={(option) => onVote(thread.id, option)}
         rsvp={rsvps[thread.id]}
@@ -229,8 +229,8 @@ export default function GroupsScreen({
         replyCounts={replyCounts}
         upvoted={upvoted}
         onToggleUpvote={onToggleUpvote}
-        saved={saved}
-        onToggleSave={onToggleSave}
+        reposted={reposted}
+        onToggleRepost={onToggleRepost}
         showTags={showTagsInFeed}
         onBack={onCloseGroup}
         onOpenPost={onOpenThread}

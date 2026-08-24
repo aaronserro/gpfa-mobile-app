@@ -48,6 +48,7 @@ export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/i
 export { PauseIcon as Pause } from 'phosphor-react-native/lib/commonjs/icons/Pause';
 export { PlayIcon as Play } from 'phosphor-react-native/lib/commonjs/icons/Play';
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
+export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/Repeat';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';

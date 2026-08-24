@@ -77,7 +77,7 @@ export const ROUTES = {
   memberSavedContent: '/api/members/saved-content',
   memberDirectory: '/api/members/directory',
   askStream: '/api/members/knowledge/messages/stream',
-  me: '/me',
+  me: '/api/members/profile',
   savedResources: '/me/saved',
   groups: '/groups',
   nextEvent: '/events/next',

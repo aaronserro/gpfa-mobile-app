@@ -11,12 +11,12 @@ import { ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-
 
 import {
   ArrowFatUp,
-  BookmarkSimple,
   ChatCircle,
   CheckCircle,
   FileText,
   MagnifyingGlass,
   Plus,
+  Repeat,
   type Icon,
 } from '../../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
@@ -65,8 +65,8 @@ export interface GroupViewProps {
   replyCounts: Record<string, number>;
   upvoted: Record<string, boolean | undefined>;
   onToggleUpvote: (postId: string) => void;
-  saved: Record<string, boolean | undefined>;
-  onToggleSave: (postId: string) => void;
+  reposted: Record<string, boolean | undefined>;
+  onToggleRepost: (postId: string) => void;
   /** Design prop: show the #topic chips on feed cards. */
   showTags: boolean;
   onBack: () => void;
@@ -99,8 +99,8 @@ export default function GroupView({
   replyCounts,
   upvoted,
   onToggleUpvote,
-  saved,
-  onToggleSave,
+  reposted,
+  onToggleRepost,
   showTags,
   onBack,
   onOpenPost,
@@ -260,8 +260,9 @@ export default function GroupView({
                       replyCount={replyCounts[p.id] ?? p.replies.length}
                       upvoted={!!upvoted[p.id]}
                       onToggleUpvote={() => onToggleUpvote(p.id)}
-                      saved={!!saved[p.id]}
-                      onToggleSave={() => onToggleSave(p.id)}
+                      reposted={reposted[p.id] ?? p.hasReposted ?? false}
+                      repostCount={optimisticRepostCount(p, reposted[p.id])}
+                      onToggleRepost={() => onToggleRepost(p.id)}
                       showTags={showTags}
                       onOpen={() => onOpenPost(p.id)}
                     />
@@ -696,8 +697,9 @@ function PostCard({
   replyCount,
   upvoted,
   onToggleUpvote,
-  saved,
-  onToggleSave,
+  reposted,
+  repostCount,
+  onToggleRepost,
   showTags,
   onOpen,
 }: {
@@ -705,8 +707,9 @@ function PostCard({
   replyCount: number;
   upvoted: boolean;
   onToggleUpvote: () => void;
-  saved: boolean;
-  onToggleSave: () => void;
+  reposted: boolean;
+  repostCount: number;
+  onToggleRepost: () => void;
   showTags: boolean;
   onOpen: () => void;
 }) {
@@ -796,25 +799,33 @@ function PostCard({
         </Pressable>
 
         <Pressable
-          onPress={onToggleSave}
+          onPress={onToggleRepost}
           accessibilityRole="button"
-          accessibilityLabel={saved ? 'Unsave post' : 'Save post'}
+          accessibilityLabel={`${reposted ? 'Remove repost' : 'Repost'} (${repostCount} ${repostCount === 1 ? 'repost' : 'reposts'})`}
+          accessibilityState={{ selected: reposted }}
           style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
         >
-          <BookmarkSimple
+          <Repeat
             size={13}
-            weight={saved ? 'fill' : 'regular'}
-            color={saved ? t.brandGreenStrong : t.inkMuted}
+            weight={reposted ? 'bold' : 'regular'}
+            color={reposted ? t.brandGreenStrong : t.inkMuted}
           />
           <Text
-            style={[styles.cardActionText, { color: saved ? t.brandGreenStrong : t.inkMuted }]}
+            style={[styles.cardActionText, { color: reposted ? t.brandGreenStrong : t.inkMuted }]}
           >
-            {saved ? 'Saved' : 'Save'}
+            {reposted ? 'Reposted' : 'Repost'} · {repostCount}
           </Text>
         </Pressable>
       </View>
     </View>
   );
+}
+
+function optimisticRepostCount(post: Thread, override: boolean | undefined): number {
+  const initial = post.hasReposted ?? false;
+  const current = override ?? initial;
+  const delta = current === initial ? 0 : current ? 1 : -1;
+  return Math.max(0, (post.repostCount ?? 0) + delta);
 }
 
 /** The event-row glyphs, re-exported so the post detail resolves them the same way. */

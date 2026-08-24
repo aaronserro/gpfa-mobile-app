@@ -22,13 +22,13 @@ import {
   ArrowBendUpLeft,
   ArrowFatUp,
   ArrowUp,
-  BookmarkSimple,
   CalendarDots,
   ChartBar,
   ChatCircle,
   CheckCircle,
   DownloadSimple,
   FileXls,
+  Repeat,
   ShareFat,
   X,
 } from '../../ds/icons';
@@ -83,8 +83,8 @@ export interface PostDetailProps {
   onChangeStatus?: (status: 'open' | 'answered' | 'closed') => void;
   upvoted: boolean;
   onToggleUpvote: () => void;
-  saved: boolean;
-  onToggleSave: () => void;
+  reposted: boolean;
+  onToggleRepost: () => void;
   /** Chosen option index; absent means this member has not voted. */
   vote: number | undefined;
   onVote: (option: number) => void;
@@ -108,8 +108,8 @@ export default function PostDetail({
   onChangeStatus,
   upvoted,
   onToggleUpvote,
-  saved,
-  onToggleSave,
+  reposted,
+  onToggleRepost,
   vote,
   onVote,
   rsvp,
@@ -137,6 +137,9 @@ export default function PostDetail({
   const voted = vote !== undefined;
   const counts = post.poll?.options.map((o, i) => o.votes + (vote === i ? 1 : 0)) ?? [];
   const total = counts.reduce((a, b) => a + b, 0);
+  const initialReposted = post.hasReposted ?? false;
+  const repostDelta = reposted === initialReposted ? 0 : reposted ? 1 : -1;
+  const repostCount = Math.max(0, (post.repostCount ?? 0) + repostDelta);
 
   const roots = replyTree(post.id, replies);
   const canReply = post.canReply ?? !isAnnouncement;
@@ -164,11 +167,17 @@ export default function PostDetail({
         backLabel={`Back to ${groupName}`}
         actions={
           <View style={styles.topActions}>
-            <Pressable onPress={onToggleSave} accessibilityRole="button" hitSlop={8}>
-              <BookmarkSimple
+            <Pressable
+              onPress={onToggleRepost}
+              accessibilityRole="button"
+              accessibilityLabel={reposted ? 'Remove repost' : 'Repost'}
+              accessibilityState={{ selected: reposted }}
+              hitSlop={8}
+            >
+              <Repeat
                 size={19}
-                weight={saved ? 'fill' : 'regular'}
-                color={saved ? t.brandGreenOnDark : '#fff'}
+                weight={reposted ? 'bold' : 'regular'}
+                color={reposted ? t.brandGreenOnDark : '#fff'}
               />
             </Pressable>
             <ShareFat size={19} color="#fff" />
@@ -419,16 +428,23 @@ export default function PostDetail({
               <ChatCircle size={15} color={t.inkMuted} />
               <Text style={[styles.actionText, { color: t.inkMuted }]}>{replies.length}</Text>
             </View>
-            <Pressable style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]} onPress={onToggleSave} hitSlop={6}>
-              <BookmarkSimple
+            <Pressable
+              style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+              onPress={onToggleRepost}
+              accessibilityRole="button"
+              accessibilityLabel={`${reposted ? 'Remove repost' : 'Repost'} (${repostCount} ${repostCount === 1 ? 'repost' : 'reposts'})`}
+              accessibilityState={{ selected: reposted }}
+              hitSlop={6}
+            >
+              <Repeat
                 size={15}
-                weight={saved ? 'fill' : 'regular'}
-                color={saved ? t.brandGreenStrong : t.inkMuted}
+                weight={reposted ? 'bold' : 'regular'}
+                color={reposted ? t.brandGreenStrong : t.inkMuted}
               />
               <Text
-                style={[styles.actionText, { color: saved ? t.brandGreenStrong : t.inkMuted }]}
+                style={[styles.actionText, { color: reposted ? t.brandGreenStrong : t.inkMuted }]}
               >
-                {saved ? 'Saved' : 'Save'}
+                {reposted ? 'Reposted' : 'Repost'} · {repostCount}
               </Text>
             </Pressable>
           </View>

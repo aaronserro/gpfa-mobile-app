@@ -29,6 +29,7 @@ import type {
   MemberContentQuery,
   MemberContentTargetInput,
   MemberContentTargetType,
+  MemberRepost,
   Member,
   MemberNotification,
   MemberPollCreateInput,
@@ -170,10 +171,15 @@ interface MemberDirectoryRow {
   photo?: string;
 }
 
+interface CurrentMemberResponse {
+  status: 'success';
+  member: Member;
+}
+
 /** The signed-in member. Everything that shows "who am I" reads this. */
 export function getMe(): Promise<Member> {
-  if (USING_PORTAL_FIXTURES) return local(MEMBER);
-  return request<Member>(ROUTES.me);
+  if (!USING_REMOTE_API) return local(MEMBER);
+  return request<CurrentMemberResponse>(ROUTES.me).then((response) => response.member);
 }
 
 /**
@@ -402,15 +408,15 @@ export function setUpvote(
   return (upvoted ? createMemberUpvote(body) : deleteMemberUpvote(body)).then(() => undefined);
 }
 
-/** Bookmark a post to the member's saved list. */
-export function setSaved(
+/** Add or remove a post from the member's reposts. */
+export function setReposted(
   targetId: string,
-  saved: boolean,
+  reposted: boolean,
   targetType: MemberContentTargetType = 'thread'
 ): Promise<void> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<void>();
   const body = { targetType, targetId };
-  return (saved ? createMemberSavedContent(body) : deleteMemberSavedContent(body)).then(() => undefined);
+  return (reposted ? createMemberSavedContent(body) : deleteMemberSavedContent(body)).then(() => undefined);
 }
 
 /** Subscribe to a working group's digest, or unsubscribe from it. */
@@ -720,6 +726,81 @@ export function deleteMemberUpvote(input: MemberContentTargetInput): Promise<Mem
 export function getMemberSavedContent(query: MemberContentQuery = {}): Promise<MemberContentListResponse> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<MemberContentListResponse>();
   return request<MemberContentListResponse>(`${ROUTES.memberSavedContent}${queryString(query)}`);
+}
+
+/**
+ * Load every visible repost for the signed-in member and hydrate it with the
+ * existing WG feed contract. Saved-content intentionally returns references,
+ * so resolving cards stays in the mobile repository rather than changing the
+ * web route solely for a native presentation concern.
+ */
+export async function getMemberReposts(groups: Group[]): Promise<MemberRepost[]> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<MemberRepost[]>();
+
+  const savedRows = await getAllMemberSavedContent();
+  if (savedRows.length === 0) return [];
+
+  const savedByTarget = new Map(
+    savedRows.map((row) => [`${row.target_type}:${row.target_id}`, row] as const)
+  );
+  const resolved = new Map<string, MemberRepost>();
+
+  await Promise.all(
+    groups.map(async (group) => {
+      const slug = group.slug ?? group.id;
+      let cursor: string | undefined;
+      let snapshotAt: string | undefined;
+      const seenCursors = new Set<string>();
+
+      do {
+        const page = await getWorkingGroupFeed(slug, {
+          type: 'all',
+          status: 'any',
+          sort: 'newest',
+          limit: 50,
+          cursor,
+          snapshotAt,
+        });
+        snapshotAt = page.snapshotAt;
+
+        for (const item of page.items) {
+          const targetType: MemberContentTargetType =
+            item.postType === 'discussion' ? 'thread' : item.postType;
+          const saved = savedByTarget.get(`${targetType}:${item.id}`);
+          if (!saved) continue;
+
+          resolved.set(saved.id, {
+            id: saved.id,
+            repostedAt: saved.created_at,
+            groupName: item.groupName,
+            entry: { post: workingGroupFeedItemToThread(item), groupId: group.id },
+          });
+        }
+
+        if (resolved.size === savedRows.length || !page.nextCursor) break;
+        if (seenCursors.has(page.nextCursor)) {
+          throw new Error(`The repost feed for ${slug} returned a repeated cursor.`);
+        }
+        seenCursors.add(page.nextCursor);
+        cursor = page.nextCursor;
+      } while (cursor);
+    })
+  );
+
+  return savedRows
+    .map((row) => resolved.get(row.id))
+    .filter((repost): repost is MemberRepost => repost !== undefined);
+}
+
+async function getAllMemberSavedContent(): Promise<MemberContentListResponse['items']> {
+  const limit = 100;
+  const rows: MemberContentListResponse['items'] = [];
+
+  for (let offset = 0; ; offset += limit) {
+    const page = await getMemberSavedContent({ limit, offset });
+    rows.push(...page.items);
+    if (page.items.length < limit) return rows;
+  }
 }
 
 export function createMemberSavedContent(
@@ -1233,6 +1314,8 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
     id: item.id,
     groupSlug: item.groupSlug,
     targetType,
+    hasReposted: item.hasReposted,
+    repostCount: item.repostCount,
     type,
     title: item.title,
     author: item.author.name,

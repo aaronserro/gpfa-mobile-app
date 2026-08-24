@@ -43,6 +43,7 @@ import {
   getMemberOrgs,
   getLibrary,
   getMe,
+  getMemberReposts,
   getNextEvent,
   getNotifications,
   getPodcasts,
@@ -56,7 +57,7 @@ import {
   getWorkingGroupFeedItemDetail,
   markNotificationsRead,
   setRsvp as setRsvpRequest,
-  setSaved as setSavedRequest,
+  setReposted as setRepostedRequest,
   setSubscribed as setSubscribedRequest,
   setUpvote,
   submitWorkingGroupResource,
@@ -75,6 +76,7 @@ import type {
   Member,
   MemberNotification,
   MemberOrg,
+  MemberRepost,
   NewPostInput,
   NewsStory,
   Reply,
@@ -141,7 +143,7 @@ function Portal() {
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
   const [votes, setVotes] = useState<Record<string, number | undefined>>({});
   const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
-  const [saved, setSaved] = useState<Record<string, boolean | undefined>>({});
+  const [reposted, setReposted] = useState<Record<string, boolean | undefined>>({});
   // Overrides on each group's own `joined`; absent means unchanged this session.
   const [subscribed, setSubscribed] = useState<Record<string, boolean | undefined>>({});
   const [rsvps, setRsvps] = useState<Record<string, RsvpChoice | undefined>>({});
@@ -164,7 +166,10 @@ function Portal() {
 
   // Portal data. Member-scoped ready routes wait for sign-in; the rest can stay
   // fixture-backed while EXPO_PUBLIC_FIXTURE_PORTAL_DATA is true.
-  const meQuery = useQuery(getMe, []);
+  const meQuery = useQuery(
+    () => (isSignedIn ? getMe() : Promise.resolve(null)),
+    [isSignedIn]
+  );
   const eventQuery = useQuery(getNextEvent, []);
   const groupsQuery = useQuery(() => (isSignedIn ? getGroups() : Promise.resolve([])), [isSignedIn]);
   const feedQuery = useQuery(getFeed, []);
@@ -177,6 +182,14 @@ function Portal() {
   const orgsQuery = useQuery(getMemberOrgs, []);
   const directoryPeopleQuery = useQuery(getDirectoryPeople, []);
   const savedQuery = useQuery(getSavedResources, []);
+  const shouldLoadReposts = isSignedIn && (profileSheetOpen || profileOpen);
+  const repostsQuery = useQuery(
+    () =>
+      shouldLoadReposts
+        ? getMemberReposts(groupsQuery.data ?? [])
+        : Promise.resolve([]),
+    [shouldLoadReposts, groupsQuery.data]
+  );
   const notificationsQuery = useQuery(
     () => (isSignedIn ? getNotifications() : Promise.resolve([])),
     [isSignedIn]
@@ -468,6 +481,36 @@ function Portal() {
     loadGroupDetail(id);
   }, [loadGroupDetail, refreshGroupMembership]);
 
+  const openRepost = useCallback((repost: MemberRepost) => {
+    const entry = repost.entry;
+    const group = groups.find((candidate) => candidate.id === entry.groupId);
+    const slug = entry.post.groupSlug ?? group?.slug ?? entry.groupId;
+    const itemType = entry.post.type ?? 'discussion';
+
+    setProfileOpen(false);
+    setTab('groups');
+    setGroupDetails((prev) => appendThreadToGroupDetails(prev, entry));
+    setGroupId(entry.groupId);
+    setThreadId(entry.post.id);
+    refreshGroupMembership(entry.groupId);
+    loadGroupDetail(entry.groupId);
+
+    void getWorkingGroupFeedItemDetail(slug, itemType, entry.post.id)
+      .then((response) => {
+        const hydrated = workingGroupFeedItemResponseToEntry(response, entry.groupId);
+        setGroupDetails((prev) => replaceThreadInGroupDetails(prev, hydrated));
+        reconcileThreadDetailState(
+          entry.post.id,
+          response,
+          hydrated.post,
+          setUpvoted,
+          setReposted,
+          setVotes
+        );
+      })
+      .catch(() => {});
+  }, [groups, loadGroupDetail, refreshGroupMembership]);
+
   // Mutations apply optimistically, then reconcile with the server. Against
   // fixtures the requests resolve as no-ops, so behaviour is identical.
   const addReply = useCallback((id: string, reply: Reply) => {
@@ -528,17 +571,21 @@ function Portal() {
     });
   }, [entryForThread, targetTypeForThread]);
 
-  const toggleSave = useCallback((id: string) => {
+  const toggleRepost = useCallback((id: string) => {
     const entry = entryForThread(id);
     const targetType = targetTypeForThread(entry?.post);
-    setSaved((prev) => {
-      const next = !prev[id];
-      void setSavedRequest(id, next, targetType).catch(() => {
-        setSaved((current) => ({ ...current, [id]: !next }));
+    const previous = reposted[id] ?? entry?.post.hasReposted ?? false;
+    const next = !previous;
+
+    setReposted((current) => ({ ...current, [id]: next }));
+    void setRepostedRequest(id, next, targetType)
+      .then(() => {
+        if (shouldLoadReposts) repostsQuery.refetch();
+      })
+      .catch(() => {
+        setReposted((current) => ({ ...current, [id]: previous }));
       });
-      return { ...prev, [id]: next };
-    });
-  }, [entryForThread, targetTypeForThread]);
+  }, [entryForThread, reposted, repostsQuery.refetch, shouldLoadReposts, targetTypeForThread]);
 
   const toggleSubscribe = useCallback(
     (id: string) => {
@@ -579,7 +626,7 @@ function Portal() {
         setNewPosts((prev) =>
           prev.map((candidate) => (candidate.post.id === id ? { ...candidate, post: hydrated.post } : candidate))
         );
-        reconcileThreadDetailState(id, response, hydrated.post, setUpvoted, setSaved, setVotes);
+        reconcileThreadDetailState(id, response, hydrated.post, setUpvoted, setReposted, setVotes);
       })
       .catch(() => {});
   }, [entryForThread, groups]);
@@ -867,8 +914,8 @@ function Portal() {
                 onVote={vote}
                 upvoted={upvoted}
                 onToggleUpvote={toggleUpvote}
-                saved={saved}
-                onToggleSave={toggleSave}
+                reposted={reposted}
+                onToggleRepost={toggleRepost}
                 subscribed={subscribed}
                 onToggleSubscribe={toggleSubscribe}
                 rsvps={rsvps}
@@ -914,21 +961,24 @@ function Portal() {
             {profileOpen && (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
                 <DataGate
-                  loading={meQuery.loading || savedQuery.loading || orgsQuery.loading}
-                  error={meQuery.error ?? savedQuery.error ?? orgsQuery.error}
+                  loading={meQuery.loading || savedQuery.loading || repostsQuery.loading || orgsQuery.loading}
+                  error={meQuery.error ?? savedQuery.error ?? repostsQuery.error ?? orgsQuery.error}
                   onRetry={() => {
                     meQuery.refetch();
                     savedQuery.refetch();
+                    repostsQuery.refetch();
                     orgsQuery.refetch();
                   }}
                 >
                   <MemberProfileScreen
                     member={member}
                     saved={savedQuery.data ?? []}
+                    reposts={repostsQuery.data ?? []}
                     workingGroups={groups.filter((g) => subscribed[g.id] ?? g.joined).length}
                     org={memberOrg}
                     onBack={() => setProfileOpen(false)}
                     onOpenResource={openResource}
+                    onOpenRepost={openRepost}
                     onOpenOrg={openOrgInDirectory}
                   />
                 </DataGate>
@@ -940,7 +990,7 @@ function Portal() {
           {profileSheetOpen && !!meQuery.data && (
             <MemberSheet
               member={meQuery.data}
-              savedCount={(savedQuery.data ?? []).length}
+              repostCount={(repostsQuery.data ?? []).length}
               onClose={() => setProfileSheetOpen(false)}
               onOpenProfile={openProfile}
               onSignOut={signOutForTesting}
@@ -1060,18 +1110,18 @@ function reconcileThreadDetailState(
   response: WorkingGroupFeedItemResponse,
   post: Thread,
   setUpvoted: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
-  setSaved: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
+  setReposted: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
   setVotes: Dispatch<SetStateAction<Record<string, number | undefined>>>
 ): void {
   const target = response.detail.kind === 'thread' ? response.detail.thread : response.detail.poll;
   const hasUpvoted = target.hasUpvoted;
-  const hasSaved = target.hasSaved;
+  const hasReposted = target.hasReposted ?? target.hasSaved;
 
   if (typeof hasUpvoted === 'boolean') {
     setUpvoted((prev) => ({ ...prev, [threadId]: hasUpvoted }));
   }
-  if (typeof hasSaved === 'boolean') {
-    setSaved((prev) => ({ ...prev, [threadId]: hasSaved }));
+  if (typeof hasReposted === 'boolean') {
+    setReposted((prev) => ({ ...prev, [threadId]: hasReposted }));
   }
 
   if (response.detail.kind !== 'poll') return;
