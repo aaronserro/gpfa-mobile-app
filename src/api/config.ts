@@ -57,6 +57,10 @@ export const ROUTES = {
   workingGroupSubscription: (slug: string) => `/api/members/working-groups/${slug}/subscription`,
   workingGroupResourceSubmissions: (slug: string) =>
     `/api/members/working-groups/${slug}/resource-submissions`,
+  workingGroupResourceUploadPrepare: (slug: string) =>
+    `/api/members/working-groups/${slug}/resource-submissions/uploads/prepare`,
+  workingGroupResourceUploadFinalize: (slug: string) =>
+    `/api/members/working-groups/${slug}/resource-submissions/uploads/finalize`,
   workingGroupEventRsvp: '/api/members/working-groups/events/rsvp',
   forumThreads: '/api/members/forum/threads',
   forumThread: (threadId: string) => `/api/members/forum/threads/${threadId}`,

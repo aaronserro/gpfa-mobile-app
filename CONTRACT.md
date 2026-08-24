@@ -166,15 +166,20 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/api/members/working-groups/:slug/tag-usage` | Create post tag suggestions | `WorkingGroupTagUsageResponse` |
 | `GET` | `/api/members/working-groups/:slug/resource-submissions` | Group detail Resources tab | `{ status: "success", resources: ResourceItem[], newsRadar: [] }` |
 | `POST`/`DELETE` | `/api/members/working-groups/:slug/subscription` | Group header + About tab | ignored |
-| `POST` | `/api/members/working-groups/:slug/resource-submissions` | Prepared route | `WorkingGroupResourceSubmissionResponse` |
+| `POST` | `/api/members/working-groups/:slug/resource-submissions/uploads/prepare` | Resource submission attachment prepare | `WorkingGroupResourceUploadPrepareResponse` |
+| `PUT` | signed storage URL from prepare | Resource submission attachment upload | non-error status |
+| `POST` | `/api/members/working-groups/:slug/resource-submissions/uploads/finalize` | Resource submission attachment finalize | `WorkingGroupResourceUploadFinalizeResponse` |
+| `POST` | `/api/members/working-groups/:slug/resource-submissions` | Resource submission metadata | `WorkingGroupResourceSubmissionResponse` |
 | `POST` | `/api/members/working-groups/events/rsvp` | Event detail RSVP | `{ status, message }` |
 | `POST` | `/api/members/forum/threads` | Create post sheet | `multipart/form-data` → `{ status, redirectTo }` |
 | `PATCH`/`DELETE` | `/api/members/forum/threads/:threadId` | Post detail edit/delete controls | `{ status }` |
 | `PATCH` | `/api/members/forum/threads/:threadId/status` | Post detail status controls | `{ status, threadStatus }` |
 | `POST` | `/api/members/forum/replies` | Post detail reply composer | `{ status, message }` |
 | `DELETE` | `/api/members/forum/replies/:replyId` | Prepared route | `{ status }` |
-| `POST` | `/api/members/forum/uploads/prepare` | Prepared route | `ForumUploadPrepareResponse` |
-| `POST` | `/api/members/forum/uploads/finalize` | Prepared route | `ForumUploadFinalizeResponse` |
+| `POST` | `/api/members/forum/uploads/prepare` | Thread/reply attachment prepare | `ForumUploadPrepareResponse` |
+| `PUT` | signed storage URL from forum prepare | Thread/reply attachment upload | non-error status |
+| `POST` | `/api/members/forum/uploads/finalize` | Thread/reply attachment finalize | `ForumUploadFinalizeResponse` |
+| `GET` | `/api/content-assets/:assetId` | Open thread/reply attachment | file response; bearer required for member assets |
 | `POST` | `/api/members/forum/summarize` | Post detail summarize action | `ForumSummarizeResponse` |
 | `GET`/`POST` | `/api/members/polls` | Poll detail/create poll | `MemberPollsResponse` / `{ status, pollId }` |
 | `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Prepared route | `MemberPollResponse` / `{ status }` |
@@ -476,6 +481,15 @@ isVirtual?: 'true' | 'false';
 attachmentIds?: string[];   // repeated multipart field
 ```
 
+The composer accepts actual device files, not asset IDs. For each file, mobile
+calls forum upload prepare, `PUT`s the raw file to the returned signed URL,
+calls finalize, and includes the finalized `assetId` in `attachmentIds`.
+
+**Thread and reply attachment reads** use `GET /api/content-assets/:assetId`
+with the member bearer token. Mobile downloads the file into its cache and opens
+the native document/share sheet, which handles Office files that cannot render
+inline in a WebView.
+
 **`POST /posts/:id/replies` → `Reply`**
 
 Body is `{ "text": "…" }`. The author is the authenticated member — do not trust
@@ -627,7 +641,10 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `POST /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/subscription/route.ts`. | Path `slug`; no body required. | Success response is ignored by the app; route records subscription. | No pagination. Idempotent subscribe semantics are preferred because mobile writes optimistically. `401` inactive; `404`/`403` for invalid group; write errors `500`. |
 | `DELETE /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: same route. | Path `slug`; no body required. | Success response is ignored by the app; route removes subscription. | No pagination. Empty state is unsubscribed membership. Same auth/error contract as subscribe. |
 | `GET /api/members/working-groups/:slug/resource-submissions` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | Path `slug`; no body. | `{ status: "success", resources: ResourceItem[], newsRadar: [] }`, mapped to `LibraryResource[]`. | No pagination. Returns approved CMS resources associated with the working group. Empty state is `resources: []`; auth errors `401`; invalid slug `400`; load failure `500`. |
-| `POST /api/members/working-groups/:slug/resource-submissions` | Prepared / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | `multipart/form-data`: `title`, optional `resourceType`, `sourceUrl`, `summary`, `contributorNotes`, repeated `tags`, repeated `files`. | `WorkingGroupResourceSubmissionResponse`: `{ status, submission: { id, status, submittedAt } }`. | No pagination. Validation `400`; missing file/source URL `409`; unsupported media `415`; oversized file `413`; group/subscription auth failure `401`/`403`; write failure `500`. Mobile helper currently needs to be changed from JSON before this UI is built. |
+| `POST /api/members/working-groups/:slug/resource-submissions/uploads/prepare` | Current / Member bearer-ready. | JSON `{ fileName, contentType, byteSize }`. | `WorkingGroupResourceUploadPrepareResponse`: `{ status, signedUrl, assetId? / attachmentId? / fileId? / uploadId?, expectedContentType?, expectedByteSize? }`. | No pagination. Validate membership, media type, and size before issuing a signed URL. Validation `400`; unsupported media `415`; oversized file `413`; group/subscription auth failure `401`/`403`; prepare failure `500`. |
+| `PUT signedUrl` | Current / signed storage URL. | Raw file body with `Content-Type` matching the prepared content type. No bearer header. | Any non-error storage response. | This is not sent to the member API host unless the signed URL points there. Mobile treats non-2xx as upload failure and does not finalize. |
+| `POST /api/members/working-groups/:slug/resource-submissions/uploads/finalize` | Current / Member bearer-ready. | JSON `{ assetId? / attachmentId? / fileId? / uploadId?, fileName, contentType, byteSize }` using the identifier returned by prepare. | `WorkingGroupResourceUploadFinalizeResponse`: `{ status, assetId? / attachmentId? / fileId? / id? }`. | No pagination. Verifies the uploaded object and persists attachment metadata. Validation `400`; missing upload `404`; storage/metadata errors `500`. |
+| `POST /api/members/working-groups/:slug/resource-submissions` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/resource-submissions/route.ts`. | `multipart/form-data`: `title`, optional `resourceType`, `sourceUrl`, `summary`, `contributorNotes`, repeated `tags`, repeated finalized attachment ids as `attachmentIds` / `assetIds` / `fileIds`. The mobile app no longer sends picked files in this request. | `WorkingGroupResourceSubmissionResponse`: `{ status, submission: { id, status, submittedAt } }`. | No pagination. Validation `400`; missing finalized attachment/source URL `409`; group/subscription auth failure `401`/`403`; write failure `500`. |
 | `POST /api/members/working-groups/events/rsvp` | Current / Member bearer-ready. Source: `members/working-groups/events/rsvp/route.ts`. | JSON `{ threadId, groupSlug, status: "attending" | "not_attending" }`. | `{ status: "success", message }`. | No pagination. Empty state is no RSVP. Mobile writes optimistically; route should be idempotent per member/event. |
 
 #### Forum and posts
@@ -638,10 +655,12 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `PATCH /api/members/forum/threads/:threadId` | Current / Member bearer-ready. Source: `members/forum/threads/[threadId]/route.ts`. | JSON `ForumThreadUpdateInput`: `title?`, `body?`, `tags?`, optional event fields. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. Unknown/inaccessible thread should not disclose more than needed. |
 | `DELETE /api/members/forum/threads/:threadId` | Current / Member bearer-ready. Source: same route. | Path `threadId`; no body. | `{ status: "success" }`. | No pagination. Mobile rolls back optimistic deletion on failure. Owner/moderator checks required. |
 | `PATCH /api/members/forum/threads/:threadId/status` | Current / Member bearer-ready. Source: `members/forum/threads/[threadId]/status/route.ts`. | JSON `{ status: "open" | "answered" | "closed" }`. | `{ status: "success", threadStatus }`. | No pagination. Co-lead/moderator authorization required; invalid status `400`; auth `401`/`403`. |
-| `POST /api/members/forum/replies` | Current / Member bearer-ready. Source: `members/forum/replies/route.ts`. | JSON `{ threadId, groupSlug, body, attachmentIds?, parentPostId? }`. | `{ status: "success", message }`. | No pagination. Empty reply rejected. Must verify active member and group contribution rights. |
+| `POST /api/members/forum/replies` | Current / Member bearer-ready. Source: `members/forum/replies/route.ts`. | JSON `{ threadId, groupSlug, body, attachmentIds?, parentPostId? }`. Device files are prepared/uploaded/finalized before this request. | `{ status: "success", message }`. | No pagination. Empty reply rejected even when files are attached. Must verify active member and group contribution rights. |
 | `DELETE /api/members/forum/replies/:replyId` | Prepared / Member bearer-ready. Source: `members/forum/replies/[replyId]/route.ts`. | Path `replyId`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
-| `POST /api/members/forum/uploads/prepare` | Prepared / Member bearer-ready. Source: `members/forum/uploads/prepare/route.ts`. | JSON `{ groupSlug, fileName, contentType, byteSize }`. | `ForumUploadPrepareResponse`: upload `assetId`, bucket, storage path, signed URL, expected content type/size. | No pagination. Validate type/size before issuing URL. |
-| `POST /api/members/forum/uploads/finalize` | Prepared / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | No pagination. Reject mismatched upload metadata; storage errors `500`. |
+| `POST /api/members/forum/uploads/prepare` | Current / Member bearer-ready. Source: `members/forum/uploads/prepare/route.ts`. | JSON `{ groupSlug, fileName, contentType, byteSize }`. | `ForumUploadPrepareResponse`: upload `assetId`, bucket, storage path, signed URL, expected content type/size. | Used by thread and reply composers. Validate type/size before issuing URL; maximum 25MB. |
+| `PUT signedUrl` | Current / signed storage URL. | Raw file body with the prepared `Content-Type`; no bearer header. | Any non-error storage response. | Mobile does not finalize or create the thread/reply after a failed upload. |
+| `POST /api/members/forum/uploads/finalize` | Current / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | Used by thread and reply composers. Reject mismatched upload metadata; storage errors `500`. |
+| `GET /api/content-assets/:assetId` | Current / Public for public assets; member bearer-ready for member assets. Source: `content-assets/[id]/route.ts`. | Path `assetId`; bearer token for protected forum files. | Inline response for safe media/PDF types, attachment response for Office/other files. | Mobile downloads to cache and opens the native document/share sheet. Unauthorized and missing assets intentionally return `404`. |
 | `POST /api/members/forum/summarize` | Current / Member bearer-ready. Source: `members/forum/summarize/route.ts`. | `multipart/form-data` with `threadId`, `groupSlug`. | `ForumSummarizeResponse`: `{ status, message, summary }`. | No pagination. Must verify readable group content; rate-limit/AI errors should return clear `status: "error"` messages. |
 
 #### Polls
@@ -720,7 +739,7 @@ a fresh auth/privacy review.
 | Member setup/email-access | `/api/members/setup-link`, `/api/members/email-access` | Web staged sign-in/setup flows with account-state disclosure rules. Not part of current native session flow. |
 | Annual meeting member registration/assets | `/api/members/annual-meeting/registration`, `/api/members/annual-meeting/assets/:assetId` | Web-specific registration and asset workflows. Add only if a mobile annual meeting screen exists. |
 | Cron and webhooks | `/api/cron/member-search-reconcile`, `/api/cron/news-radar`, `/api/cron/resend-contacts`, `/api/webhooks/resend` | Server automation or third-party callbacks; never called by mobile clients. |
-| Tooling and asset delivery | `/api/openapi`, `/api/content-assets/:id` | Tooling/streaming asset surfaces rather than JSON member workflow endpoints. Mobile should consume resolved asset URLs instead of broad API inventory. |
+| Tooling | `/api/openapi` | Tooling surface rather than a member workflow endpoint. |
 | Admin resource submissions | `/api/admin/resource-submissions/*` | Moderation/approval workflow, global-admin only even though submissions themselves are member-facing. |
 
 Implementation rule for future routes: if a screen starts calling a new remote

@@ -8,6 +8,23 @@
  */
 import type { JobFunctionKey, OrgSector, WgRuleClass } from '../ds/tokens';
 
+/** A persisted forum file that can be shown and opened from a thread or reply. */
+export interface ForumAttachment {
+  id: string;
+  name: string;
+  contentType?: string;
+  byteSize?: number;
+  href?: string;
+}
+
+/** A device-local file selected for upload before creating a thread or reply. */
+export interface ForumUploadFile {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+}
+
 export interface Reply {
   /** Stable backend id when the reply has been persisted. */
   id?: string;
@@ -20,6 +37,9 @@ export interface Reply {
   text: string;
   /** Legacy fixture count only; reply upvote mutations are not supported. */
   up?: number;
+  attachments?: ForumAttachment[];
+  /** Transient device files; uploaded before this reply is sent. */
+  uploadFiles?: ForumUploadFile[];
 }
 
 /** Post kinds from the WG Forum design; each carries its own rule colour and chip. */
@@ -62,6 +82,7 @@ export interface Thread {
   state?: string;
   lifecycle?: 'open' | 'resolved' | 'closed';
   body: string;
+  attachments?: ForumAttachment[];
   file?: string;
   fileMeta?: string;
   poll?: Poll;
@@ -217,6 +238,9 @@ export interface WorkingGroupDetailAttachment {
   contentType?: string;
   byteSize?: number;
   createdAt: string;
+  href?: string;
+  viewerHref?: string;
+  downloadUrl?: string;
 }
 
 export interface WorkingGroupDetailAuthor {
@@ -320,6 +344,42 @@ export interface WorkingGroupResourceSubmissionFile {
   type?: string;
   fileName?: string;
   mimeType?: string;
+  size?: number;
+}
+
+export interface WorkingGroupResourceUploadPrepareInput {
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface WorkingGroupResourceUploadPrepareResponse {
+  status: 'success';
+  assetId?: string;
+  attachmentId?: string;
+  fileId?: string;
+  uploadId?: string;
+  signedUrl: string;
+  expectedContentType?: string;
+  expectedByteSize?: number;
+}
+
+export interface WorkingGroupResourceUploadFinalizeInput {
+  assetId?: string;
+  attachmentId?: string;
+  fileId?: string;
+  uploadId?: string;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface WorkingGroupResourceUploadFinalizeResponse {
+  status: 'success';
+  assetId?: string;
+  attachmentId?: string;
+  fileId?: string;
+  id?: string;
 }
 
 export interface WorkingGroupResourceSubmissionResponse {
@@ -619,6 +679,7 @@ export interface NewPostInput {
   body: string;
   tags?: string[];
   attachmentIds?: string[];
+  files?: ForumUploadFile[];
   startsAt?: string;
   endsAt?: string;
   timezone?: string;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -69,6 +69,7 @@ import { useQuery } from './src/api/useQuery';
 import { getAccessToken } from './src/api/tokens';
 import type {
   FeedEntry,
+  ForumAttachment,
   GroupMember,
   LibraryResource,
   Member,
@@ -85,6 +86,7 @@ import type {
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import { MemberProvider } from './src/auth/MemberProvider';
 import DataGate from './src/components/DataGate';
+import { openForumAttachment as openForumAttachmentFile } from './src/lib/forumAttachments';
 
 // The design exposes these as editor props on the component.
 const DEFAULT_TAB: TabId = 'home';
@@ -209,6 +211,18 @@ function Portal() {
     void getAccessToken().then((accessToken) => {
       setResourceViewer({ resource, accessToken });
     });
+  }, []);
+
+  const openForumAttachment = useCallback((attachment: ForumAttachment) => {
+    if (!attachment.href) return;
+    void getAccessToken()
+      .then((accessToken) => openForumAttachmentFile(attachment, accessToken))
+      .catch((cause) => {
+        Alert.alert(
+          'Could not open attachment',
+          cause instanceof Error ? cause.message : 'The attachment could not be opened.'
+        );
+      });
   }, []);
 
   // Which organization the Directory tab should open on when another screen
@@ -461,12 +475,23 @@ function Portal() {
     const group = entry ? groups.find((g) => g.id === entry.groupId) : null;
     const groupSlug = entry?.post.groupSlug ?? group?.slug ?? entry?.groupId;
     setExtraReplies((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), reply] }));
-    void createReply(id, reply.text, groupSlug).catch(() => {
-      setExtraReplies((prev) => ({
-        ...prev,
-        [id]: (prev[id] ?? []).filter((r) => r !== reply),
-      }));
-    });
+    void createReply(id, reply.text, groupSlug, undefined, reply.uploadFiles)
+      .then((created) => {
+        setExtraReplies((prev) => ({
+          ...prev,
+          [id]: (prev[id] ?? []).map((candidate) =>
+            candidate === reply
+              ? { ...candidate, attachments: created?.attachments ?? candidate.attachments, uploadFiles: undefined }
+              : candidate
+          ),
+        }));
+      })
+      .catch(() => {
+        setExtraReplies((prev) => ({
+          ...prev,
+          [id]: (prev[id] ?? []).filter((r) => r !== reply),
+        }));
+      });
   }, [entryForThread, groups]);
 
   // One vote per organization — the first choice sticks.
@@ -577,6 +602,12 @@ function Portal() {
       upvotes: 0,
       body: draft.body,
       tags: draft.tags,
+      attachments: draft.files?.map((file) => ({
+        id: file.uri,
+        name: file.name,
+        contentType: file.mimeType,
+        byteSize: file.size,
+      })),
       eventRows:
         draft.type === 'event'
           ? [
@@ -847,6 +878,7 @@ function Portal() {
                   setResourceComposerGroupId(group.id);
                 }}
                 onOpenResource={openResource}
+                onOpenAttachment={openForumAttachment}
               />
               </DataGate>
             )}

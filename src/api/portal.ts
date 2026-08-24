@@ -1,3 +1,6 @@
+import { fetch as expoFetch } from 'expo/fetch';
+import { File } from 'expo-file-system';
+
 import { request, requestStream } from './client';
 import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
 import type {
@@ -5,6 +8,7 @@ import type {
   CalendarEvent,
   DirectoryPerson,
   FeedEntry,
+  ForumAttachment,
   ForumReplyInput,
   ForumSummarizeInput,
   ForumSummarizeResponse,
@@ -15,6 +19,7 @@ import type {
   ForumUploadFinalizeResponse,
   ForumUploadPrepareInput,
   ForumUploadPrepareResponse,
+  ForumUploadFile,
   Group,
   GroupMember,
   JobListing,
@@ -58,6 +63,10 @@ import type {
   WorkingGroupFeedResponse,
   WorkingGroupResourceSubmissionInput,
   WorkingGroupResourceSubmissionResponse,
+  WorkingGroupResourceUploadFinalizeInput,
+  WorkingGroupResourceUploadFinalizeResponse,
+  WorkingGroupResourceUploadPrepareInput,
+  WorkingGroupResourceUploadPrepareResponse,
   WorkingGroupTagUsageResponse,
   WorkingGroupThreadFeed,
 } from './types';
@@ -309,7 +318,7 @@ export function askGpfa(question: string, conversationId?: string): Promise<AskA
  * identically either way.
  */
 
-export function createPost(input: NewPostInput): Promise<Thread | null> {
+export async function createPost(input: NewPostInput): Promise<Thread | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<Thread | null>();
   const groupSlug = input.groupSlug ?? input.groupId;
   if (input.type === 'poll') {
@@ -329,35 +338,58 @@ export function createPost(input: NewPostInput): Promise<Thread | null> {
       ],
     }).then(() => null);
   }
-  return createForumThread({
+  const uploadedAttachmentIds = await uploadForumFiles(groupSlug, input.files ?? []);
+  const created = await createForumThread({
     groupSlug,
     postType: input.type,
     title: input.title,
     body: input.body,
     tags: input.tags?.join(','),
-    attachmentIds: input.attachmentIds,
+    attachmentIds: [...(input.attachmentIds ?? []), ...uploadedAttachmentIds],
     startsAt: input.startsAt,
     endsAt: input.endsAt,
     timezone: input.timezone,
     location: input.location,
     registrationUrl: input.registrationUrl,
     isVirtual: input.isVirtual,
-  }).then(() => null);
+  });
+  const threadId = created?.redirectTo.split('/').filter(Boolean).at(-1);
+  if (!threadId) return null;
+
+  const detail = await getWorkingGroupFeedItemDetail(groupSlug, input.type, threadId);
+  return workingGroupFeedItemResponseToEntry(detail, input.groupId).post;
 }
 
 export function createReply(
   postId: string,
   text: string,
   groupSlug?: string,
-  parentPostId?: string | null
+  parentPostId?: string | null,
+  files: ForumUploadFile[] = []
 ): Promise<Reply | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<Reply | null>();
-  return createForumReply({
-    threadId: postId,
-    groupSlug: groupSlug ?? '',
-    body: text,
-    parentPostId,
-  }).then(() => null);
+  const resolvedGroupSlug = groupSlug ?? '';
+  return uploadForumFiles(resolvedGroupSlug, files).then((attachmentIds) =>
+    createForumReply({
+      threadId: postId,
+      groupSlug: resolvedGroupSlug,
+      body: text,
+      parentPostId,
+      attachmentIds,
+    }).then(() => ({
+      a: '',
+      org: '',
+      time: '',
+      text,
+      attachments: attachmentIds.map((id, index) => ({
+        id,
+        name: files[index]?.name ?? 'Attachment',
+        contentType: files[index]?.mimeType,
+        byteSize: files[index]?.size,
+        href: absoluteResourceHref(`/api/content-assets/${id}`),
+      })),
+    }))
+  );
 }
 
 export function setUpvote(
@@ -470,6 +502,7 @@ export function workingGroupFeedItemResponseToEntry(
         title: firstString(thread.title) ?? post.title,
         body: firstString(thread.body) ?? post.body,
         upvotes: numberFrom(thread.upvoteCount, post.upvotes),
+        attachments: attachments.map(workingGroupDetailAttachmentToForumAttachment),
         file: firstAttachment ? attachmentTitle(firstAttachment) : post.file,
         fileMeta: firstAttachment ? attachmentMeta(firstAttachment) : post.fileMeta,
         canReply: detail.permissions.canReply,
@@ -512,9 +545,33 @@ export function submitWorkingGroupResource(
   input: WorkingGroupResourceSubmissionInput
 ): Promise<WorkingGroupResourceSubmissionResponse | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceSubmissionResponse | null>();
-  return request<WorkingGroupResourceSubmissionResponse>(ROUTES.workingGroupResourceSubmissions(slug), {
+  return uploadWorkingGroupResourceFiles(slug, input.files ?? []).then((attachmentIds) =>
+    request<WorkingGroupResourceSubmissionResponse>(ROUTES.workingGroupResourceSubmissions(slug), {
+      method: 'POST',
+      body: workingGroupResourceSubmissionFormData(input, attachmentIds),
+    })
+  );
+}
+
+export function prepareWorkingGroupResourceUpload(
+  slug: string,
+  input: WorkingGroupResourceUploadPrepareInput
+): Promise<WorkingGroupResourceUploadPrepareResponse | null> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceUploadPrepareResponse | null>();
+  return request<WorkingGroupResourceUploadPrepareResponse>(ROUTES.workingGroupResourceUploadPrepare(slug), {
     method: 'POST',
-    body: workingGroupResourceSubmissionFormData(input),
+    body: input,
+  });
+}
+
+export function finalizeWorkingGroupResourceUpload(
+  slug: string,
+  input: WorkingGroupResourceUploadFinalizeInput
+): Promise<WorkingGroupResourceUploadFinalizeResponse | null> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceUploadFinalizeResponse | null>();
+  return request<WorkingGroupResourceUploadFinalizeResponse>(ROUTES.workingGroupResourceUploadFinalize(slug), {
+    method: 'POST',
+    body: input,
   });
 }
 
@@ -564,6 +621,47 @@ export function prepareForumUpload(input: ForumUploadPrepareInput): Promise<Foru
 export function finalizeForumUpload(input: ForumUploadFinalizeInput): Promise<ForumUploadFinalizeResponse | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<ForumUploadFinalizeResponse | null>();
   return request<ForumUploadFinalizeResponse>(ROUTES.forumUploadsFinalize, { method: 'POST', body: input });
+}
+
+export async function uploadForumFiles(groupSlug: string, files: ForumUploadFile[]): Promise<string[]> {
+  const assetIds: string[] = [];
+
+  for (const file of files) {
+    const body = new File(file.uri);
+    if (!body.exists) throw new Error(`The file ${file.name} could not be read.`);
+    const byteSize = file.size && file.size > 0 ? file.size : body.size;
+    const contentType = file.mimeType || body.type || 'application/octet-stream';
+    if (byteSize <= 0) throw new Error(`The file ${file.name} is empty.`);
+
+    const prepared = await prepareForumUpload({
+      groupSlug,
+      fileName: file.name,
+      contentType,
+      byteSize,
+    });
+    if (!prepared?.signedUrl || !prepared.assetId) {
+      throw new Error('The upload target is missing required details.');
+    }
+
+    const uploadResponse = await expoFetch(prepared.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': prepared.expectedContentType || contentType },
+      body,
+    });
+    if (!uploadResponse.ok) throw new Error(`Uploading ${file.name} to storage failed.`);
+
+    const finalized = await finalizeForumUpload({
+      groupSlug,
+      assetId: prepared.assetId,
+      fileName: file.name,
+      contentType: prepared.expectedContentType || contentType,
+      byteSize: prepared.expectedByteSize || byteSize,
+    });
+    if (!finalized?.assetId) throw new Error(`The file ${file.name} could not be finalized.`);
+    assetIds.push(finalized.assetId);
+  }
+
+  return assetIds;
 }
 
 export function summarizeForum(input: ForumSummarizeInput): Promise<ForumSummarizeResponse | null> {
@@ -1180,6 +1278,23 @@ function workingGroupDetailReplyToReply(reply: WorkingGroupDetailReply): Reply {
     time: relativeTime(reply.createdAt),
     initials: reply.author.initials,
     text: reply.body,
+    attachments: reply.attachments.map(workingGroupDetailAttachmentToForumAttachment),
+  };
+}
+
+function workingGroupDetailAttachmentToForumAttachment(
+  attachment: WorkingGroupDetailAttachment
+): ForumAttachment {
+  const href = absoluteResourceHref(
+    firstString(attachment.href, attachment.viewerHref, attachment.downloadUrl) ??
+      `/api/content-assets/${attachment.id}`
+  );
+  return {
+    id: attachment.id,
+    name: attachmentTitle(attachment),
+    contentType: attachment.contentType,
+    byteSize: attachment.byteSize,
+    ...(href ? { href } : {}),
   };
 }
 
@@ -1343,7 +1458,75 @@ function forumThreadFormData(input: ForumThreadCreateInput): FormData {
   return form;
 }
 
-function workingGroupResourceSubmissionFormData(input: WorkingGroupResourceSubmissionInput): FormData {
+async function uploadWorkingGroupResourceFiles(
+  slug: string,
+  files: WorkingGroupResourceSubmissionInput['files']
+): Promise<string[]> {
+  const uploadedIds: string[] = [];
+
+  for (const file of files ?? []) {
+    if (!file.uri) continue;
+
+    const fileName = file.name ?? file.fileName ?? 'resource-upload';
+    const contentType = file.type ?? file.mimeType ?? 'application/octet-stream';
+    const byteSize = file.size ?? 0;
+    if (byteSize <= 0) throw new Error(`The file ${fileName} is missing its size.`);
+
+    const prepared = await prepareWorkingGroupResourceUpload(slug, { fileName, contentType, byteSize });
+    const uploadId = uploadIdentifier(prepared);
+    if (!prepared?.signedUrl || !uploadId) {
+      throw new Error('The upload target is missing required details.');
+    }
+
+    await putLocalFileToSignedUrl({ uri: file.uri, signedUrl: prepared.signedUrl, contentType });
+
+    const finalized = await finalizeWorkingGroupResourceUpload(slug, {
+      assetId: prepared.assetId,
+      attachmentId: prepared.attachmentId,
+      fileId: prepared.fileId,
+      uploadId: prepared.uploadId,
+      fileName,
+      contentType: prepared.expectedContentType ?? contentType,
+      byteSize: prepared.expectedByteSize ?? byteSize,
+    });
+    const finalizedId = uploadIdentifier(finalized) ?? uploadId;
+    uploadedIds.push(finalizedId);
+  }
+
+  return uploadedIds;
+}
+
+async function putLocalFileToSignedUrl({
+  uri,
+  signedUrl,
+  contentType,
+}: {
+  uri: string;
+  signedUrl: string;
+  contentType: string;
+}): Promise<void> {
+  const body = new File(uri);
+  if (!body.exists) throw new Error('The selected file could not be read.');
+  const uploadResponse = await expoFetch(signedUrl, {
+    method: 'PUT',
+    headers: contentType ? { 'Content-Type': contentType } : undefined,
+    body,
+  });
+
+  if (!uploadResponse.ok) throw new Error('Uploading to storage failed. Please try again.');
+}
+
+function uploadIdentifier(
+  value: WorkingGroupResourceUploadPrepareResponse | WorkingGroupResourceUploadFinalizeResponse | null | undefined
+): string | undefined {
+  const record = recordFrom(value);
+  return firstString(record.attachmentId, record.fileId, record.assetId, record.uploadId, record.id);
+}
+
+function workingGroupResourceSubmissionFormData(
+  input: WorkingGroupResourceSubmissionInput,
+  attachmentIds: string[] = []
+): FormData {
   const form = new FormData();
   form.append('title', input.title);
   if (input.resourceType) form.append('resourceType', input.resourceType);
@@ -1356,13 +1539,10 @@ function workingGroupResourceSubmissionFormData(input: WorkingGroupResourceSubmi
     form.append('tags', tag);
   }
 
-  for (const file of input.files ?? []) {
-    if (!file.uri) continue;
-    form.append('files', {
-      uri: file.uri,
-      name: file.name ?? file.fileName ?? 'resource-upload',
-      type: file.type ?? file.mimeType ?? 'application/octet-stream',
-    } as unknown as Blob);
+  for (const id of attachmentIds) {
+    form.append('attachmentIds', id);
+    form.append('assetIds', id);
+    form.append('fileIds', id);
   }
 
   return form;

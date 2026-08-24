@@ -37,7 +37,16 @@ import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
-import type { Poll, PostType, Reply, RsvpChoice, Thread } from '../../api/types';
+import ForumFilePicker from './ForumFilePicker';
+import type {
+  ForumAttachment,
+  ForumUploadFile,
+  Poll,
+  PostType,
+  Reply,
+  RsvpChoice,
+  Thread,
+} from '../../api/types';
 
 /** One reply plus anything hanging under it. */
 export interface ReplyNode {
@@ -82,7 +91,8 @@ export interface PostDetailProps {
   rsvp: RsvpChoice | undefined;
   onRsvp: (choice: RsvpChoice) => void;
   /** `mention` is the name to prefix, when the member replied to someone. */
-  onReply: (text: string, mention: string | null) => void;
+  onReply: (text: string, mention: string | null, files: ForumUploadFile[]) => void;
+  onOpenAttachment: (attachment: ForumAttachment) => void;
   onBack: () => void;
 }
 
@@ -105,11 +115,13 @@ export default function PostDetail({
   rsvp,
   onRsvp,
   onReply,
+  onOpenAttachment,
   onBack,
 }: PostDetailProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
+  const [replyFiles, setReplyFiles] = useState<ForumUploadFile[]>([]);
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(post.title);
@@ -135,8 +147,9 @@ export default function PostDetail({
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    onReply(text, replyTarget);
+    onReply(text, replyTarget, replyFiles);
     setDraft('');
+    setReplyFiles([]);
     setReplyTarget(null);
   };
 
@@ -240,24 +253,17 @@ export default function PostDetail({
             </View>
           )}
 
-          {!!post.file && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.attachment,
-                {
-                  borderColor: pressed ? t.ruleStrong : t.ruleHairline,
-                  backgroundColor: t.surfacePage,
-                },
-              ]}
-            >
+          {!!post.attachments?.length ? (
+            <AttachmentList attachments={post.attachments} onOpen={onOpenAttachment} />
+          ) : !!post.file ? (
+            <View style={[styles.attachment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
               <FileXls size={22} color={t.brandGreen} />
               <View style={styles.flex}>
                 <Text style={[styles.attachmentName, { color: t.inkStrong }]}>{post.file}</Text>
                 <MastheadMeta size={9.5}>{post.fileMeta}</MastheadMeta>
               </View>
-              <DownloadSimple size={17} color={t.inkFaint} />
-            </Pressable>
-          )}
+            </View>
+          ) : null}
 
           {!!post.eventRows && (
             <>
@@ -508,6 +514,7 @@ export default function PostDetail({
                     <ReplyBody
                       node={node}
                       onReplyTo={() => setReplyTarget(node.reply.a)}
+                      onOpenAttachment={onOpenAttachment}
                     />
 
                     {node.children.map((child) => (
@@ -523,6 +530,7 @@ export default function PostDetail({
                             <ReplyBody
                               node={child}
                               nested
+                              onOpenAttachment={onOpenAttachment}
                             />
                           </View>
                         </View>
@@ -580,6 +588,7 @@ export default function PostDetail({
               <ArrowUp size={18} color={t.primaryForeground} />
             </Pressable>
           </View>
+          <ForumFilePicker files={replyFiles} onChange={setReplyFiles} compact />
         </View>
       )}
     </KeyboardAvoidingView>
@@ -591,11 +600,13 @@ function ReplyBody({
   node,
   nested = false,
   onReplyTo,
+  onOpenAttachment,
 }: {
   node: ReplyNode;
   nested?: boolean;
   /** Absent on a nested reply — the design only offers Reply at the top level. */
   onReplyTo?: () => void;
+  onOpenAttachment: (attachment: ForumAttachment) => void;
 }) {
   const { t } = useTheme();
   const r = node.reply;
@@ -618,6 +629,9 @@ function ReplyBody({
         {!!r.mention && <Text style={{ color: t.brandBlue, fontFamily: sans(600) }}>{r.mention} </Text>}
         {r.text}
       </Text>
+      {!!r.attachments?.length && (
+        <AttachmentList attachments={r.attachments} onOpen={onOpenAttachment} compact />
+      )}
       <View style={[styles.replyActions, nested && styles.childActions]}>
         {!!onReplyTo && (
           <Pressable style={styles.replyAction} onPress={onReplyTo} hitSlop={6}>
@@ -628,6 +642,57 @@ function ReplyBody({
       </View>
     </>
   );
+}
+
+function AttachmentList({
+  attachments,
+  onOpen,
+  compact = false,
+}: {
+  attachments: ForumAttachment[];
+  onOpen: (attachment: ForumAttachment) => void;
+  compact?: boolean;
+}) {
+  const { t } = useTheme();
+  return (
+    <View style={[styles.attachmentList, compact && styles.replyAttachmentList]}>
+      {attachments.map((attachment) => (
+        <Pressable
+          key={attachment.id}
+          onPress={() => onOpen(attachment)}
+          disabled={!attachment.href}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !attachment.href }}
+          accessibilityLabel={`Open ${attachment.name}`}
+          style={({ pressed }) => [
+            styles.attachment,
+            compact && styles.replyAttachment,
+            {
+              borderColor: pressed ? t.ruleStrong : t.ruleHairline,
+              backgroundColor: t.surfacePage,
+            },
+          ]}
+        >
+          <FileXls size={compact ? 17 : 22} color={t.brandGreen} />
+          <View style={styles.flex}>
+            <Text numberOfLines={1} style={[styles.attachmentName, { color: t.inkStrong }]}>{attachment.name}</Text>
+            <MastheadMeta size={9.5}>{attachmentMeta(attachment)}</MastheadMeta>
+          </View>
+          {!!attachment.href && <DownloadSimple size={17} color={t.inkFaint} />}
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function attachmentMeta(attachment: ForumAttachment): string {
+  const size = attachment.byteSize;
+  const sizeLabel = !size
+    ? undefined
+    : size < 1024 * 1024
+      ? `${Math.round(size / 1024)} KB`
+      : `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return [attachment.contentType, sizeLabel].filter(Boolean).join(' · ');
 }
 
 function TypeDetailCard({
@@ -848,6 +913,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
   },
+  attachmentList: { marginTop: 0 },
+  replyAttachmentList: { marginTop: 2 },
+  replyAttachment: { minHeight: 42, marginTop: 7, paddingVertical: 7, paddingHorizontal: 9 },
   attachmentName: { fontFamily: sans(600), fontSize: 12.5 },
 
   eventRows: {

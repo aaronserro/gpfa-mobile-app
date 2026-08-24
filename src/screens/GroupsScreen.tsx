@@ -18,6 +18,8 @@ import PostDetail from '../components/groups/PostDetail';
 import { initials } from '../lib/format';
 import type {
   FeedEntry,
+  ForumAttachment,
+  ForumUploadFile,
   Group,
   LibraryResource,
   Member,
@@ -79,6 +81,7 @@ export interface GroupsScreenProps {
   onCompose: () => void;
   onOpenResourceSubmission: (group: Group) => void;
   onOpenResource?: (resource: LibraryResource) => void;
+  onOpenAttachment: (attachment: ForumAttachment) => void;
   /** Design prop: show the #topic chips on feed cards. */
   showTagsInFeed?: boolean;
   /** Design prop: which tab a group opens on. */
@@ -125,6 +128,7 @@ export default function GroupsScreen({
   onCompose,
   onOpenResourceSubmission,
   onOpenResource,
+  onOpenAttachment,
   showTagsInFeed = true,
   defaultGroupTab = 'posts',
 }: GroupsScreenProps) {
@@ -166,7 +170,7 @@ export default function GroupsScreen({
         onVote={(option) => onVote(thread.id, option)}
         rsvp={rsvps[thread.id]}
         onRsvp={(choice) => onRsvp(thread.id, choice)}
-        onReply={(text, mention) =>
+        onReply={(text, mention, files) =>
           onReply(thread.id, {
             a: member.name,
             org: member.org,
@@ -174,8 +178,11 @@ export default function GroupsScreen({
             initials: member.initials ?? initials(member.name),
             ...(mention ? { mention: `@${mention}` } : {}),
             text,
+            uploadFiles: files,
+            attachments: optimisticAttachments(files),
           })
         }
+        onOpenAttachment={onOpenAttachment}
         onBack={onCloseThread}
       />
     );
@@ -263,6 +270,15 @@ export default function GroupsScreen({
       />
     </View>
   );
+}
+
+function optimisticAttachments(files: ForumUploadFile[]): ForumAttachment[] {
+  return files.map((file) => ({
+    id: file.uri,
+    name: file.name,
+    contentType: file.mimeType,
+    byteSize: file.size,
+  }));
 }
 
 const styles = StyleSheet.create({

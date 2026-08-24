@@ -13,7 +13,8 @@ import { CalendarDots, ChartBar, ChatCircle, Megaphone, X, type Icon } from '../
 import { Input } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
-import type { Group, NewPostInput, PostType } from '../api/types';
+import type { ForumUploadFile, Group, NewPostInput, PostType } from '../api/types';
+import ForumFilePicker from './groups/ForumFilePicker';
 
 const TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
@@ -32,9 +33,7 @@ const TYPE_HINT: Record<PostType, string> = {
 };
 
 /**
- * Scaffold composer: enough to create a real post in the feed (group, type,
- * title, body). Poll options and event details are not captured yet — a poll
- * or event created here posts without them.
+ * Creates forum posts and uploads selected attachments before submission.
  */
 export default function PostComposer({
   groups,
@@ -56,7 +55,7 @@ export default function PostComposer({
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [attachmentIds, setAttachmentIds] = useState('');
+  const [files, setFiles] = useState<ForumUploadFile[]>([]);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState('');
   const [closesAt, setClosesAt] = useState('');
@@ -83,10 +82,7 @@ export default function PostComposer({
       title: title.trim(),
       body: body.trim(),
       tags,
-      attachmentIds: attachmentIds
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean),
+      files: type === 'poll' ? undefined : files,
       pollQuestion: pollQuestion.trim() || undefined,
       pollOptions: parsedPollOptions,
       closesAt: closesAt.trim() || undefined,
@@ -249,14 +245,12 @@ export default function PostComposer({
               </>
             )}
 
-            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Attachment asset IDs</Text>
-            <Input
-              value={attachmentIds}
-              onChangeText={setAttachmentIds}
-              placeholder="asset_id_1, asset_id_2"
-              autoCapitalize="none"
-              style={styles.field}
-            />
+            {type !== 'poll' && (
+              <>
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Attachments</Text>
+                <ForumFilePicker files={files} onChange={setFiles} />
+              </>
+            )}
           </ScrollView>
 
           <Pressable
