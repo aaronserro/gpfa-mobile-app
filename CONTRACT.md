@@ -161,6 +161,16 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/api/members/working-groups/:slug/membership` | Group subscribe state | `WorkingGroupMembershipResponse` |
 | `GET` | `/api/members/working-groups/:slug/co-leads` | Group detail About/Members | `{ status, members: WorkingGroupCoLead[] }` |
 | `GET` | `/api/members/directory?workingGroupSlug=:slug&query=&limit=500` | Group detail Members tab | `{ status, members: DirectoryMember[] }` |
+| `GET` | `/api/members/messages` | Directory → Messages inbox | `ConversationListResponse` |
+| `GET` | `/api/members/messages/direct/:memberId` | Directory member → direct-message draft | `DirectConversationResponse` |
+| `GET` | `/api/members/messages/group?to=:memberIds` | New group message member selection | `GroupConversationResponse` |
+| `GET` | `/api/members/messages/conversations/:conversationId` | Message thread | `ConversationDetailResponse` |
+| `POST` | `/api/members/messages/conversations/:conversationId/read` | Message thread read cursor | `{ status, conversationId, lastReadOrdinal }` |
+| `POST` | `/api/members/messages/conversations/:conversationId/members` | Group conversation Manage → Add members | `{ status, conversationId, participantIds }` |
+| `DELETE` | `/api/members/messages/conversations/:conversationId/leave` | Group conversation Manage → Leave | `{ status, conversationId }` |
+| `PATCH` | `/api/members/messages/conversations/:conversationId/title` | Group conversation Manage → Rename | `{ status, conversationId, title }` |
+| `POST` | `/api/members/messages/send` | Message composer | `SendMessageResponse` |
+| `POST` | `/api/members/messages/reactions` | Message reaction picker | `{ status, conversationId, messageId, emoji, active }` |
 | `GET` | `/api/members/working-groups/:slug/feed` | Group detail infinite feed | `WorkingGroupFeedResponse` |
 | `GET` | `/api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared route | `{ status, item: WorkingGroupFeedItem }` |
 | `GET` | `/api/members/working-groups/:slug/tag-usage` | Create post tag suggestions | `WorkingGroupTagUsageResponse` |
@@ -196,8 +206,8 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
 | `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
 | `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
-| `GET` | `/directory/orgs` | Directory index + profile | `MemberOrg[]`, A–Z by `name` |
-| `GET` | `/directory/people` | Directory search + profile | `DirectoryPerson[]` |
+| `GET` | `/api/members/directory/organizations` | Directory index + profile | `{ status, organizations }`, mapped to `MemberOrg[]` |
+| `GET` | `/api/members/directory?limit=500` | Directory search + organization profiles | `{ status, members }`, mapped to `DirectoryPerson[]` |
 | local only | Ask suggestions | Ask GPFA empty state | `string[]` from fixtures/static prompts |
 | `POST` | `/api/members/knowledge/messages/stream` | Ask GPFA | SSE stream mapped to `AskAnswer` |
 | `POST` | `/posts` | Composer | `Thread` |
@@ -215,6 +225,11 @@ than fetching one post.
 
 To change any path, edit `ROUTES` in `src/api/config.ts` — nothing else
 references URLs.
+
+Private messaging is always remote whenever `EXPO_PUBLIC_API_URL` is set. All
+ten `/api/members/messages*` operations send the stored bearer token and ignore
+`EXPO_PUBLIC_FIXTURE_PORTAL_DATA`; fixture conversations are used only when no
+remote API is configured.
 
 ### 4.1 Request/response details
 
@@ -501,35 +516,43 @@ inline in a WebView.
 Body is `{ "text": "…" }`. The author is the authenticated member — do not trust
 a client-supplied author.
 
-**`GET /directory/orgs` → `MemberOrg[]`**
+**`GET /api/members/directory/organizations` → `{ status, organizations }`**
 
-**Send them sorted A–Z by `name`.** The index groups *consecutive* entries under
-their initial letter and never re-sorts, so an unsorted response produces
-repeated letter headings rather than an error.
+The repository maps each organization summary to `MemberOrg`. The route returns
+them A–Z by `name`; mobile preserves that order.
 
 ```json
 {
-  "id": "hoopp",
-  "name": "HOOPP",
-  "fullName": "Healthcare of Ontario Pension Plan",
-  "short": "HOOPP",
-  "sector": "Pension Fund",
+  "id": "healthcare-of-ontario-pension-plan",
+  "slug": "healthcare-of-ontario-pension-plan",
+  "abbreviation": "HOOPP",
+  "name": "Healthcare of Ontario Pension Plan",
   "country": "Canada",
-  "countryCode": "CAN",
-  "city": "Toronto",
-  "members": 7,
-  "workingGroups": 4,
-  "blurb": "Ontario healthcare sector pension plan, and a founding participant…"
+  "sector": "Public Pension Fund",
+  "description": "Ontario healthcare sector pension plan…",
+  "memberCount": 7,
+  "previewMembers": []
 }
 ```
 
-**`GET /directory/people` → `DirectoryPerson[]`**
+**`GET /api/members/directory?limit=500` → `{ status, members }`**
 
-Flat, not nested under the organization. `orgId` is a `MemberOrg.id`; a person
-whose `orgId` matches nothing is simply never shown.
+The response is flat. Mobile maps `orgSlug` to `DirectoryPerson.orgId`, matching
+the slug used as `MemberOrg.id`; members without an organization slug are not
+placed in an organization roster.
 
 ```json
-[{ "id": "p-rob-goobie", "orgId": "hoopp", "name": "Robert Goobie", "role": "Assistant VP, Treasury & Liquidity" }]
+{
+  "status": "success",
+  "members": [
+    {
+      "id": "member-uuid",
+      "name": "Robert Goobie",
+      "role": "Assistant VP, Treasury & Liquidity",
+      "orgSlug": "healthcare-of-ontario-pension-plan"
+    }
+  ]
+}
 ```
 
 Order matters: a profile lists its people **in the order you send them**, so put
@@ -705,9 +728,9 @@ treating the remaining deferred routes as remote-ready.
 | Podcasts | `GET /api/members/podcasts` | Deferred / active member, migration needed. Source: `members/podcasts/route.ts`. | No query params. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. |
 | Jobs | `GET /api/members/job-postings` | Current / Member bearer-ready. Source: `members/job-postings/route.ts`. | Query `page?` default `1`, `pageSize?` default `20`, max `100`. Mobile requests `pageSize=100`. | Active job-posting page from `getCachedActiveJobPostings`. Maps `jobPostings` to `JobListing[]`. | Page-based pagination from the API; mobile loads the first page for the Resources hub and Job board card count. Empty page is an empty jobs array with total metadata. Invalid pagination `400`; auth `401`; load failure `500`. |
 | Jobs write | `POST /api/members/job-postings`, `PATCH/DELETE /api/members/job-postings/:jobId` | Excluded first pass / Organization admin. Sources: job posting routes. | JSON job posting payload for create/update; path `jobId` for update/delete. | `{ status: "success", jobPosting }` or `{ status: "success" }`. | Org-admin mobile workflow does not exist; exclude until it does. |
-| Directory people | `GET /api/members/directory` | Deferred / active member, migration needed. Source: `members/directory/route.ts`. | Query `query?`, `workingGroupSlug?`, `region?`, `limit?` clamped by server. | `{ status: "success", members: DirectoryMember[] }`. Map to `DirectoryPerson[]`. | Sorted by `full_name` ascending before optional region filter. Empty state `members: []`. Invalid/internal query failures return `500`; auth `401`. |
-| Directory detail | `GET /api/members/directory/:memberId` | Deferred / active member, migration needed. Source: `members/directory/[memberId]/route.ts`. | Path `memberId`. | Member profile/detail DTO and organization fields. | No pagination. Unknown/inaccessible profile should return safe not-found. |
-| Directory organizations | `GET /api/members/directory/organizations` | Deferred / active member, migration needed. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations: MemberOrg[] }`. | Server order should be A-Z for mobile grouping. Empty state `organizations: []`. Auth `401`; load failure `500`. |
+| Directory people | `GET /api/members/directory?limit=500` | Current / Member bearer-ready. Source: `members/directory/route.ts`. | Mobile requests `limit=500`; route also accepts `query?`, `workingGroupSlug?`, and `region?`. | `{ status: "success", members: DirectoryMember[] }`, mapped to `DirectoryPerson[]` using `orgSlug` as the organization join. | Sorted by `full_name` ascending before optional region filter. Empty state `members: []`. Invalid/internal query failures return `500`; auth `401`. |
+| Directory detail | `GET /api/members/directory/:memberId` | Current / Member bearer-ready; prepared but not currently called by mobile. Source: `members/directory/[memberId]/route.ts`. | Path `memberId`. | `{ status: "success", summary }` with role, region, organization, and viewer-scoped activity counts. | No pagination. Invalid id `400`; unknown/inaccessible profile `404`; auth `401`. |
+| Directory organizations | `GET /api/members/directory/organizations` | Current / Member bearer-ready. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations }`, mapped to `MemberOrg[]`. | Server order is A-Z. Empty state `organizations: []`. Auth `401`; load failure `500`. |
 | News feed | `GET /api/members/news` | Current / Member bearer-ready. Source: `members/news/route.ts`. | Query `topic?`, `source?`, `limit?`, `cursor?`, `snapshotAt?`, `story?`. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order and cursor metadata. Empty state `items: []`. Invalid filters `400`; auth `401`; load failure `500`. |
 | News Radar | `GET /api/members/news-radar` | Current / Member bearer-ready. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
 | Events | `GET /api/members/events` | Deferred / active member, migration needed. Source: `members/events/route.ts`. | No query params. | `{ status: "success", events }`. | Server event order, includes past per route implementation. Empty state `events: []`. |
@@ -725,6 +748,25 @@ suggestions API yet.
 | `POST /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: same route. | JSON `{ title?: string }`, max 120 chars. | `{ status: "success", conversation }`. | No pagination. Validation `400`; auth `401`; create failure `500`. |
 | `GET /api/members/knowledge/conversations/:id` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/[id]/route.ts`. | Path `id`; query `before?` cursor for earlier messages. | `{ status, conversation, messages, hasEarlier, earlierCursor }`. | Cursor pagination backward through messages. Empty state `messages: []`. Invalid cursor `400`; unknown/not-owned conversation `404`. |
 | `POST /api/members/knowledge/messages/stream` | Current / Member bearer-ready. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Server-sent event stream with ready/persisted answer events, plus persisted conversation/message records. Mobile maps the final answer to `{ text, sources }`. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON as implemented. |
+
+#### Member messaging
+
+Messaging appears as the second section inside the Directory tab. All routes are
+private, require an active-member bearer session, and fail closed when the
+caller cannot see a participant or conversation.
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/messages` | Current / Member bearer-ready. Source: `members/messages/route.ts`. | No query params. | `ConversationListResponse`: `{ status, conversations, totalUnread }`. | Most recently active first. Empty state is `conversations: []`. Auth `401`; load failure `500`. |
+| `GET /api/members/messages/direct/:memberId` | Current / Member bearer-ready. Source: `members/messages/direct/[memberId]/route.ts`. | Active directory member UUID in the path. | `DirectConversationResponse`: `{ status, conversationId, recipient }`; `conversationId` is null for a new draft. | Invalid id `400`; unavailable member uses permission-safe `404`; auth `401`. |
+| `GET /api/members/messages/group` | Current / Member bearer-ready. Source: `members/messages/group/route.ts`. | Query `to` contains 2-7 unique active member UUIDs. | `GroupConversationResponse`: `{ status, conversationId }`; `conversationId` is null for a new draft. | The New → Group flow resolves an exact participant set before the first send. Invalid participants `400`; inaccessible participant `404`; auth `401`. |
+| `GET /api/members/messages/conversations/:conversationId` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/route.ts`. | Query `beforeOrdinal?`, `afterOrdinal?`, `limit?` up to 50. Mobile requests the latest 50, loads earlier windows with `beforeOrdinal`, and checks post-mutation additions with `afterOrdinal`. | `ConversationDetailResponse`: `{ status, conversation, messages, latestOrdinal }`. | Messages are in ordinal order. Unknown/inaccessible conversation `404`; invalid cursor `400`; auth `401`. |
+| `POST /api/members/messages/conversations/:conversationId/read` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/read/route.ts`. | JSON `{ lastReadOrdinal }`. | `{ status: "success", conversationId, lastReadOrdinal }`. | Idempotent cursor advance. Invalid cursor `400`; conflict `409`; rate limit `429`. |
+| `POST /api/members/messages/conversations/:conversationId/members` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/members/route.ts`. | JSON `{ participantIds }` with 1-7 unique member UUIDs to add. | `{ status: "success", conversationId, participantIds }`. | Group-only Manage action. The active group remains capped at 8 members. Invalid input `400`; inaccessible member/conversation `404`; conflict `409`; rate limit `429`. |
+| `DELETE /api/members/messages/conversations/:conversationId/leave` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/leave/route.ts`. | Conversation UUID in the path. | `{ status: "success", conversationId }`. | Group-only, exposed behind a two-tap confirmation. Direct conversation conflict `409`; inaccessible conversation `404`; rate limit `429`. |
+| `PATCH /api/members/messages/conversations/:conversationId/title` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/title/route.ts`. | JSON `{ title }`, trimmed and capped at 80 characters; an empty title clears the custom name. | `{ status: "success", conversationId, title }`. | Group-only Manage action. Invalid title `400`; inaccessible conversation `404`; direct conversation conflict `409`; rate limit `429`. |
+| `POST /api/members/messages/send` | Current / Member bearer-ready. Source: `members/messages/send/route.ts`. | JSON `{ conversationId, content, clientNonce }` or `{ participantIds, content, clientNonce }`. Exactly one target form is required. Content is trimmed and must be 1-4000 chars. | `SendMessageResponse`: `{ status, conversationId, conversationCreated, message }`. | `clientNonce` is a UUID used for idempotency. Invalid input `400`; inaccessible target `404`; conflict `409`; rate limit `429`. |
+| `POST /api/members/messages/reactions` | Current / Member bearer-ready. Source: `members/messages/reactions/route.ts`. | JSON `{ messageId, emoji, active }`; emoji is one of 👍 ❤️ 😂 😮 😢 🎉. | `{ status: "success", conversationId, messageId, emoji, active }`. | Reaction chips toggle the caller's own reaction. Invalid input `400`; inaccessible message `404`; conflict `409`; rate limit `429`. |
 
 #### Public membership
 
@@ -996,7 +1038,7 @@ return every listing the member may see.
 OrgSector        'Pension Fund' | 'Sovereign Wealth Fund'
                | 'Insurance Asset Manager' | 'Asset Manager'
 MemberOrg        { id, name, fullName?, short, sector: OrgSector, country,
-                   countryCode, city, members, workingGroups, blurb, logoUrl? }
+                   countryCode?, city?, members, workingGroups?, blurb?, logoUrl? }
 DirectoryPerson  { id, orgId, name, role, initials?, photoUrl? }
 ```
 
@@ -1004,14 +1046,16 @@ An organization carries three names, each with its own job: `name` is what the
 index lists and sorts by (however the membership writes it — "HOOPP", but "Abu
 Dhabi Investment Authority"); `fullName` is the formal one on the profile
 masthead and defaults to `name`; `short` is the acronym in the profile's meta
-line, `"HOOPP · TORONTO, CANADA"`. `countryCode` is ISO 3166-1 alpha-3 and is
-shown verbatim. `sector` must be one of the four literals — it picks the row's
-left rule colour, and an unknown value renders no rule.
+line, `"HOOPP · TORONTO, CANADA"`. `countryCode` and `city` are optional because
+the current member organization summary route does not return them. `sector` is
+normalized at the repository boundary to one of the four literals so it always
+picks a directory rule colour.
 
 `members` is the headcount shown in the index row and the profile stat. It is
 **authoritative and independent of `/directory/people`** — send 7 while
 publishing 5 profiles and the screen shows both without contradicting itself.
-`workingGroups` is a stat only; nothing joins it to `/groups`.
+`workingGroups` is an optional stat only; nothing joins it to `/groups`. The
+current organization summary route does not return it, so mobile omits that stat.
 
 The profile's **Open roles** stat and its Jobs tab both come from `/jobs`,
 matched client-side: a listing belongs to an organization when its `org` equals
@@ -1021,6 +1065,24 @@ strings identical across the two endpoints or the roles will not appear.
 `logoUrl` and `photoUrl` must be **raster** (PNG/JPG) — React Native's `Image`
 cannot decode SVG, so an `.svg` URL renders as an empty box. Both are optional
 and fall back to initials.
+
+### Messaging types
+
+```ts
+MessagingParticipant { id, name, avatarUrl, roleTitle, organizationName,
+                       isCurrentMember, isAvailable, hasLeft }
+MessageItem           { id, conversationId, senderId, content, clientNonce,
+                       ordinal, createdAt, kind, reactions }
+ConversationSummary   { id, kind, title, participants, lastMessage,
+                       lastMessageAt, lastReaction, lastReadOrdinal, unreadCount }
+ConversationDetail    { id, kind, title, participants, lastReadOrdinal }
+```
+
+Direct conversations contain exactly two active participants. Group
+conversations contain three to eight active participants. The mobile UI can
+read existing group conversations but its first compose flow starts direct
+conversations with one searched directory member. `createdAt` values are ISO
+timestamps and `ordinal` is the stable server ordering/read-cursor key.
 
 ### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
 

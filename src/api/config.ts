@@ -76,6 +76,22 @@ export const ROUTES = {
   memberUpvotes: '/api/members/upvotes',
   memberSavedContent: '/api/members/saved-content',
   memberDirectory: '/api/members/directory',
+  messageConversations: '/api/members/messages',
+  messageConversation: (conversationId: string) =>
+    `/api/members/messages/conversations/${conversationId}`,
+  messageConversationRead: (conversationId: string) =>
+    `/api/members/messages/conversations/${conversationId}/read`,
+  messageConversationMembers: (conversationId: string) =>
+    `/api/members/messages/conversations/${conversationId}/members`,
+  messageConversationLeave: (conversationId: string) =>
+    `/api/members/messages/conversations/${conversationId}/leave`,
+  messageConversationTitle: (conversationId: string) =>
+    `/api/members/messages/conversations/${conversationId}/title`,
+  directMessageConversation: (memberId: string) =>
+    `/api/members/messages/direct/${memberId}`,
+  groupMessageConversation: '/api/members/messages/group',
+  sendMessage: '/api/members/messages/send',
+  messageReactions: '/api/members/messages/reactions',
   askStream: '/api/members/knowledge/messages/stream',
   me: '/api/members/profile',
   savedResources: '/me/saved',
@@ -87,8 +103,8 @@ export const ROUTES = {
   library: '/api/members/resources',
   podcasts: '/podcasts',
   jobs: '/api/members/job-postings',
-  directoryOrgs: '/directory/orgs',
-  directoryPeople: '/directory/people',
+  directoryOrgs: '/api/members/directory/organizations',
+  directoryPeople: '/api/members/directory?limit=500',
   podcastTranscript: (slug: string) => `/podcasts/${slug}/transcript`,
   post: (id: string) => `/posts/${id}`,
   replies: (id: string) => `/posts/${id}/replies`,

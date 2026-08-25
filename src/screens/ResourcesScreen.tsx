@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowRight,
   Article,
-  BookmarkSimple,
   MagnifyingGlass,
   Pause,
   Play,
@@ -427,12 +426,6 @@ export default function ResourcesScreen({
               >
                 <Text style={styles.primaryBtnText}>Open</Text>
                 <ArrowRight size={15} color="#fff" />
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Save resource"
-                style={[styles.iconBtn, { borderColor: t.ruleHairline }]}
-              >
-                <BookmarkSimple size={17} color={t.brandGreen} />
               </Pressable>
             </View>
           </>
@@ -941,12 +934,4 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   secondaryBtnText: { fontFamily: sans(400), fontSize: 13 },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

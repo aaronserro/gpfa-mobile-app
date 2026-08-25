@@ -7,26 +7,24 @@
  *   label, 64px avatar). `ScreenHeader` owns the band on every other screen, so
  *   the name is its title and the avatar, role and origin line sit in its
  *   `children` — the same relayout `OrgProfile` makes.
- * - The design's SAVED / ORGANIZATION mono eyebrows are sentence-case section
- *   heads here, per `docs/ADDING_A_SCREEN.md`.
+ * - The design's ORGANIZATION mono eyebrow is a sentence-case section head
+ *   here, per `docs/ADDING_A_SCREEN.md`.
  *
- * Presentational: the member, their saved documents and their organization all
- * arrive resolved.
+ * Presentational: the member, their reposts and their organization all arrive
+ * resolved.
  */
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BookmarkSimple, CaretRight, Repeat } from '../ds/icons';
+import { CaretRight, Repeat } from '../ds/icons';
 import { Avatar, MastheadMeta, OrgMark, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, mono, postTypeStyle, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
+import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import { initials as initialsOf, orgInitials } from '../lib/format';
 import { TYPE_ICON } from '../components/groups/parts';
-import type { LibraryResource, Member, MemberOrg, MemberRepost } from '../api/types';
+import type { Member, MemberOrg, MemberRepost } from '../api/types';
 
 export interface MemberProfileScreenProps {
   member: Member;
-  /** Bookmarked library documents, in the order they should be listed. */
-  saved: LibraryResource[];
   /** Working-group posts the member has reposted, newest repost first. */
   reposts: MemberRepost[];
   /** How many working groups the member sits on — shown beside the origin line. */
@@ -34,8 +32,6 @@ export interface MemberProfileScreenProps {
   /** The member's organization, joined from the directory. Absent hides the card. */
   org: MemberOrg | null;
   onBack: () => void;
-  /** Opens a saved document. Absent leaves the rows inert. */
-  onOpenResource?: (resource: LibraryResource) => void;
   /** Opens a repost in its working group. Absent leaves the cards inert. */
   onOpenRepost?: (repost: MemberRepost) => void;
   /** Opens the organization's directory profile. Absent leaves the card inert. */
@@ -44,18 +40,17 @@ export interface MemberProfileScreenProps {
 
 export default function MemberProfileScreen({
   member,
-  saved,
   reposts,
   workingGroups,
   org,
   onBack,
-  onOpenResource,
   onOpenRepost,
   onOpenOrg,
 }: MemberProfileScreenProps) {
   const { t } = useTheme();
 
-  const origin = [member.org, org && `${org.city}, ${org.country}`].filter(Boolean).join(' · ');
+  const orgLocation = org ? [org.city, org.country].filter(Boolean).join(', ') : '';
+  const origin = [member.org, orgLocation].filter(Boolean).join(' · ');
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
@@ -100,56 +95,6 @@ export default function MemberProfileScreen({
           )}
         </View>
 
-        <SectionHead
-          label="Library bookmarks"
-          count={`${saved.length} item${saved.length === 1 ? '' : 's'}`}
-        />
-        <View
-          style={[styles.rows, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
-        >
-          {saved.map((r, i) => {
-            const chip = resourceTypeStyle(t, r.type);
-            const meta = [r.authors, r.updatedAt, r.pages && `${r.pages} pp`]
-              .filter(Boolean)
-              .join(' · ')
-              .toUpperCase();
-            return (
-              <Pressable
-                key={r.id}
-                onPress={() => onOpenResource?.(r)}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.savedRow,
-                  i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                  { backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent' },
-                ]}
-              >
-                <View style={styles.flex}>
-                  <View
-                    style={[
-                      styles.chip,
-                      { backgroundColor: chip.chipBg, borderColor: chip.chipBd },
-                    ]}
-                  >
-                    <Text style={[styles.chipText, { color: chip.ink }]}>{chip.label}</Text>
-                  </View>
-                  <Text style={[styles.savedTitle, { color: t.inkStrong }]}>{r.title}</Text>
-                  <MastheadMeta size={10} style={styles.savedMeta}>
-                    {meta}
-                  </MastheadMeta>
-                </View>
-                {/* Filled: every row in this list is, by definition, saved. */}
-                <BookmarkSimple size={17} weight="fill" color={t.brandGreen} />
-              </Pressable>
-            );
-          })}
-          {saved.length === 0 && (
-            <Text style={[styles.empty, { color: t.inkMuted }]}>
-              Nothing saved yet. Bookmark a document in the library and it lands here.
-            </Text>
-          )}
-        </View>
-
         {!!org && (
           <>
             <SectionHead label="Organization" />
@@ -172,14 +117,19 @@ export default function MemberProfileScreen({
                       {org.fullName ?? org.name}
                     </Text>
                     <MastheadMeta size={9.5} style={styles.orgMeta}>
-                      {`${org.sector} · ${org.city}, ${org.country}`.toUpperCase()}
+                      {[org.sector, orgLocation].filter(Boolean).join(' · ').toUpperCase()}
                     </MastheadMeta>
                   </View>
                   <CaretRight size={14} color={t.inkFaint} />
                 </View>
                 <View style={[styles.orgFoot, { borderTopColor: t.ruleHairline }]}>
                   <MastheadMeta size={11} color={t.inkFaint}>
-                    {`${org.members} member${org.members === 1 ? '' : 's'} · ${org.workingGroups} working group${org.workingGroups === 1 ? '' : 's'}`}
+                    {[
+                      `${org.members} member${org.members === 1 ? '' : 's'}`,
+                      org.workingGroups === undefined
+                        ? null
+                        : `${org.workingGroups} working group${org.workingGroups === 1 ? '' : 's'}`,
+                    ].filter(Boolean).join(' · ')}
                   </MastheadMeta>
                   <Text style={[styles.orgLink, { color: t.brandGreen }]}>Open profile →</Text>
                 </View>
@@ -283,25 +233,6 @@ const styles = StyleSheet.create({
   },
   sectionLabel: { fontFamily: sans(600), fontSize: 13, letterSpacing: trackDisplay(13) },
   sectionCount: { fontFamily: sans(400), fontSize: 12 },
-  rows: { borderTopWidth: 1, borderBottomWidth: 1 },
-
-  savedRow: { flexDirection: 'row', gap: 12, paddingVertical: 14, paddingHorizontal: 20 },
-  chip: {
-    alignSelf: 'flex-start',
-    height: 20,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    borderRadius: 32,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontFamily: mono(400),
-    fontSize: 9.5,
-    letterSpacing: 0.48,
-    textTransform: 'uppercase',
-  },
-  savedTitle: { marginTop: 7, fontFamily: sans(500), fontSize: 13.5, lineHeight: 19.6 },
-  savedMeta: { marginTop: 5 },
 
   orgWrap: { paddingHorizontal: 20, paddingTop: 2 },
   orgCard: { borderWidth: 1, borderRadius: 8, padding: 14 },

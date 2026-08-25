@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ArrowRight } from '../../ds/icons';
+import { ArrowRight, ChatCircle } from '../../ds/icons';
 import { Avatar, OrgMark, ScreenHeader } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, jobFunctionRule, sans, trackDisplay } from '../../ds/tokens';
@@ -26,17 +26,21 @@ export interface OrgProfileProps {
   onBack: () => void;
   /** Opens a role on the job board. Absent leaves the rows inert. */
   onOpenJob?: (job: JobListing) => void;
+  onMessagePerson: (memberId: string) => void;
 }
 
-export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: OrgProfileProps) {
+export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onMessagePerson }: OrgProfileProps) {
   const { t } = useTheme();
   const [tab, setTab] = useState<ProfileTab>('members');
 
   const stats: { value: number; label: string }[] = [
     { value: org.members, label: 'Members' },
-    { value: org.workingGroups, label: 'Working groups' },
+    ...(org.workingGroups === undefined
+      ? []
+      : [{ value: org.workingGroups, label: 'Working groups' }]),
     { value: jobs.length, label: 'Open roles' },
   ];
+  const location = [org.city, org.country].filter(Boolean).join(', ');
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
@@ -49,9 +53,11 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
           <OrgMark initials={orgInitials(org.short)} logoUrl={org.logoUrl} size={44} />
           <View style={styles.flex}>
             <Text style={[styles.orgMeta, { color: t.inkMuted }]}>
-              {`${org.short} · ${org.city}, ${org.country}`}
+              {[org.short, location].filter(Boolean).join(' · ')}
             </Text>
-            <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
+            {!!org.blurb && (
+              <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
+            )}
           </View>
         </View>
       </ScreenHeader>
@@ -113,7 +119,19 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
               ]}
             >
               {people.map((p) => (
-                <View key={p.id} style={[styles.personRow, { borderBottomColor: t.ruleHairline }]}>
+                <Pressable
+                  key={p.id}
+                  onPress={() => onMessagePerson(p.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${p.name}`}
+                  style={({ pressed }) => [
+                    styles.personRow,
+                    {
+                      borderBottomColor: t.ruleHairline,
+                      backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
+                    },
+                  ]}
+                >
                   <Avatar
                     initials={p.initials ?? initialsOf(p.name)}
                     photoUrl={p.photoUrl}
@@ -125,8 +143,8 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob }: Org
                       {p.role}
                     </Text>
                   </View>
-                  <ArrowRight size={14} color={t.ruleStrong} />
-                </View>
+                  <ChatCircle size={18} color={t.brandGreen} />
+                </Pressable>
               ))}
               {people.length === 0 && (
                 <Text style={[styles.empty, { color: t.inkMuted }]}>

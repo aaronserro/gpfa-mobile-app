@@ -14,8 +14,10 @@ import type {
   JobListing,
   LibraryResource,
   Member,
+  ConversationSummary,
   MemberNotification,
   MemberOrg,
+  MessageItem,
   NewsStory,
   PodcastEpisode,
 } from '../api/types';
@@ -1370,4 +1372,115 @@ export const DIRECTORY_PEOPLE: DirectoryPerson[] = [
   { id: 'p-marcus-chen', orgId: 'cpp', name: 'Marcus Chen', role: 'Managing Director, Financing' },
   { id: 'p-priya-nair', orgId: 'gic', name: 'Priya Nair', role: 'Head of Securities Finance' },
   { id: 'p-sofia-lindqvist', orgId: 'ap4', name: 'Sofia Lindqvist', role: 'Head of Trading' },
+];
+
+const ELENA_MESSAGES: MessageItem[] = [
+  {
+    id: 'message-elena-1',
+    conversationId: 'conversation-elena',
+    senderId: 'p-elena-rossi',
+    content: 'Hi Robert — are you free to compare notes before the collateral roundtable?',
+    clientNonce: 'fixture-elena-1',
+    ordinal: 1,
+    createdAt: '2026-08-23T15:12:00.000Z',
+    kind: 'text',
+    reactions: [],
+  },
+  {
+    id: 'message-elena-2',
+    conversationId: 'conversation-elena',
+    senderId: 'rg',
+    content: 'Absolutely. I can send our latest haircut comparison this afternoon.',
+    clientNonce: 'fixture-elena-2',
+    ordinal: 2,
+    createdAt: '2026-08-23T15:19:00.000Z',
+    kind: 'text',
+    reactions: [],
+  },
+];
+
+const AMARA_MESSAGES: MessageItem[] = [
+  {
+    id: 'message-amara-1',
+    conversationId: 'conversation-amara',
+    senderId: 'p-amara-okafor',
+    content: 'The revised indemnification language is ready for your review.',
+    clientNonce: 'fixture-amara-1',
+    ordinal: 1,
+    createdAt: '2026-08-24T11:05:00.000Z',
+    kind: 'text',
+    reactions: [],
+  },
+];
+
+export const MESSAGE_ITEMS: Record<string, MessageItem[]> = {
+  'conversation-elena': ELENA_MESSAGES,
+  'conversation-amara': AMARA_MESSAGES,
+};
+
+export const MESSAGE_CONVERSATIONS: ConversationSummary[] = [
+  {
+    id: 'conversation-amara',
+    kind: 'direct',
+    title: null,
+    participants: [
+      {
+        id: 'rg',
+        name: MEMBER.name,
+        avatarUrl: null,
+        roleTitle: MEMBER.role ?? null,
+        organizationName: MEMBER.org,
+        isCurrentMember: true,
+        isAvailable: true,
+        hasLeft: false,
+      },
+      {
+        id: 'p-amara-okafor',
+        name: 'Amara Okafor',
+        avatarUrl: null,
+        roleTitle: 'Senior Counsel, Securities Finance',
+        organizationName: 'Ontario Teachers’',
+        isCurrentMember: false,
+        isAvailable: true,
+        hasLeft: false,
+      },
+    ],
+    lastMessage: AMARA_MESSAGES[0],
+    lastMessageAt: AMARA_MESSAGES[0].createdAt,
+    lastReaction: null,
+    lastReadOrdinal: 0,
+    unreadCount: 1,
+  },
+  {
+    id: 'conversation-elena',
+    kind: 'direct',
+    title: null,
+    participants: [
+      {
+        id: 'rg',
+        name: MEMBER.name,
+        avatarUrl: null,
+        roleTitle: MEMBER.role ?? null,
+        organizationName: MEMBER.org,
+        isCurrentMember: true,
+        isAvailable: true,
+        hasLeft: false,
+      },
+      {
+        id: 'p-elena-rossi',
+        name: 'Elena Rossi',
+        avatarUrl: null,
+        roleTitle: 'Portfolio Manager, Securities Lending',
+        organizationName: 'APG',
+        isCurrentMember: false,
+        isAvailable: true,
+        hasLeft: false,
+      },
+    ],
+    lastMessage: ELENA_MESSAGES[1],
+    lastMessageAt: ELENA_MESSAGES[1].createdAt,
+    lastReaction: null,
+    lastReadOrdinal: 2,
+    unreadCount: 0,
+  },
 ];

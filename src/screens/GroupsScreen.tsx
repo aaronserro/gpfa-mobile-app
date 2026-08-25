@@ -256,7 +256,6 @@ export default function GroupsScreen({
       <GroupDirectory
         subscribed={sorted.filter(isSubscribed)}
         rest={sorted.filter((g) => !isSubscribed(g))}
-        postCounts={postCounts}
         query={query}
         onQuery={setQuery}
         sort={sort}

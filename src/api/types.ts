@@ -877,18 +877,18 @@ export interface MemberOrg {
   /** Display country, e.g. "Canada". Searchable alongside the name. */
   country: string;
   /** ISO 3166-1 alpha-3, shown in the row's right rail, e.g. "CAN". */
-  countryCode: string;
+  countryCode?: string;
   /** Head office, e.g. "Toronto". Joined with `country` in the profile masthead. */
-  city: string;
+  city?: string;
   /**
    * Headcount for the row and the profile stat. Authoritative — `people` may
    * carry fewer than this, and the profile shows both without contradiction.
    */
   members: number;
   /** Working groups the organization sits on. Profile stat only. */
-  workingGroups: number;
+  workingGroups?: number;
   /** One or two sentences on the profile masthead. */
-  blurb: string;
+  blurb?: string;
   /** Raster logo. RN's Image can't decode SVG; absent falls back to initials. */
   logoUrl?: string;
 }
@@ -905,6 +905,135 @@ export interface DirectoryPerson {
   initials?: string;
   /** Raster portrait. RN's Image can't decode SVG; absent falls back to initials. */
   photoUrl?: string;
+}
+
+/** A member as exposed by the private messaging service. */
+export interface MessagingParticipant {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  roleTitle: string | null;
+  organizationName: string | null;
+  isCurrentMember: boolean;
+  isAvailable: boolean;
+  hasLeft: boolean;
+}
+
+export type MessageReaction = '👍' | '❤️' | '😂' | '😮' | '😢' | '🎉';
+
+export interface MessageReactionAggregate {
+  emoji: MessageReaction;
+  count: number;
+  reactedByCurrentMember: boolean;
+}
+
+export interface MessageItem {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  clientNonce: string;
+  ordinal: number;
+  createdAt: string;
+  kind: 'text' | 'system';
+  reactions: MessageReactionAggregate[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  kind: 'direct' | 'group';
+  title: string | null;
+  participants: MessagingParticipant[];
+  lastMessage: MessageItem | null;
+  lastMessageAt: string;
+  lastReaction: {
+    emoji: MessageReaction;
+    reactorId: string;
+    messageSenderId: string;
+    createdAt: string;
+  } | null;
+  lastReadOrdinal: number;
+  unreadCount: number;
+}
+
+export interface ConversationDetail {
+  id: string;
+  kind: 'direct' | 'group';
+  title: string | null;
+  participants: MessagingParticipant[];
+  lastReadOrdinal: number;
+}
+
+export interface ConversationListResponse {
+  status: 'success';
+  conversations: ConversationSummary[];
+  totalUnread: number;
+}
+
+export interface ConversationDetailResponse {
+  status: 'success';
+  conversation: ConversationDetail;
+  messages: MessageItem[];
+  latestOrdinal: number;
+}
+
+export interface MessageWindowQuery {
+  beforeOrdinal?: number;
+  afterOrdinal?: number;
+  limit?: number;
+}
+
+export interface DirectConversationResponse {
+  status: 'success';
+  conversationId: string | null;
+  recipient: MessagingParticipant;
+}
+
+export interface GroupConversationResponse {
+  status: 'success';
+  conversationId: string | null;
+}
+
+export interface SendMessageInput {
+  conversationId?: string;
+  participantIds?: string[];
+  content: string;
+  clientNonce: string;
+}
+
+export interface SendMessageResponse {
+  status: 'success';
+  conversationId: string;
+  conversationCreated: boolean;
+  message: MessageItem;
+}
+
+export interface MessageReactionInput {
+  messageId: string;
+  emoji: MessageReaction;
+  active: boolean;
+}
+
+export interface MessageReactionResponse extends MessageReactionInput {
+  status: 'success';
+  conversationId: string;
+}
+
+export interface AddConversationMembersResponse {
+  status: 'success';
+  conversationId: string;
+  participantIds: string[];
+}
+
+export interface LeaveConversationResponse {
+  status: 'success';
+  conversationId: string;
+}
+
+export interface RenameConversationResponse {
+  status: 'success';
+  conversationId: string;
+  title: string | null;
 }
 
 export interface PodcastEpisode {

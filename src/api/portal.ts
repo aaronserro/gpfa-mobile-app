@@ -5,8 +5,12 @@ import { request, requestStream } from './client';
 import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
 import type {
   AskAnswer,
+  AddConversationMembersResponse,
   CalendarEvent,
+  ConversationDetailResponse,
+  ConversationListResponse,
   DirectoryPerson,
+  DirectConversationResponse,
   FeedEntry,
   ForumAttachment,
   ForumReplyInput,
@@ -21,6 +25,7 @@ import type {
   ForumUploadPrepareResponse,
   ForumUploadFile,
   Group,
+  GroupConversationResponse,
   GroupMember,
   JobListing,
   LibraryResource,
@@ -39,6 +44,12 @@ import type {
   MemberPollUpdateInput,
   MemberPollVoteInput,
   MemberOrg,
+  MessagingParticipant,
+  MessageItem,
+  MessageReaction,
+  MessageReactionInput,
+  MessageReactionResponse,
+  MessageWindowQuery,
   MessageResponse,
   NewPostInput,
   NewsStory,
@@ -47,10 +58,14 @@ import type {
   PollOption,
   Relevance,
   RedirectResponse,
+  RenameConversationResponse,
   Reply,
   ResourceHubData,
   ResourceType,
   RsvpChoice,
+  SendMessageInput,
+  SendMessageResponse,
+  LeaveConversationResponse,
   StatusResponse,
   Thread,
   WorkingGroupMembership,
@@ -71,7 +86,7 @@ import type {
   WorkingGroupTagUsageResponse,
   WorkingGroupThreadFeed,
 } from './types';
-import type { WgRuleClass } from '../ds/tokens';
+import type { OrgSector, WgRuleClass } from '../ds/tokens';
 import {
   DIRECTORY_PEOPLE,
   findAnswer,
@@ -80,6 +95,8 @@ import {
   LIBRARY,
   MEMBER,
   MEMBER_ORGS,
+  MESSAGE_CONVERSATIONS,
+  MESSAGE_ITEMS,
   NEWS_STORIES,
   NEXT_EVENT,
   NOTIFICATIONS,
@@ -104,6 +121,15 @@ import {
 const local = <T>(value: T): Promise<T> => Promise.resolve(value);
 
 const USING_PORTAL_FIXTURES = !USING_REMOTE_API || USING_FIXTURE_PORTAL_DATA;
+
+// Private messaging must follow the authenticated member backend whenever it
+// exists; mixing remote identities with fixture conversations is unsafe.
+const USING_MESSAGE_FIXTURES = !USING_REMOTE_API;
+
+let fixtureMessageConversations = MESSAGE_CONVERSATIONS.map(cloneConversation);
+const fixtureMessageItems: Record<string, MessageItem[]> = Object.fromEntries(
+  Object.entries(MESSAGE_ITEMS).map(([id, messages]) => [id, messages.map(cloneMessage)])
+);
 
 function workingGroupsRequireApi<T>(): Promise<T> {
   return Promise.reject(new Error('Working Groups require the member API. Configure EXPO_PUBLIC_API_URL to use this flow.'));
@@ -169,6 +195,24 @@ interface MemberDirectoryRow {
   organization: string;
   initials?: string;
   photo?: string;
+  orgId?: string;
+  orgSlug?: string;
+}
+
+interface DirectoryOrganizationsResponse {
+  status: 'success';
+  organizations: DirectoryOrganizationRow[];
+}
+
+interface DirectoryOrganizationRow {
+  id: string;
+  slug: string;
+  abbreviation: string;
+  name: string;
+  country: string;
+  sector: string;
+  description?: string;
+  memberCount: number;
 }
 
 interface CurrentMemberResponse {
@@ -287,14 +331,285 @@ export function getJobs(): Promise<JobListing[]> {
  * consecutive entries by initial letter and never re-sorts them.
  */
 export function getMemberOrgs(): Promise<MemberOrg[]> {
-  if (USING_PORTAL_FIXTURES) return local(MEMBER_ORGS);
-  return request<MemberOrg[]>(ROUTES.directoryOrgs);
+  if (!USING_REMOTE_API) return local(MEMBER_ORGS);
+  return request<DirectoryOrganizationsResponse>(ROUTES.directoryOrgs).then((response) =>
+    response.organizations.map(directoryOrganizationToMemberOrg)
+  );
 }
 
 /** Every named individual in the directory, flat. `orgId` joins to a MemberOrg. */
 export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
-  if (USING_PORTAL_FIXTURES) return local(DIRECTORY_PEOPLE);
-  return request<DirectoryPerson[]>(ROUTES.directoryPeople);
+  if (!USING_REMOTE_API) return local(DIRECTORY_PEOPLE);
+  return request<MemberDirectoryResponse>(ROUTES.directoryPeople).then((response) =>
+    response.members.flatMap((member) => {
+      // Organization cards are keyed by slug. Profiles without one remain out
+      // of the organization roster rather than being attached to the wrong org.
+      if (!member.orgSlug) return [];
+      return [{
+        id: member.id,
+        orgId: member.orgSlug,
+        name: member.name,
+        role: member.role,
+        initials: member.initials,
+        photoUrl: member.photo,
+      }];
+    })
+  );
+}
+
+export function getMessageConversations(): Promise<ConversationListResponse> {
+  if (USING_MESSAGE_FIXTURES) {
+    return local({
+      status: 'success',
+      conversations: fixtureMessageConversations.map(cloneConversation),
+      totalUnread: fixtureMessageConversations.reduce((total, item) => total + item.unreadCount, 0),
+    });
+  }
+  return request<ConversationListResponse>(ROUTES.messageConversations);
+}
+
+export function getMessageConversation(
+  conversationId: string,
+  query: MessageWindowQuery = { limit: 50 }
+): Promise<ConversationDetailResponse> {
+  if (USING_MESSAGE_FIXTURES) {
+    const summary = fixtureMessageConversations.find((item) => item.id === conversationId);
+    if (!summary) return Promise.reject(new Error('Conversation unavailable.'));
+    const allMessages = fixtureMessageItems[conversationId] ?? [];
+    const limit = Math.min(50, Math.max(1, query.limit ?? 50));
+    const eligible = allMessages.filter((message) =>
+      query.beforeOrdinal !== undefined
+        ? message.ordinal < query.beforeOrdinal
+        : query.afterOrdinal !== undefined
+          ? message.ordinal > query.afterOrdinal
+          : true
+    );
+    const window = query.afterOrdinal !== undefined
+      ? eligible.slice(0, limit)
+      : eligible.slice(Math.max(0, eligible.length - limit));
+    const messages = window.map(cloneMessage);
+    return local({
+      status: 'success',
+      conversation: {
+        id: summary.id,
+        kind: summary.kind,
+        title: summary.title,
+        participants: summary.participants.map((participant) => ({ ...participant })),
+        lastReadOrdinal: summary.lastReadOrdinal,
+      },
+      messages,
+      latestOrdinal: allMessages.at(-1)?.ordinal ?? 0,
+    });
+  }
+  return request<ConversationDetailResponse>(
+    `${ROUTES.messageConversation(conversationId)}${queryString(query)}`
+  );
+}
+
+export function resolveDirectMessageConversation(memberId: string): Promise<DirectConversationResponse> {
+  if (USING_MESSAGE_FIXTURES) {
+    const existing = fixtureMessageConversations.find(
+      (conversation) =>
+        conversation.kind === 'direct' &&
+        conversation.participants.some((participant) => participant.id === memberId)
+    );
+    const person = DIRECTORY_PEOPLE.find((candidate) => candidate.id === memberId);
+    if (!person) return Promise.reject(new Error('Member unavailable.'));
+    const org = MEMBER_ORGS.find((candidate) => candidate.id === person.orgId);
+    return local({
+      status: 'success',
+      conversationId: existing?.id ?? null,
+      recipient: directoryPersonToMessagingParticipant(person, org?.short ?? null),
+    });
+  }
+  return request<DirectConversationResponse>(ROUTES.directMessageConversation(memberId));
+}
+
+export function resolveGroupMessageConversation(
+  participantIds: string[]
+): Promise<GroupConversationResponse> {
+  const uniqueIds = [...new Set(participantIds)];
+  if (uniqueIds.length < 2 || uniqueIds.length > 7) {
+    return Promise.reject(new Error('Choose between two and seven members for a group message.'));
+  }
+  if (USING_MESSAGE_FIXTURES) {
+    const expected = [...uniqueIds].sort().join(',');
+    const existing = fixtureMessageConversations.find((conversation) => {
+      if (conversation.kind !== 'group') return false;
+      const actual = conversation.participants
+        .filter((participant) => !participant.isCurrentMember && !participant.hasLeft)
+        .map((participant) => participant.id)
+        .sort()
+        .join(',');
+      return actual === expected;
+    });
+    return local({ status: 'success', conversationId: existing?.id ?? null });
+  }
+  return request<GroupConversationResponse>(
+    `${ROUTES.groupMessageConversation}${queryString({ to: uniqueIds.join(',') })}`
+  );
+}
+
+export function sendMemberMessage(input: SendMessageInput): Promise<SendMessageResponse> {
+  const content = input.content.replace(/\r\n/g, '\n').trim();
+  if (!content || content.length > 4_000) {
+    return Promise.reject(new Error('Messages must be between 1 and 4,000 characters.'));
+  }
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<SendMessageResponse>(ROUTES.sendMessage, { method: 'POST', body: { ...input, content } });
+  }
+
+  const selectedPeople = (input.participantIds ?? []).map((participantId) =>
+    DIRECTORY_PEOPLE.find((candidate) => candidate.id === participantId)
+  );
+  const conversationId = input.conversationId ?? `conversation-${Date.now()}`;
+  let summary = fixtureMessageConversations.find((item) => item.id === conversationId);
+  const conversationCreated = !summary;
+
+  if (!summary) {
+    if (!selectedPeople.length || selectedPeople.some((person) => !person)) {
+      return Promise.reject(new Error('Choose available members to message.'));
+    }
+    const participants = selectedPeople.map((person) => {
+      const selected = person!;
+      const org = MEMBER_ORGS.find((candidate) => candidate.id === selected.orgId);
+      return directoryPersonToMessagingParticipant(selected, org?.short ?? null);
+    });
+    summary = {
+      id: conversationId,
+      kind: participants.length === 1 ? 'direct' : 'group',
+      title: null,
+      participants: [
+        currentMemberMessagingParticipant(),
+        ...participants,
+      ],
+      lastMessage: null,
+      lastMessageAt: new Date().toISOString(),
+      lastReaction: null,
+      lastReadOrdinal: 0,
+      unreadCount: 0,
+    };
+    fixtureMessageConversations = [summary, ...fixtureMessageConversations];
+    fixtureMessageItems[conversationId] = [];
+  }
+
+  const messages = fixtureMessageItems[conversationId] ?? [];
+  const message: MessageItem = {
+    id: `message-${Date.now()}`,
+    conversationId,
+    senderId: MEMBER.id,
+    content,
+    clientNonce: input.clientNonce,
+    ordinal: (messages.at(-1)?.ordinal ?? 0) + 1,
+    createdAt: new Date().toISOString(),
+    kind: 'text',
+    reactions: [],
+  };
+  messages.push(message);
+  fixtureMessageItems[conversationId] = messages;
+  fixtureMessageConversations = fixtureMessageConversations
+    .map((item) =>
+      item.id === conversationId
+        ? { ...item, lastMessage: message, lastMessageAt: message.createdAt, lastReadOrdinal: message.ordinal }
+        : item
+    )
+    .sort((a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt));
+
+  return local({ status: 'success', conversationId, conversationCreated, message: cloneMessage(message) });
+}
+
+export function markMessageConversationRead(conversationId: string, lastReadOrdinal: number): Promise<void> {
+  if (USING_MESSAGE_FIXTURES) {
+    fixtureMessageConversations = fixtureMessageConversations.map((item) =>
+      item.id === conversationId ? { ...item, lastReadOrdinal, unreadCount: 0 } : item
+    );
+    return local(undefined);
+  }
+  return request(ROUTES.messageConversationRead(conversationId), {
+    method: 'POST',
+    body: { lastReadOrdinal },
+  }).then(() => undefined);
+}
+
+export function setMessageReaction(input: MessageReactionInput): Promise<MessageReactionResponse> {
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<MessageReactionResponse>(ROUTES.messageReactions, {
+      method: 'POST',
+      body: input,
+    });
+  }
+
+  for (const [conversationId, messages] of Object.entries(fixtureMessageItems)) {
+    const message = messages.find((candidate) => candidate.id === input.messageId);
+    if (!message) continue;
+    message.reactions = updateFixtureReaction(message.reactions, input.emoji, input.active);
+    return local({ status: 'success', conversationId, ...input });
+  }
+  return Promise.reject(new Error('Message unavailable.'));
+}
+
+export function addMessageConversationMembers(
+  conversationId: string,
+  participantIds: string[]
+): Promise<AddConversationMembersResponse> {
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<AddConversationMembersResponse>(ROUTES.messageConversationMembers(conversationId), {
+      method: 'POST',
+      body: { participantIds },
+    });
+  }
+
+  const summary = fixtureMessageConversations.find((item) => item.id === conversationId);
+  if (!summary || summary.kind !== 'group') {
+    return Promise.reject(new Error('Group conversation unavailable.'));
+  }
+  const existingIds = new Set(summary.participants.map((participant) => participant.id));
+  const added = participantIds
+    .filter((participantId) => !existingIds.has(participantId))
+    .map((participantId) => DIRECTORY_PEOPLE.find((person) => person.id === participantId));
+  if (added.some((person) => !person)) return Promise.reject(new Error('Member unavailable.'));
+  summary.participants = [
+    ...summary.participants,
+    ...added.map((person) => {
+      const selected = person!;
+      const org = MEMBER_ORGS.find((candidate) => candidate.id === selected.orgId);
+      return directoryPersonToMessagingParticipant(selected, org?.short ?? null);
+    }),
+  ];
+  return local({ status: 'success', conversationId, participantIds });
+}
+
+export function leaveMessageConversation(conversationId: string): Promise<LeaveConversationResponse> {
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<LeaveConversationResponse>(ROUTES.messageConversationLeave(conversationId), {
+      method: 'DELETE',
+    });
+  }
+  const summary = fixtureMessageConversations.find((item) => item.id === conversationId);
+  if (!summary || summary.kind !== 'group') {
+    return Promise.reject(new Error('Group conversation unavailable.'));
+  }
+  fixtureMessageConversations = fixtureMessageConversations.filter((item) => item.id !== conversationId);
+  return local({ status: 'success', conversationId });
+}
+
+export function renameMessageConversation(
+  conversationId: string,
+  title: string
+): Promise<RenameConversationResponse> {
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<RenameConversationResponse>(ROUTES.messageConversationTitle(conversationId), {
+      method: 'PATCH',
+      body: { title },
+    });
+  }
+  const summary = fixtureMessageConversations.find((item) => item.id === conversationId);
+  if (!summary || summary.kind !== 'group') {
+    return Promise.reject(new Error('Group conversation unavailable.'));
+  }
+  const normalized = title.trim();
+  summary.title = normalized || null;
+  return local({ status: 'success', conversationId, title: summary.title });
 }
 
 export function getWorkingGroupDirectoryMembers(slug: string): Promise<GroupMember[]> {
@@ -314,6 +629,91 @@ export function askGpfa(question: string, conversationId?: string): Promise<AskA
     return new Promise((resolve) => setTimeout(() => resolve(findAnswer(question)), 1100));
   }
   return requestStream(ROUTES.askStream, { body: { conversationId, message: question } }).then(askAnswerFromStream);
+}
+
+function cloneMessage(message: MessageItem): MessageItem {
+  return { ...message, reactions: message.reactions.map((reaction) => ({ ...reaction })) };
+}
+
+function updateFixtureReaction(
+  reactions: MessageItem['reactions'],
+  emoji: MessageReaction,
+  active: boolean
+): MessageItem['reactions'] {
+  const existing = reactions.find((reaction) => reaction.emoji === emoji);
+  if (!existing && !active) return reactions;
+  if (!existing) return [...reactions, { emoji, count: 1, reactedByCurrentMember: true }];
+  const count = Math.max(0, existing.count + (active ? 1 : -1));
+  return count === 0
+    ? reactions.filter((reaction) => reaction.emoji !== emoji)
+    : reactions.map((reaction) =>
+        reaction.emoji === emoji
+          ? { ...reaction, count, reactedByCurrentMember: active }
+          : reaction
+      );
+}
+
+function cloneConversation(
+  conversation: ConversationListResponse['conversations'][number]
+): ConversationListResponse['conversations'][number] {
+  return {
+    ...conversation,
+    participants: conversation.participants.map((participant) => ({ ...participant })),
+    lastMessage: conversation.lastMessage ? cloneMessage(conversation.lastMessage) : null,
+    lastReaction: conversation.lastReaction ? { ...conversation.lastReaction } : null,
+  };
+}
+
+function directoryPersonToMessagingParticipant(
+  person: DirectoryPerson,
+  organizationName: string | null
+): MessagingParticipant {
+  return {
+    id: person.id,
+    name: person.name,
+    avatarUrl: person.photoUrl ?? null,
+    roleTitle: person.role || null,
+    organizationName,
+    isCurrentMember: false,
+    isAvailable: true,
+    hasLeft: false,
+  };
+}
+
+function currentMemberMessagingParticipant(): MessagingParticipant {
+  return {
+    id: MEMBER.id,
+    name: MEMBER.name,
+    avatarUrl: null,
+    roleTitle: MEMBER.role ?? null,
+    organizationName: MEMBER.org,
+    isCurrentMember: true,
+    isAvailable: true,
+    hasLeft: false,
+  };
+}
+
+function directoryOrganizationToMemberOrg(organization: DirectoryOrganizationRow): MemberOrg {
+  return {
+    id: organization.slug,
+    name: organization.name,
+    fullName: organization.name,
+    short: organization.abbreviation,
+    sector: directoryOrgSector(organization.sector),
+    country: organization.country,
+    members: organization.memberCount,
+    blurb: organization.description,
+  };
+}
+
+function directoryOrgSector(value: string): OrgSector {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('pension') || normalized.includes('superannuation')) {
+    return 'Pension Fund';
+  }
+  if (normalized.includes('sovereign')) return 'Sovereign Wealth Fund';
+  if (normalized.includes('insurance')) return 'Insurance Asset Manager';
+  return 'Asset Manager';
 }
 
 /* ── mutations ───────────────────────────────────────────────────────────── */

@@ -28,8 +28,6 @@ export interface GroupDirectoryProps {
   subscribed: Group[];
   /** Everything else — the "All groups" section. */
   rest: Group[];
-  /** Post count per group id, counting anything composed this session. */
-  postCounts: Record<string, number>;
   query: string;
   onQuery: (query: string) => void;
   sort: GroupSortId;
@@ -40,7 +38,6 @@ export interface GroupDirectoryProps {
 export default function GroupDirectory({
   subscribed,
   rest,
-  postCounts,
   query,
   onQuery,
   sort,
@@ -109,21 +106,19 @@ export default function GroupDirectory({
             </View>
 
             <View style={styles.cards}>
-              {s.groups.map((g) => {
-                const posts = postCounts[g.id] ?? 0;
-                return (
-                  <Pressable
-                    key={g.id}
-                    onPress={() => onOpen(g.id)}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.card,
-                      {
-                        backgroundColor: t.surfacePaper,
-                        borderColor: pressed ? t.ruleStrong : t.ruleHairline,
-                      },
-                    ]}
-                  >
+              {s.groups.map((g) => (
+                <Pressable
+                  key={g.id}
+                  onPress={() => onOpen(g.id)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.card,
+                    {
+                      backgroundColor: t.surfacePaper,
+                      borderColor: pressed ? t.ruleStrong : t.ruleHairline,
+                    },
+                  ]}
+                >
                     <View style={styles.bannerFrame}>
                       <HatchBanner />
                       {!!g.cardImageUrl && !failedImages[g.id] && (
@@ -162,23 +157,19 @@ export default function GroupDirectory({
                       )}
 
                       <View style={styles.cardFoot}>
-                        <View style={styles.metaStack}>
-                          <Text style={[styles.cardCount, { color: t.inkMuted }]}>
-                            {`${posts} active post${posts === 1 ? '' : 's'}`}
-                          </Text>
+                        {g.joined && (
                           <Text style={[styles.cardSubCount, { color: t.inkFaint }]}>
-                            {g.joined ? 'Subscribed' : 'Available to join'}
+                            Subscribed
                           </Text>
-                        </View>
+                        )}
                         <View style={[styles.openBtn, { backgroundColor: t.surfaceAnchor }]}>
                           <Text style={styles.openBtnText}>Open</Text>
                           <ArrowRight size={12} color="#fff" />
                         </View>
                       </View>
                     </View>
-                  </Pressable>
-                );
-              })}
+                </Pressable>
+              ))}
             </View>
           </View>
         ))}
@@ -270,9 +261,7 @@ const styles = StyleSheet.create({
   },
   memberChipText: { fontFamily: sans(500), fontSize: 10.5, fontVariant: ['tabular-nums'] },
   groupBio: { marginTop: 8, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.75 },
-  cardCount: { fontFamily: sans(400), fontSize: 12 },
-  cardSubCount: { fontFamily: mono(400), fontSize: 10.5, marginTop: 2 },
-  metaStack: { flex: 1, minWidth: 0 },
+  cardSubCount: { fontFamily: mono(400), fontSize: 10.5 },
   cardFoot: {
     marginTop: 12,
     flexDirection: 'row',
@@ -281,6 +270,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   openBtn: {
+    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,

@@ -14,7 +14,20 @@ import { ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, orgSectorRule, sans, trackDisplay } from '../ds/tokens';
 import OrgProfile from '../components/directory/OrgProfile';
-import type { DirectoryPerson, JobListing, MemberOrg } from '../api/types';
+import MessagesInbox from '../components/directory/MessagesInbox';
+import type {
+  ConversationDetail,
+  ConversationSummary,
+  DirectoryPerson,
+  JobListing,
+  Member,
+  MemberOrg,
+  MessageItem,
+  MessageReaction,
+  MessagingParticipant,
+} from '../api/types';
+
+type DirectoryTab = 'directory' | 'messages';
 
 /**
  * A listing belongs to an organization when its `org` matches any of the names
@@ -27,6 +40,7 @@ export function jobsForOrg(jobs: JobListing[], org: MemberOrg): JobListing[] {
 }
 
 export interface DirectoryScreenProps {
+  member: Member;
   /** Alphabetical by `name` — the index groups them but does not sort them. */
   orgs: MemberOrg[];
   /** Everyone in the directory, flat; `orgId` joins each to an organization. */
@@ -40,19 +54,69 @@ export interface DirectoryScreenProps {
   initialOrgId?: string | null;
   /** Opens a role on the job board. Absent leaves a profile's job rows inert. */
   onOpenJob?: (job: JobListing) => void;
+  conversations: ConversationSummary[];
+  activeConversation: ConversationDetail | null;
+  draftRecipient: MessagingParticipant | null;
+  draftGroupParticipants: MessagingParticipant[];
+  messages: MessageItem[];
+  messagesLoading: boolean;
+  messagesError: Error | null;
+  messageSending: boolean;
+  resolvingMemberId: string | null;
+  resolvingGroup: boolean;
+  loadingOlderMessages: boolean;
+  hasOlderMessages: boolean;
+  messageActionPending: boolean;
+  onOpenConversation: (conversationId: string) => void;
+  onStartMessage: (memberId: string) => void;
+  onStartGroupMessage: (memberIds: string[]) => Promise<void>;
+  onCloseConversation: () => void;
+  onRetryConversation: () => void;
+  onSendMessage: (content: string) => Promise<void>;
+  onLoadOlderMessages: () => Promise<void>;
+  onSetMessageReaction: (messageId: string, emoji: MessageReaction, active: boolean) => Promise<void>;
+  onRenameConversation: (title: string) => Promise<void>;
+  onAddConversationMembers: (participantIds: string[]) => Promise<void>;
+  onLeaveConversation: () => Promise<void>;
 }
 
 export default function DirectoryScreen({
+  member,
   orgs,
   people,
   jobs,
   initialOrgId = null,
   onOpenJob,
+  conversations,
+  activeConversation,
+  draftRecipient,
+  draftGroupParticipants,
+  messages,
+  messagesLoading,
+  messagesError,
+  messageSending,
+  resolvingMemberId,
+  resolvingGroup,
+  loadingOlderMessages,
+  hasOlderMessages,
+  messageActionPending,
+  onOpenConversation,
+  onStartMessage,
+  onStartGroupMessage,
+  onCloseConversation,
+  onRetryConversation,
+  onSendMessage,
+  onLoadOlderMessages,
+  onSetMessageReaction,
+  onRenameConversation,
+  onAddConversationMembers,
+  onLeaveConversation,
 }: DirectoryScreenProps) {
   const { t } = useTheme();
 
   const [query, setQuery] = useState('');
   const [orgId, setOrgId] = useState<string | null>(initialOrgId);
+  const [section, setSection] = useState<DirectoryTab>('directory');
 
   const q = query.trim().toLowerCase();
   const openOrg = orgId ? orgs.find((o) => o.id === orgId) ?? null : null;
@@ -89,7 +153,13 @@ export default function DirectoryScreen({
 
   const orgCount = matchedOrgs.length;
 
-  if (openOrg) {
+  const openMessagesFor = (memberId: string) => {
+    setOrgId(null);
+    setSection('messages');
+    onStartMessage(memberId);
+  };
+
+  if (openOrg && section === 'directory') {
     return (
       <OrgProfile
         org={openOrg}
@@ -97,6 +167,7 @@ export default function DirectoryScreen({
         jobs={jobsForOrg(jobs, openOrg)}
         onBack={() => setOrgId(null)}
         onOpenJob={onOpenJob}
+        onMessagePerson={openMessagesFor}
       />
     );
   }
@@ -104,27 +175,89 @@ export default function DirectoryScreen({
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
       <ScreenHeader title="Directory">
-        <View
-          style={[
-            styles.searchBar,
-            { backgroundColor: t.surfacePage, borderColor: t.ruleHairline },
-          ]}
-        >
-          <MagnifyingGlass size={15} color={t.inkMuted} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search organizations or people"
-            placeholderTextColor={t.inkFaint}
-            style={[styles.searchInput, { color: t.inkStrong }]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
+        <View style={styles.tabs}>
+          {(
+            [
+              ['directory', 'Members'],
+              ['messages', 'Messages'],
+            ] as [DirectoryTab, string][]
+          ).map(([id, label]) => {
+            const selected = section === id;
+            const unread = id === 'messages'
+              ? conversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
+              : 0;
+            return (
+              <Pressable
+                key={id}
+                onPress={() => setSection(id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                style={[styles.tab, { borderBottomColor: selected ? t.surfaceAnchor : 'transparent' }]}
+              >
+                <Text style={[styles.tabLabel, { color: selected ? t.inkStrong : t.inkFaint }]}>{label}</Text>
+                {unread > 0 && (
+                  <View style={[styles.tabBadge, { backgroundColor: t.brandGreen }]}>
+                    <Text style={[styles.tabBadgeText, { color: t.inkInverse }]}>{unread > 9 ? '9+' : unread}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
         </View>
+        {section === 'directory' && (
+          <View
+            style={[
+              styles.searchBar,
+              { backgroundColor: t.surfacePage, borderColor: t.ruleHairline },
+            ]}
+          >
+            <MagnifyingGlass size={15} color={t.inkMuted} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search organizations or people"
+              placeholderTextColor={t.inkFaint}
+              style={[styles.searchInput, { color: t.inkStrong }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+        )}
       </ScreenHeader>
 
+      {section === 'messages' ? (
+        <MessagesInbox
+          member={member}
+          people={people}
+          orgs={orgs}
+          conversations={conversations}
+          activeConversation={activeConversation}
+          draftRecipient={draftRecipient}
+          draftGroupParticipants={draftGroupParticipants}
+          messages={messages}
+          loading={messagesLoading}
+          error={messagesError}
+          sending={messageSending}
+          resolvingMemberId={resolvingMemberId}
+          resolvingGroup={resolvingGroup}
+          loadingOlderMessages={loadingOlderMessages}
+          hasOlderMessages={hasOlderMessages}
+          actionPending={messageActionPending}
+          onOpenConversation={onOpenConversation}
+          onStartMessage={openMessagesFor}
+          onStartGroupMessage={onStartGroupMessage}
+          onCloseConversation={onCloseConversation}
+          onRetryConversation={onRetryConversation}
+          onSend={onSendMessage}
+          onLoadOlder={onLoadOlderMessages}
+          onSetReaction={onSetMessageReaction}
+          onRename={onRenameConversation}
+          onAddMembers={onAddConversationMembers}
+          onLeave={onLeaveConversation}
+        />
+      ) : (
       <ScrollView
         style={{ backgroundColor: t.surfacePaper }}
         contentContainerStyle={styles.list}
@@ -156,27 +289,35 @@ export default function DirectoryScreen({
         ))}
 
         {matchedPeople.map((p) => (
-          <Pressable
+          <View
             key={p.id}
-            onPress={() => setOrgId(p.orgId)}
-            accessibilityRole="button"
-            style={({ pressed }) => [
+            style={[
               styles.row,
               {
                 borderBottomColor: t.ruleHairline,
                 borderLeftColor: t.ruleStrong,
-                backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
               },
             ]}
           >
-            <View style={styles.rowMain}>
-              <Text style={[styles.rowName, { color: t.inkStrong }]}>{p.name}</Text>
-              <Text numberOfLines={1} style={[styles.rowSub, { color: t.inkMuted }]}>
-                {p.meta}
-              </Text>
-            </View>
-            <CaretRight size={14} color={t.ruleStrong} />
-          </Pressable>
+            <Pressable onPress={() => setOrgId(p.orgId)} style={styles.personMain} accessibilityRole="button">
+              <View style={styles.rowMain}>
+                <Text style={[styles.rowName, { color: t.inkStrong }]}>{p.name}</Text>
+                <Text numberOfLines={1} style={[styles.rowSub, { color: t.inkMuted }]}>
+                  {p.meta}
+                </Text>
+              </View>
+              <CaretRight size={14} color={t.ruleStrong} />
+            </Pressable>
+            <Pressable
+              onPress={() => openMessagesFor(p.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${p.name}`}
+              hitSlop={6}
+              style={styles.messageAction}
+            >
+              <Text style={[styles.messageActionText, { color: t.brandGreen }]}>Message</Text>
+            </Pressable>
+          </View>
         ))}
 
         {orgCount === 0 && matchedPeople.length === 0 && (
@@ -185,12 +326,19 @@ export default function DirectoryScreen({
           </Text>
         )}
       </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+
+  tabs: { flexDirection: 'row', gap: 22, paddingTop: 4 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 8, borderBottomWidth: 2 },
+  tabLabel: { fontFamily: sans(600), fontSize: 13 },
+  tabBadge: { minWidth: 19, height: 19, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  tabBadgeText: { fontFamily: sans(600), fontSize: 9.5 },
 
   searchBar: {
     flexDirection: 'row',
@@ -223,9 +371,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
   },
   rowMain: { flex: 1, minWidth: 0 },
+  personMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowName: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
   rowSub: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   rowCount: { fontFamily: sans(500), fontSize: 12, fontVariant: ['tabular-nums'] },
+  messageAction: { paddingVertical: 6, paddingLeft: 4 },
+  messageActionText: { fontFamily: sans(600), fontSize: 11.5 },
 
   empty: {
     paddingVertical: 40,

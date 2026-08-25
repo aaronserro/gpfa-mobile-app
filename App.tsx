@@ -31,6 +31,7 @@ import NewsScreen from './src/screens/NewsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import {
+  addMessageConversationMembers,
   castVote,
   createPost as createPostRequest,
   createReply,
@@ -44,10 +45,12 @@ import {
   getLibrary,
   getMe,
   getMemberReposts,
+  getMessageConversation,
+  getMessageConversations,
+    leaveMessageConversation,
   getNextEvent,
   getNotifications,
   getPodcasts,
-  getSavedResources,
   getWorkingGroupCoLeadMembers,
   getWorkingGroupDirectoryMembers,
   getWorkingGroupResources,
@@ -56,6 +59,12 @@ import {
   getWorkingGroupMembership,
   getWorkingGroupFeedItemDetail,
   markNotificationsRead,
+  markMessageConversationRead,
+  renameMessageConversation,
+  resolveDirectMessageConversation,
+  resolveGroupMessageConversation,
+  sendMemberMessage,
+  setMessageReaction,
   setRsvp as setRsvpRequest,
   setReposted as setRepostedRequest,
   setSubscribed as setSubscribedRequest,
@@ -69,6 +78,8 @@ import {
 import { useQuery } from './src/api/useQuery';
 import { getAccessToken } from './src/api/tokens';
 import type {
+  ConversationDetail,
+  ConversationSummary,
   FeedEntry,
   ForumAttachment,
   GroupMember,
@@ -77,6 +88,9 @@ import type {
   MemberNotification,
   MemberOrg,
   MemberRepost,
+  MessageItem,
+  MessageReaction,
+  MessagingParticipant,
   NewPostInput,
   NewsStory,
   Reply,
@@ -163,6 +177,20 @@ function Portal() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [localNotifications, setLocalNotifications] = useState<MemberNotification[]>([]);
   const [pendingNotifications, setPendingNotifications] = useState<Record<string, boolean | undefined>>({});
+  const [messageConversations, setMessageConversations] = useState<ConversationSummary[]>([]);
+  const [activeMessageConversationId, setActiveMessageConversationId] = useState<string | null>(null);
+  const [activeMessageConversation, setActiveMessageConversation] = useState<ConversationDetail | null>(null);
+  const [draftMessageRecipient, setDraftMessageRecipient] = useState<MessagingParticipant | null>(null);
+  const [draftGroupParticipants, setDraftGroupParticipants] = useState<MessagingParticipant[]>([]);
+  const [messageItems, setMessageItems] = useState<MessageItem[]>([]);
+  const [messageConversationLoading, setMessageConversationLoading] = useState(false);
+  const [messageConversationError, setMessageConversationError] = useState<Error | null>(null);
+  const [messageSending, setMessageSending] = useState(false);
+  const [resolvingMessageMemberId, setResolvingMessageMemberId] = useState<string | null>(null);
+  const [resolvingMessageGroup, setResolvingMessageGroup] = useState(false);
+  const [messageLoadingOlder, setMessageLoadingOlder] = useState(false);
+  const [messageHasOlder, setMessageHasOlder] = useState(false);
+  const [messageActionPending, setMessageActionPending] = useState(false);
 
   // Portal data. Member-scoped ready routes wait for sign-in; the rest can stay
   // fixture-backed while EXPO_PUBLIC_FIXTURE_PORTAL_DATA is true.
@@ -179,9 +207,21 @@ function Portal() {
   );
   const podcastQuery = useQuery(getPodcasts, []);
   const jobsQuery = useQuery(getJobs, []);
-  const orgsQuery = useQuery(getMemberOrgs, []);
-  const directoryPeopleQuery = useQuery(getDirectoryPeople, []);
-  const savedQuery = useQuery(getSavedResources, []);
+  const orgsQuery = useQuery(
+    () => (isSignedIn ? getMemberOrgs() : Promise.resolve([])),
+    [isSignedIn]
+  );
+  const directoryPeopleQuery = useQuery(
+    () => (isSignedIn ? getDirectoryPeople() : Promise.resolve([])),
+    [isSignedIn]
+  );
+  const messageConversationsQuery = useQuery(
+    () =>
+      isSignedIn
+        ? getMessageConversations()
+        : Promise.resolve({ status: 'success' as const, conversations: [], totalUnread: 0 }),
+    [isSignedIn]
+  );
   const shouldLoadReposts = isSignedIn && (profileSheetOpen || profileOpen);
   const repostsQuery = useQuery(
     () =>
@@ -195,12 +235,28 @@ function Portal() {
     [isSignedIn]
   );
 
+  // DataGate blocks member-dependent screens until this query resolves.
+  const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
+
   useEffect(() => {
     setLocalNotifications(notificationsQuery.data ?? []);
   }, [notificationsQuery.data]);
 
   useEffect(() => {
     if (!isSignedIn) setLocalNotifications([]);
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    setMessageConversations(messageConversationsQuery.data?.conversations ?? []);
+  }, [messageConversationsQuery.data]);
+
+  useEffect(() => {
+    if (isSignedIn) return;
+    setActiveMessageConversationId(null);
+    setActiveMessageConversation(null);
+    setDraftMessageRecipient(null);
+    setDraftGroupParticipants([]);
+    setMessageItems([]);
   }, [isSignedIn]);
 
   // What another screen asked Resources to open: an episode from the
@@ -264,6 +320,298 @@ function Portal() {
     setTab('directory');
   }, []);
 
+  const openMessageConversation = useCallback(async (conversationId: string) => {
+    setActiveMessageConversationId(conversationId);
+    setActiveMessageConversation(null);
+    setDraftMessageRecipient(null);
+    setDraftGroupParticipants([]);
+    setMessageItems([]);
+    setMessageConversationError(null);
+    setMessageConversationLoading(true);
+    setMessageConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+      )
+    );
+
+    try {
+      const response = await getMessageConversation(conversationId, { limit: 50 });
+      setActiveMessageConversation(response.conversation);
+      setMessageItems(response.messages);
+      setMessageHasOlder(response.messages.length === 50 && (response.messages[0]?.ordinal ?? 0) > 1);
+      if (response.latestOrdinal > response.conversation.lastReadOrdinal) {
+        void markMessageConversationRead(conversationId, response.latestOrdinal).catch(() => undefined);
+      }
+    } catch (cause) {
+      setMessageConversationError(
+        cause instanceof Error ? cause : new Error('The conversation could not be loaded.')
+      );
+    } finally {
+      setMessageConversationLoading(false);
+    }
+  }, []);
+
+  const startMessageConversation = useCallback(
+    async (memberId: string) => {
+      if (resolvingMessageMemberId) return;
+      setResolvingMessageMemberId(memberId);
+      setMessageConversationError(null);
+      try {
+        const result = await resolveDirectMessageConversation(memberId);
+        if (result.conversationId) {
+          await openMessageConversation(result.conversationId);
+          return;
+        }
+        setActiveMessageConversationId(null);
+        setActiveMessageConversation(null);
+        setDraftMessageRecipient(result.recipient);
+        setDraftGroupParticipants([]);
+        setMessageItems([]);
+      } catch (cause) {
+        setMessageConversationError(
+          cause instanceof Error ? cause : new Error('That member could not be opened.')
+        );
+      } finally {
+        setResolvingMessageMemberId(null);
+      }
+    },
+    [openMessageConversation, resolvingMessageMemberId]
+  );
+
+  const startGroupMessageConversation = useCallback(
+    async (memberIds: string[]) => {
+      if (resolvingMessageGroup) return;
+      setResolvingMessageGroup(true);
+      setMessageConversationError(null);
+      try {
+        const result = await resolveGroupMessageConversation(memberIds);
+        if (result.conversationId) {
+          await openMessageConversation(result.conversationId);
+          return;
+        }
+
+        const people = directoryPeopleQuery.data ?? [];
+        const organizations = new Map((orgsQuery.data ?? []).map((org) => [org.id, org.short]));
+        const participants = memberIds.map((memberId) => {
+          const person = people.find((candidate) => candidate.id === memberId);
+          if (!person) throw new Error('One of those members is no longer available.');
+          return {
+            id: person.id,
+            name: person.name,
+            avatarUrl: person.photoUrl ?? null,
+            roleTitle: person.role || null,
+            organizationName: organizations.get(person.orgId) ?? null,
+            isCurrentMember: false,
+            isAvailable: true,
+            hasLeft: false,
+          } satisfies MessagingParticipant;
+        });
+        setActiveMessageConversationId(null);
+        setActiveMessageConversation(null);
+        setDraftMessageRecipient(null);
+        setDraftGroupParticipants(participants);
+        setMessageItems([]);
+        setMessageHasOlder(false);
+      } catch (cause) {
+        const error = cause instanceof Error ? cause : new Error('The group message could not be opened.');
+        setMessageConversationError(error);
+        throw error;
+      } finally {
+        setResolvingMessageGroup(false);
+      }
+    },
+    [directoryPeopleQuery.data, openMessageConversation, orgsQuery.data, resolvingMessageGroup]
+  );
+
+  const closeMessageConversation = useCallback(() => {
+    setActiveMessageConversationId(null);
+    setActiveMessageConversation(null);
+    setDraftMessageRecipient(null);
+    setDraftGroupParticipants([]);
+    setMessageItems([]);
+    setMessageConversationError(null);
+    setMessageHasOlder(false);
+  }, []);
+
+  const retryMessageConversation = useCallback(() => {
+    if (activeMessageConversationId) {
+      void openMessageConversation(activeMessageConversationId);
+      return;
+    }
+    messageConversationsQuery.refetch();
+  }, [activeMessageConversationId, messageConversationsQuery.refetch, openMessageConversation]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const beforeOrdinal = messageItems[0]?.ordinal;
+    if (!activeMessageConversationId || !beforeOrdinal || messageLoadingOlder || !messageHasOlder) return;
+    setMessageLoadingOlder(true);
+    try {
+      const response = await getMessageConversation(activeMessageConversationId, {
+        beforeOrdinal,
+        limit: 50,
+      });
+      setMessageItems((current) => {
+        const currentIds = new Set(current.map((message) => message.id));
+        return [...response.messages.filter((message) => !currentIds.has(message.id)), ...current];
+      });
+      setMessageHasOlder(response.messages.length === 50 && (response.messages[0]?.ordinal ?? 0) > 1);
+    } finally {
+      setMessageLoadingOlder(false);
+    }
+  }, [activeMessageConversationId, messageHasOlder, messageItems, messageLoadingOlder]);
+
+  const toggleMessageReaction = useCallback(
+    async (messageId: string, emoji: MessageReaction, active: boolean) => {
+      const previous = messageItems;
+      setMessageItems((current) => updateMessageReaction(current, messageId, emoji, active));
+      try {
+        await setMessageReaction({ messageId, emoji, active });
+      } catch (cause) {
+        setMessageItems(previous);
+        throw cause;
+      }
+    },
+    [messageItems]
+  );
+
+  const renameActiveMessageConversation = useCallback(async (title: string) => {
+    if (!activeMessageConversationId || activeMessageConversation?.kind !== 'group') return;
+    setMessageActionPending(true);
+    try {
+      const response = await renameMessageConversation(activeMessageConversationId, title);
+      setActiveMessageConversation((current) => current ? { ...current, title: response.title } : current);
+      setMessageConversations((current) => current.map((conversation) =>
+        conversation.id === activeMessageConversationId
+          ? { ...conversation, title: response.title }
+          : conversation
+      ));
+    } finally {
+      setMessageActionPending(false);
+    }
+  }, [activeMessageConversation?.kind, activeMessageConversationId]);
+
+  const addActiveMessageConversationMembers = useCallback(async (participantIds: string[]) => {
+    if (!activeMessageConversationId || activeMessageConversation?.kind !== 'group') return;
+    setMessageActionPending(true);
+    try {
+      await addMessageConversationMembers(activeMessageConversationId, participantIds);
+      const afterOrdinal = messageItems.at(-1)?.ordinal ?? 0;
+      const response = await getMessageConversation(activeMessageConversationId, {
+        afterOrdinal,
+        limit: 50,
+      });
+      setActiveMessageConversation(response.conversation);
+      setMessageItems((current) => mergeMessages(current, response.messages));
+    } finally {
+      setMessageActionPending(false);
+    }
+  }, [activeMessageConversation?.kind, activeMessageConversationId, messageItems]);
+
+  const leaveActiveMessageConversation = useCallback(async () => {
+    if (!activeMessageConversationId || activeMessageConversation?.kind !== 'group') return;
+    const conversationId = activeMessageConversationId;
+    setMessageActionPending(true);
+    try {
+      await leaveMessageConversation(conversationId);
+      setMessageConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
+      closeMessageConversation();
+      messageConversationsQuery.refetch();
+    } finally {
+      setMessageActionPending(false);
+    }
+  }, [activeMessageConversation?.kind, activeMessageConversationId, closeMessageConversation, messageConversationsQuery.refetch]);
+
+  const sendMessage = useCallback(
+    async (content: string) => {
+      if (!activeMessageConversationId && !draftMessageRecipient && draftGroupParticipants.length === 0) {
+        throw new Error('Choose a member to message.');
+      }
+
+      setMessageSending(true);
+      try {
+        const response = await sendMemberMessage({
+          ...(activeMessageConversationId
+            ? { conversationId: activeMessageConversationId }
+            : {
+                participantIds: draftMessageRecipient
+                  ? [draftMessageRecipient.id]
+                  : draftGroupParticipants.map((participant) => participant.id),
+              }),
+          content,
+          clientNonce: createClientNonce(),
+        });
+        const currentParticipant: MessagingParticipant = {
+          id: member.id,
+          name: member.name,
+          avatarUrl: null,
+          roleTitle: member.role ?? null,
+          organizationName: member.org,
+          isCurrentMember: true,
+          isAvailable: true,
+          hasLeft: false,
+        };
+        const draftParticipants = draftMessageRecipient
+          ? [draftMessageRecipient]
+          : draftGroupParticipants;
+        const detail = activeMessageConversation ?? {
+          id: response.conversationId,
+          kind: draftParticipants.length > 1 ? 'group' as const : 'direct' as const,
+          title: null,
+          participants: [currentParticipant, ...draftParticipants],
+          lastReadOrdinal: 0,
+        };
+        const committedDetail = {
+          ...detail,
+          id: response.conversationId,
+          lastReadOrdinal: response.message.ordinal,
+        };
+
+        setActiveMessageConversationId(response.conversationId);
+        setActiveMessageConversation(committedDetail);
+        setDraftMessageRecipient(null);
+        setDraftGroupParticipants([]);
+        setMessageItems((current) => [...current, response.message]);
+        setMessageConversations((current) => {
+          const existing = current.find((conversation) => conversation.id === response.conversationId);
+          const updated: ConversationSummary = existing
+            ? {
+                ...existing,
+                lastMessage: response.message,
+                lastMessageAt: response.message.createdAt,
+                lastReadOrdinal: response.message.ordinal,
+                unreadCount: 0,
+              }
+            : {
+                id: response.conversationId,
+                kind: committedDetail.kind,
+                title: committedDetail.title,
+                participants: committedDetail.participants,
+                lastMessage: response.message,
+                lastMessageAt: response.message.createdAt,
+                lastReaction: null,
+                lastReadOrdinal: response.message.ordinal,
+                unreadCount: 0,
+              };
+          return [updated, ...current.filter((conversation) => conversation.id !== response.conversationId)];
+        });
+        messageConversationsQuery.refetch();
+      } finally {
+        setMessageSending(false);
+      }
+    },
+    [
+      activeMessageConversation,
+      activeMessageConversationId,
+      draftMessageRecipient,
+      draftGroupParticipants,
+      member.id,
+      member.name,
+      member.org,
+      member.role,
+      messageConversationsQuery.refetch,
+    ]
+  );
+
   const signOutForTesting = useCallback(() => {
     setProfileSheetOpen(false);
     setProfileOpen(false);
@@ -276,9 +624,6 @@ function Portal() {
     if (story.url) void Linking.openURL(story.url);
   }, []);
 
-  // DataGate blocks these screens until the member resolves, so the fallback
-  // only exists to satisfy the type before the first response lands.
-  const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const myGroups = useMemo(
     () => groups.filter((group) => subscribed[group.id] ?? group.joined),
@@ -950,8 +1295,41 @@ function Portal() {
                   orgs={orgsQuery.data ?? []}
                   people={directoryPeopleQuery.data ?? []}
                   jobs={jobsQuery.data ?? []}
+                  member={member}
                   initialOrgId={directoryRequest?.orgId ?? null}
                   onOpenJob={(job) => openInResources('job', job.id)}
+                  conversations={messageConversations}
+                  activeConversation={activeMessageConversation}
+                  draftRecipient={draftMessageRecipient}
+                  draftGroupParticipants={draftGroupParticipants}
+                  messages={messageItems}
+                  messagesLoading={
+                    messageConversationLoading ||
+                    (messageConversationsQuery.loading && messageConversations.length === 0)
+                  }
+                  messagesError={
+                    messageConversationError ??
+                    (messageConversationsQuery.error instanceof Error
+                      ? messageConversationsQuery.error
+                      : null)
+                  }
+                  messageSending={messageSending}
+                  resolvingMemberId={resolvingMessageMemberId}
+                  resolvingGroup={resolvingMessageGroup}
+                  loadingOlderMessages={messageLoadingOlder}
+                  hasOlderMessages={messageHasOlder}
+                  messageActionPending={messageActionPending}
+                  onOpenConversation={(id) => void openMessageConversation(id)}
+                  onStartMessage={(id) => void startMessageConversation(id)}
+                  onStartGroupMessage={startGroupMessageConversation}
+                  onCloseConversation={closeMessageConversation}
+                  onRetryConversation={retryMessageConversation}
+                  onSendMessage={sendMessage}
+                  onLoadOlderMessages={loadOlderMessages}
+                  onSetMessageReaction={toggleMessageReaction}
+                  onRenameConversation={renameActiveMessageConversation}
+                  onAddConversationMembers={addActiveMessageConversationMembers}
+                  onLeaveConversation={leaveActiveMessageConversation}
                 />
               </DataGate>
             )}
@@ -961,23 +1339,20 @@ function Portal() {
             {profileOpen && (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
                 <DataGate
-                  loading={meQuery.loading || savedQuery.loading || repostsQuery.loading || orgsQuery.loading}
-                  error={meQuery.error ?? savedQuery.error ?? repostsQuery.error ?? orgsQuery.error}
+                  loading={meQuery.loading || repostsQuery.loading || orgsQuery.loading}
+                  error={meQuery.error ?? repostsQuery.error ?? orgsQuery.error}
                   onRetry={() => {
                     meQuery.refetch();
-                    savedQuery.refetch();
                     repostsQuery.refetch();
                     orgsQuery.refetch();
                   }}
                 >
                   <MemberProfileScreen
                     member={member}
-                    saved={savedQuery.data ?? []}
                     reposts={repostsQuery.data ?? []}
                     workingGroups={groups.filter((g) => subscribed[g.id] ?? g.joined).length}
                     org={memberOrg}
                     onBack={() => setProfileOpen(false)}
-                    onOpenResource={openResource}
                     onOpenRepost={openRepost}
                     onOpenOrg={openOrgInDirectory}
                   />
@@ -1142,6 +1517,50 @@ function recordsFrom(value: unknown): Array<Record<string, unknown>> {
 
 function firstStringValue(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
+}
+
+function mergeMessages(current: MessageItem[], incoming: MessageItem[]): MessageItem[] {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((left, right) => left.ordinal - right.ordinal);
+}
+
+function updateMessageReaction(
+  messages: MessageItem[],
+  messageId: string,
+  emoji: MessageReaction,
+  active: boolean
+): MessageItem[] {
+  return messages.map((message) => {
+    if (message.id !== messageId) return message;
+    const existing = message.reactions.find((reaction) => reaction.emoji === emoji);
+    if (!existing && !active) return message;
+    if (!existing) {
+      return {
+        ...message,
+        reactions: [...message.reactions, { emoji, count: 1, reactedByCurrentMember: true }],
+      };
+    }
+    const count = Math.max(0, existing.count + (active ? 1 : -1));
+    return {
+      ...message,
+      reactions: count === 0
+        ? message.reactions.filter((reaction) => reaction.emoji !== emoji)
+        : message.reactions.map((reaction) =>
+            reaction.emoji === emoji
+              ? { ...reaction, count, reactedByCurrentMember: active }
+              : reaction
+          ),
+    };
+  });
+}
+
+function createClientNonce(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const value = Math.floor(Math.random() * 16);
+    const nibble = character === 'x' ? value : (value & 0x3) | 0x8;
+    return nibble.toString(16);
+  });
 }
 
 export default function App() {
