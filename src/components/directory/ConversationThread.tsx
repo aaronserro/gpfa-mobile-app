@@ -167,7 +167,7 @@ export default function ConversationThread({
       </View>
 
       {actionError && !managing && (
-        <View style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}> 
+        <View style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
           <Text style={[styles.inlineErrorText, { color: t.brandRed }]}>{actionError}</Text>
         </View>
       )}
@@ -200,11 +200,11 @@ export default function ConversationThread({
 
           <Text style={[styles.manageHeading, { color: t.inkStrong }]}>Participants</Text>
           {participants.map((participant) => (
-            <View key={participant.id} style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}> 
+            <View key={participant.id} style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}>
               <Avatar initials={initials(participant.name)} photoUrl={participant.avatarUrl ?? undefined} size={32} />
               <View style={styles.memberText}>
                 <Text style={[styles.memberName, { color: t.inkStrong }]}>{participant.name}</Text>
-                <Text style={[styles.memberMeta, { color: t.inkMuted }]}> 
+                <Text style={[styles.memberMeta, { color: t.inkMuted }]}>
                   {participant.hasLeft ? 'Left conversation' : participant.organizationName ?? participant.roleTitle ?? 'GPFA member'}
                 </Text>
               </View>
@@ -232,11 +232,11 @@ export default function ConversationThread({
                     <Avatar initials={person.initials ?? initials(person.name)} photoUrl={person.photoUrl} size={32} />
                     <View style={styles.memberText}>
                       <Text style={[styles.memberName, { color: t.inkStrong }]}>{person.name}</Text>
-                      <Text numberOfLines={1} style={[styles.memberMeta, { color: t.inkMuted }]}> 
+                      <Text numberOfLines={1} style={[styles.memberMeta, { color: t.inkMuted }]}>
                         {[person.role, orgById.get(person.orgId)].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
-                    <View style={[styles.selectCircle, { borderColor: selected ? t.brandGreen : t.ruleStrong, backgroundColor: selected ? t.brandGreen : 'transparent' }]}> 
+                    <View style={[styles.selectCircle, { borderColor: selected ? t.brandGreen : t.ruleStrong, backgroundColor: selected ? t.brandGreen : 'transparent' }]}>
                       {selected && <Text style={[styles.selectMark, { color: t.inkInverse }]}>✓</Text>}
                     </View>
                   </Pressable>
@@ -250,7 +250,7 @@ export default function ConversationThread({
                 disabled={selectedMemberIds.length === 0 || actionPending}
                 style={[styles.wideAction, { backgroundColor: selectedMemberIds.length === 0 || actionPending ? t.surfaceSoft : t.brandGreen }]}
               >
-                <Text style={[styles.primaryActionLabel, { color: selectedMemberIds.length === 0 || actionPending ? t.inkFaint : t.inkInverse }]}> 
+                <Text style={[styles.primaryActionLabel, { color: selectedMemberIds.length === 0 || actionPending ? t.inkFaint : t.inkInverse }]}>
                   Add {selectedMemberIds.length || ''} {selectedMemberIds.length === 1 ? 'member' : 'members'}
                 </Text>
               </Pressable>
@@ -269,7 +269,7 @@ export default function ConversationThread({
             disabled={actionPending}
             style={[styles.leaveAction, { borderColor: t.brandRed }]}
           >
-            <Text style={[styles.leaveLabel, { color: t.brandRed }]}> 
+            <Text style={[styles.leaveLabel, { color: t.brandRed }]}>
               {confirmLeave ? 'Tap again to leave' : 'Leave conversation'}
             </Text>
           </Pressable>
@@ -374,7 +374,7 @@ export default function ConversationThread({
                     </View>
                   )}
                   {reactionPickerMessageId === message.id && (
-                    <View style={[styles.reactionPicker, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}> 
+                    <View style={[styles.reactionPicker, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
                       {REACTIONS.map((emoji) => {
                         const existing = message.reactions.find((reaction) => reaction.emoji === emoji);
                         return (
@@ -410,8 +410,8 @@ export default function ConversationThread({
       )}
 
       {!managing && (
-      <View style={[styles.composer, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}> 
-        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: sendError ? t.brandRed : t.ruleHairline }]}> 
+      <View style={[styles.composer, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: sendError ? t.brandRed : t.ruleHairline }]}>
           <TextInput
             value={content}
             onChangeText={(value) => {

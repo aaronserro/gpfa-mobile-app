@@ -41,6 +41,8 @@ export function jobsForOrg(jobs: JobListing[], org: MemberOrg): JobListing[] {
 
 export interface DirectoryScreenProps {
   member: Member;
+  /** Returns from the Directory root to its parent navigation surface. */
+  onBack?: () => void;
   /** Alphabetical by `name` — the index groups them but does not sort them. */
   orgs: MemberOrg[];
   /** Everyone in the directory, flat; `orgId` joins each to an organization. */
@@ -82,6 +84,7 @@ export interface DirectoryScreenProps {
 
 export default function DirectoryScreen({
   member,
+  onBack,
   orgs,
   people,
   jobs,
@@ -174,7 +177,7 @@ export default function DirectoryScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
-      <ScreenHeader title="Directory">
+      <ScreenHeader title="Directory" onBack={onBack} backLabel="Back to More">
         <View style={styles.tabs}>
           {(
             [

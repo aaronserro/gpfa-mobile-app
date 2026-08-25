@@ -1,35 +1,36 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Icon } from '../ds/icons';
-import { BookOpen, Buildings, ChatCircleDots, House, UsersThree } from '../ds/icons';
+import { Buildings, ChatCircleDots, DotsThree, House, UsersThree } from '../ds/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans } from '../ds/tokens';
 
-export type TabId = 'home' | 'ask' | 'resources' | 'groups' | 'directory';
+export type TabId = 'home' | 'groups' | 'directory' | 'ask' | 'more';
 
 interface TabDef {
   id: TabId;
   label: string;
   Icon: Icon;
-  badge?: number;
 }
 
 const TABS: TabDef[] = [
   { id: 'home', label: 'Home', Icon: House },
-  { id: 'ask', label: 'Ask GPFA', Icon: ChatCircleDots },
-  { id: 'resources', label: 'Resources', Icon: BookOpen },
-  { id: 'groups', label: 'Groups', Icon: UsersThree, badge: 22 },
+  { id: 'groups', label: 'Groups', Icon: UsersThree },
   { id: 'directory', label: 'Directory', Icon: Buildings },
+  { id: 'ask', label: 'Ask GPFA', Icon: ChatCircleDots },
+  { id: 'more', label: 'More', Icon: DotsThree },
 ];
 
 export default function PortalTabBar({
   tab,
   onSelect,
   showBadges,
+  badges = {},
 }: {
   tab: TabId;
   onSelect: (tab: TabId) => void;
   showBadges: boolean;
+  badges?: Partial<Record<TabId, number>>;
 }) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -47,16 +48,17 @@ export default function PortalTabBar({
         },
       ]}
     >
-      {TABS.map(({ id, label, Icon, badge }) => {
+      {TABS.map(({ id, label, Icon }) => {
         const active = tab === id;
         const color = active ? t.brandGreen : t.inkFaint;
+        const badge = badges[id] ?? 0;
         return (
           <Pressable key={id} style={styles.tab} onPress={() => onSelect(id)}>
             <Icon size={23} color={color} weight={active ? 'fill' : 'regular'} />
             <Text style={[styles.label, { color }]}>{label}</Text>
             {showBadges && !!badge && (
               <View style={[styles.badge, { backgroundColor: t.brandBrickInk }]}>
-                <Text style={styles.badgeText}>{badge}</Text>
+                <Text style={styles.badgeText}>{badge > 9 ? '9+' : badge}</Text>
               </View>
             )}
           </Pressable>

@@ -23,13 +23,21 @@ import { PodcastPlayerProvider } from './src/components/podcast/PlayerProvider';
 import ResourceSubmissionComposer from './src/components/groups/ResourceSubmissionComposer';
 import { ThemeProvider, useTheme } from './src/ds/ThemeProvider';
 import AskScreen from './src/screens/AskScreen';
+import AnnualMeetingScreen, { type AnnualMeetingPreview } from './src/screens/AnnualMeetingScreen';
 import DirectoryScreen from './src/screens/DirectoryScreen';
+import EventsScreen, { type EventRsvpState, type MobileEventPreview } from './src/screens/EventsScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
-import HomeScreen from './src/screens/HomeScreen';
+import HomeScreen, { type HomeActionPreview } from './src/screens/HomeScreen';
 import MemberProfileScreen from './src/screens/MemberProfileScreen';
+import MoreScreen from './src/screens/MoreScreen';
 import NewsScreen from './src/screens/NewsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import UpdatesScreen, {
+  type MobileAnnouncementPreview,
+  type MobileSurveyPreview,
+  type UpdateSelection,
+} from './src/screens/UpdatesScreen';
 import {
   addMessageConversationMembers,
   castVote,
@@ -48,7 +56,6 @@ import {
   getMessageConversation,
   getMessageConversations,
     leaveMessageConversation,
-  getNextEvent,
   getNotifications,
   getPodcasts,
   getWorkingGroupCoLeadMembers,
@@ -137,11 +144,189 @@ const EMPTY_GROUP_DETAIL: GroupDetailState = {
   error: null,
 };
 
+// Temporary presentation fixtures let the new information architecture be
+// reviewed before any mobile or web API contract is introduced.
+const MOBILE_EVENTS: MobileEventPreview[] = [
+  {
+    id: 'policy-roundtable',
+    month: 'SEP',
+    day: '04',
+    title: 'Global policy and regulatory roundtable',
+    dateLabel: 'Thursday, September 4, 2026',
+    timeLabel: '9:00–10:30 AM ET',
+    location: 'GPFA Member Forum',
+    format: 'Virtual',
+    type: 'Policy briefing',
+    status: 'upcoming',
+    rsvp: 'attending',
+    registrationOpen: true,
+    summary: 'A member-only briefing on the policy developments shaping private funds across the United States, Europe and Asia.',
+    attendeeCount: 46,
+    joinUrl: 'https://example.com/member-event',
+    agenda: [
+      { time: '9:00 AM', title: 'Market and policy briefing', detail: 'A cross-jurisdiction scan from the GPFA policy team.' },
+      { time: '9:35 AM', title: 'Member roundtable', detail: 'Peer discussion and practical questions.' },
+      { time: '10:15 AM', title: 'Priorities and close' },
+    ],
+  },
+  {
+    id: 'operations-benchmarking',
+    month: 'SEP',
+    day: '11',
+    title: 'Operating model benchmarking exchange',
+    dateLabel: 'Thursday, September 11, 2026',
+    timeLabel: '11:00 AM–12:00 PM ET',
+    location: 'Microsoft Teams',
+    format: 'Virtual',
+    type: 'Peer exchange',
+    status: 'upcoming',
+    rsvp: 'not-responded',
+    registrationOpen: true,
+    summary: 'Compare operating-model priorities with peers and identify the measures members want reflected in the next benchmark.',
+    attendeeCount: 28,
+    agenda: [
+      { time: '11:00 AM', title: 'Benchmark preview' },
+      { time: '11:20 AM', title: 'Facilitated peer exchange' },
+      { time: '11:50 AM', title: 'Next steps' },
+    ],
+  },
+  {
+    id: 'annual-meeting-welcome',
+    month: 'SEP',
+    day: '17',
+    title: 'Annual Meeting welcome and member reception',
+    dateLabel: 'Thursday, September 17, 2026',
+    timeLabel: '5:30–8:00 PM BST',
+    location: 'The Langham, London',
+    format: 'In person',
+    type: 'Annual Meeting',
+    status: 'upcoming',
+    rsvp: 'attending',
+    registrationOpen: true,
+    summary: 'Open the 2026 Annual Meeting with a concise market outlook and an evening of member connection.',
+    attendeeCount: 132,
+    agenda: [
+      { time: '5:30 PM', title: 'Registration and welcome' },
+      { time: '6:00 PM', title: 'Opening perspective' },
+      { time: '6:30 PM', title: 'Member reception' },
+    ],
+  },
+  {
+    id: 'summer-credit-briefing',
+    month: 'JUL',
+    day: '22',
+    title: 'Private credit market briefing',
+    dateLabel: 'Tuesday, July 22, 2026',
+    timeLabel: '10:00–11:00 AM ET',
+    location: 'GPFA Member Forum',
+    format: 'Virtual',
+    type: 'Market briefing',
+    status: 'past',
+    rsvp: 'attending',
+    registrationOpen: false,
+    summary: 'A review of private-credit conditions and emerging portfolio themes.',
+    agenda: [{ time: '10:00 AM', title: 'Briefing and discussion' }],
+  },
+];
+
+const MOBILE_ANNOUNCEMENTS: MobileAnnouncementPreview[] = [
+  {
+    id: 'member-platform-update',
+    title: 'A clearer way to find member activity',
+    summary: 'Events, surveys and essential announcements now have dedicated places in the mobile experience.',
+    dateLabel: 'AUG 26',
+    unread: true,
+    important: true,
+    body: [
+      'The mobile portal is being reorganized around the work members return to most often. Events now sit in the primary navigation, while Annual Meeting information and member updates are grouped under More.',
+      'This preview uses representative content so the navigation, hierarchy and reading experience can be reviewed before any new service integration begins.',
+    ],
+  },
+  {
+    id: 'annual-meeting-materials',
+    title: 'Annual Meeting agenda materials are available',
+    summary: 'Review the first program release and practical travel information for London.',
+    dateLabel: 'AUG 20',
+    unread: true,
+    body: [
+      'The first agenda release includes plenary discussions, working sessions and the member reception. Session details will continue to be refined as speakers are confirmed.',
+      'Registered members can review the program and logistics from the Annual Meeting page in the mobile app.',
+    ],
+  },
+];
+
+const MOBILE_SURVEYS: MobileSurveyPreview[] = [
+  {
+    id: 'operating-priorities',
+    title: '2027 operating priorities pulse',
+    description: 'Help shape the research and peer exchanges GPFA develops for the coming year.',
+    closesLabel: 'CLOSES SEP 12',
+    status: 'not-started',
+    questions: [
+      { id: 'priority', prompt: 'Which operating priority is most important to your organization?', options: ['Data and reporting', 'Technology modernization', 'Talent and operating model', 'Regulatory readiness'] },
+      { id: 'investment', prompt: 'How do you expect related investment to change in 2027?', options: ['Increase significantly', 'Increase modestly', 'Remain stable', 'Decrease'] },
+      { id: 'format', prompt: 'Which GPFA format would be most useful?', options: ['Small peer roundtable', 'Benchmarking report', 'Practitioner briefing', 'Working group series'] },
+    ],
+  },
+];
+
+const ANNUAL_MEETING: AnnualMeetingPreview = {
+  title: '2026 GPFA Annual Meeting',
+  subtitle: 'Perspective, practice and connection across the global private funds community.',
+  dateLabel: 'September 17–18, 2026',
+  location: 'The Langham, London',
+  timezone: 'British Summer Time',
+  summary: 'Two focused days for GPFA members to compare priorities, test practical ideas and build relationships across markets and functions.',
+  registrationStatus: 'Not registered',
+  registrationOpen: true,
+  agenda: [
+    {
+      id: 'day-one',
+      label: 'Day one',
+      date: 'THURSDAY · SEPTEMBER 17',
+      sessions: [
+        { time: '2:00 PM', title: 'Member working sessions', detail: 'Small-group exchanges organized around current member priorities.', location: 'Grand Ballroom' },
+        { time: '5:30 PM', title: 'Welcome and opening perspective', detail: 'A concise outlook for private funds leaders.', location: 'Grand Ballroom' },
+        { time: '6:30 PM', title: 'Member reception', detail: 'An evening for connection across the GPFA community.', location: 'Palm Court' },
+      ],
+    },
+    {
+      id: 'day-two',
+      label: 'Day two',
+      date: 'FRIDAY · SEPTEMBER 18',
+      sessions: [
+        { time: '8:30 AM', title: 'Breakfast briefing', detail: 'Market, policy and operating context.', location: 'Grand Ballroom' },
+        { time: '10:00 AM', title: 'Practitioner forums', detail: 'Concurrent discussions led by GPFA members.', location: 'Meeting suites' },
+        { time: '2:30 PM', title: 'Closing member agenda', detail: 'Priorities and commitments for the year ahead.', location: 'Grand Ballroom' },
+      ],
+    },
+  ],
+  logistics: [
+    { title: 'The Langham, London', detail: '1C Portland Place, Regent Street, London W1B 1JA.' },
+    { title: 'Member room block', detail: 'A limited member rate is available through August 28.' },
+  ],
+};
+
+const HOME_ACTIONS: HomeActionPreview[] = [
+  { id: 'operating-priorities', kind: 'survey', title: 'Complete the 2027 priorities pulse', description: '3 questions · closes September 12', actionLabel: 'Start' },
+  { id: 'annual-meeting', kind: 'annual-meeting', title: 'Register for the Annual Meeting', description: 'September 17–18 · London', actionLabel: 'Register' },
+  { id: 'member-platform-update', kind: 'announcement', title: 'Read the latest member update', description: 'A clearer mobile experience', actionLabel: 'Read' },
+];
+
+type MoreView = 'root' | 'annual-meeting' | 'updates' | 'events' | 'resources';
+
 function Portal() {
   const { t } = useTheme();
 
   const { isSignedIn, status, signOut } = useAuth();
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
+  const [moreView, setMoreView] = useState<MoreView>('root');
+  const [eventRequest, setEventRequest] = useState<{ id: string; n: number } | null>(null);
+  const [updateRequest, setUpdateRequest] = useState<{
+    selection: UpdateSelection | null;
+    n: number;
+  }>({ selection: null, n: 0 });
+  const [previewRsvps, setPreviewRsvps] = useState<Record<string, EventRsvpState | undefined>>({});
   // News Radar is a branch of Home, not a tab — the design's caret returns there.
   const [newsOpen, setNewsOpen] = useState(false);
   // The Resources hub links to it too. Tracked separately so the caret goes
@@ -198,7 +383,6 @@ function Portal() {
     () => (isSignedIn ? getMe() : Promise.resolve(null)),
     [isSignedIn]
   );
-  const eventQuery = useQuery(getNextEvent, []);
   const groupsQuery = useQuery(() => (isSignedIn ? getGroups() : Promise.resolve([])), [isSignedIn]);
   const feedQuery = useQuery(getFeed, []);
   const libraryQuery = useQuery(
@@ -265,13 +449,17 @@ function Portal() {
   // screen — the id alone would leave the key unchanged. One slot, not two, so
   // a later request always supersedes the earlier one.
   const [resourcesRequest, setResourcesRequest] = useState<
-    { kind: 'episode'; id: string; n: number } | { kind: 'job'; id: string; n: number } | null
+    | { kind: 'episode'; id: string; n: number }
+    | { kind: 'job'; id: string; n: number }
+    | { kind: 'job-board'; id: string; n: number }
+    | null
   >(null);
 
   const openInResources = useCallback((kind: 'episode' | 'job', id: string) => {
     setResourcesRequest((prev) => ({ kind, id, n: (prev?.n ?? 0) + 1 }));
     setResourcesNewsOpen(false);
-    setTab('resources');
+    setMoreView('resources');
+    setTab('more');
   }, []);
 
   const openResource = useCallback((resource: LibraryResource) => {
@@ -617,6 +805,7 @@ function Portal() {
     setProfileOpen(false);
     setNotificationsOpen(false);
     setTab('home');
+    setMoreView('root');
     signOut();
   }, [signOut]);
 
@@ -631,6 +820,10 @@ function Portal() {
   );
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
   const dashboardNews = libraryQuery.data?.newsRadar ?? [];
+  const previewEvents = useMemo(
+    () => MOBILE_EVENTS.map((event) => ({ ...event, rsvp: previewRsvps[event.id] ?? event.rsvp })),
+    [previewRsvps]
+  );
   const notifications = localNotifications;
   const unreadNotifications = notifications.filter((n) => !n.read).length;
   const selectedGroupDetail = groupId ? groupDetails[groupId] : undefined;
@@ -1103,7 +1296,12 @@ function Portal() {
     if (next === 'groups') setThreadId(null);
     // Tapping a tab returns to its root, so Home lands on Home and not News.
     if (next === 'home') setNewsOpen(false);
-    if (next === 'resources') setResourcesNewsOpen(false);
+    if (next === 'directory') setDirectoryRequest(null);
+    if (next === 'more') {
+      setMoreView('root');
+      setResourcesNewsOpen(false);
+      setUpdateRequest((current) => ({ selection: null, n: current.n + 1 }));
+    }
   }, []);
 
   return (
@@ -1144,10 +1342,46 @@ function Portal() {
                 ) : (
                   <HomeScreen
                     member={member}
-                    event={eventQuery.data ?? null}
+                    actions={HOME_ACTIONS}
+                    annualMeeting={{
+                      title: ANNUAL_MEETING.title,
+                      dateLabel: ANNUAL_MEETING.dateLabel,
+                      location: ANNUAL_MEETING.location,
+                      status: ANNUAL_MEETING.registrationOpen ? 'Registration open' : 'Member meeting',
+                    }}
+                    events={previewEvents.filter((event) => event.status === 'upcoming')}
                     groups={myGroups}
                     news={dashboardNews}
                     showBadges={SHOW_BADGES}
+                    onOpenAction={(action) => {
+                      if (action.kind === 'annual-meeting') {
+                        setMoreView('annual-meeting');
+                      } else {
+                        setUpdateRequest((current) => ({
+                          selection: {
+                            kind: action.kind === 'survey' ? 'survey' : 'announcement',
+                            id: action.id,
+                          },
+                          n: current.n + 1,
+                        }));
+                        setMoreView('updates');
+                      }
+                      setTab('more');
+                    }}
+                    onOpenAnnualMeeting={() => {
+                      setMoreView('annual-meeting');
+                      setTab('more');
+                    }}
+                    onOpenEvent={(id) => {
+                      setEventRequest((current) => ({ id, n: (current?.n ?? 0) + 1 }));
+                      setMoreView('events');
+                      setTab('more');
+                    }}
+                    onGoEvents={() => {
+                      setEventRequest(null);
+                      setMoreView('events');
+                      setTab('more');
+                    }}
                     onGoNews={() => setNewsOpen(true)}
                     onGoGroups={() => selectTab('groups')}
                     onPickGroup={pickGroup}
@@ -1156,8 +1390,66 @@ function Portal() {
                 )}
               </DataGate>
             )}
+            {tab === 'more' && moreView === 'events' && (
+              <EventsScreen
+                key={eventRequest ? `event-${eventRequest.id}-${eventRequest.n}` : 'events-root'}
+                events={previewEvents}
+                initialEventId={eventRequest?.id ?? null}
+                onBack={() => setMoreView('root')}
+                onRsvp={(id, choice) => {
+                  setPreviewRsvps((current) => ({ ...current, [id]: choice }));
+                }}
+              />
+            )}
+            {tab === 'more' && moreView === 'root' && (
+              <MoreScreen
+                member={member}
+                annualMeetingEnabled
+                annualMeetingStatus={`${ANNUAL_MEETING.dateLabel} · ${ANNUAL_MEETING.registrationStatus}`}
+                updateCount={MOBILE_ANNOUNCEMENTS.filter((item) => item.unread).length + MOBILE_SURVEYS.filter((item) => item.status !== 'submitted').length}
+                eventCount={previewEvents.filter((event) => event.status === 'upcoming').length}
+                resourceCount={libraryQuery.data?.resources.length ?? 0}
+                jobCount={jobsQuery.data?.length ?? 0}
+                onOpenAnnualMeeting={() => setMoreView('annual-meeting')}
+                onOpenUpdates={() => {
+                  setUpdateRequest((current) => ({ selection: null, n: current.n + 1 }));
+                  setMoreView('updates');
+                }}
+                onOpenEvents={() => {
+                  setEventRequest(null);
+                  setMoreView('events');
+                }}
+                onOpenResources={() => {
+                  setResourcesRequest(null);
+                  setResourcesNewsOpen(false);
+                  setMoreView('resources');
+                }}
+                onOpenJobBoard={() => {
+                  setResourcesRequest((current) => ({
+                    kind: 'job-board',
+                    id: 'jobs',
+                    n: (current?.n ?? 0) + 1,
+                  }));
+                  setResourcesNewsOpen(false);
+                  setMoreView('resources');
+                }}
+                onOpenProfile={openProfile}
+              />
+            )}
+            {tab === 'more' && moreView === 'annual-meeting' && (
+              <AnnualMeetingScreen meeting={ANNUAL_MEETING} onBack={() => setMoreView('root')} />
+            )}
+            {tab === 'more' && moreView === 'updates' && (
+              <UpdatesScreen
+                key={`updates-${updateRequest.n}`}
+                announcements={MOBILE_ANNOUNCEMENTS}
+                surveys={MOBILE_SURVEYS}
+                initialSelection={updateRequest.selection}
+                onBack={() => setMoreView('root')}
+              />
+            )}
             {tab === 'ask' && <AskScreen />}
-            {tab === 'resources' && (
+            {tab === 'more' && moreView === 'resources' && (
               <DataGate
                 loading={
                   meQuery.loading ||
@@ -1194,6 +1486,7 @@ function Portal() {
                         : 'resources'
                     }
                     member={member}
+                    onBack={() => setMoreView('root')}
                     resources={libraryQuery.data?.resources ?? []}
                     episodes={podcastQuery.data ?? []}
                     jobs={jobsQuery.data ?? []}
@@ -1201,7 +1494,7 @@ function Portal() {
                     initialView={
                       resourcesRequest?.kind === 'episode'
                         ? 'podcasts'
-                        : resourcesRequest?.kind === 'job'
+                        : resourcesRequest?.kind === 'job' || resourcesRequest?.kind === 'job-board'
                           ? 'jobs'
                           : 'hub'
                     }
@@ -1361,7 +1654,17 @@ function Portal() {
             )}
           </View>
           <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
-          <PortalTabBar tab={tab} onSelect={selectTab} showBadges={SHOW_BADGES} />
+          <PortalTabBar
+            tab={tab}
+            onSelect={selectTab}
+            showBadges={SHOW_BADGES}
+            badges={{
+              groups: myGroups.reduce((total, group) => total + group.unread, 0),
+              more:
+                MOBILE_ANNOUNCEMENTS.filter((item) => item.unread).length +
+                MOBILE_SURVEYS.filter((item) => item.status !== 'submitted').length,
+            }}
+          />
           {profileSheetOpen && !!meQuery.data && (
             <MemberSheet
               member={meQuery.data}

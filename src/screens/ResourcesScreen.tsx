@@ -49,6 +49,8 @@ type Sheet = { kind: 'resource'; id: string } | { kind: 'episode'; slug: string 
 
 export interface ResourcesScreenProps {
   member: Member;
+  /** Returns from the Resources hub to its parent navigation surface. */
+  onBack?: () => void;
   resources: LibraryResource[];
   episodes: PodcastEpisode[];
   jobs: JobListing[];
@@ -72,6 +74,7 @@ export interface ResourcesScreenProps {
 
 export default function ResourcesScreen({
   member,
+  onBack,
   resources,
   episodes,
   jobs,
@@ -158,7 +161,7 @@ export default function ResourcesScreen({
   /* ── hub ──────────────────────────────────────────────────────────────── */
   const hub = (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <ScreenHeader title="Resources" accent="." />
+      <ScreenHeader title="Resources" accent="." onBack={onBack} backLabel="Back to More" />
 
       <View style={styles.hubCards}>
         <HubCard

@@ -251,10 +251,10 @@ export default function MessagesInbox({
             )}
           </ScrollView>
           {groupMode && (
-            <View style={[styles.groupFooter, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}> 
+            <View style={[styles.groupFooter, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
               <View style={styles.groupFooterText}>
                 <Text style={[styles.groupCount, { color: t.inkStrong }]}>{selectedMemberIds.length} selected</Text>
-                <Text style={[styles.groupHint, { color: composeError ? t.brandRed : t.inkMuted }]}> 
+                <Text style={[styles.groupHint, { color: composeError ? t.brandRed : t.inkMuted }]}>
                   {composeError ?? 'Choose 2–7 members.'}
                 </Text>
               </View>

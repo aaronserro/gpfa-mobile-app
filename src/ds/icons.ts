@@ -33,6 +33,7 @@ export { ChatCircleIcon as ChatCircle } from 'phosphor-react-native/lib/commonjs
 export { ChatCircleDotsIcon as ChatCircleDots } from 'phosphor-react-native/lib/commonjs/icons/ChatCircleDots';
 export { CheckCircleIcon as CheckCircle } from 'phosphor-react-native/lib/commonjs/icons/CheckCircle';
 export { DownloadSimpleIcon as DownloadSimple } from 'phosphor-react-native/lib/commonjs/icons/DownloadSimple';
+export { DotsThreeIcon as DotsThree } from 'phosphor-react-native/lib/commonjs/icons/DotsThree';
 export { FileTextIcon as FileText } from 'phosphor-react-native/lib/commonjs/icons/FileText';
 export { FireIcon as Fire } from 'phosphor-react-native/lib/commonjs/icons/Fire';
 export { HashIcon as Hash } from 'phosphor-react-native/lib/commonjs/icons/Hash';
