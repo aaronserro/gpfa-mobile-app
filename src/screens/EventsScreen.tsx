@@ -1,46 +1,35 @@
 import { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ArrowRight, CalendarDots, CheckCircle, MapPin } from '../ds/icons';
+import { ArrowRight, CalendarDots, CheckCircle, DownloadSimple, MapPin } from '../ds/icons';
 import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
+import type { EventRsvpState, MobileEventPreview } from '../api/types';
+import { EventAttendees } from '../components/EventAttendees';
+import { EventMonthCalendar } from '../components/EventMonthCalendar';
 
-export type EventRsvpState = 'attending' | 'not-attending' | 'not-responded';
 export type EventListFilter = 'upcoming' | 'rsvps' | 'past';
-
-export interface MobileEventPreview {
-  id: string;
-  month: string;
-  day: string;
-  title: string;
-  dateLabel: string;
-  timeLabel: string;
-  location: string;
-  format: 'In person' | 'Virtual' | 'Hybrid';
-  type: string;
-  status: 'upcoming' | 'past';
-  rsvp: EventRsvpState;
-  registrationOpen: boolean;
-  summary: string;
-  attendeeCount?: number;
-  joinUrl?: string;
-  agenda: { time: string; title: string; detail?: string }[];
-}
+type EventViewMode = 'list' | 'calendar';
 
 export default function EventsScreen({
   events,
   initialEventId = null,
   onBack,
   onRsvp,
+  onAddToCalendar,
+  onDownloadIcs,
 }: {
   events: MobileEventPreview[];
   initialEventId?: string | null;
   onBack?: () => void;
-  onRsvp: (eventId: string, state: EventRsvpState) => void;
+  onRsvp: (eventId: string, state: EventRsvpState) => void | Promise<void>;
+  onAddToCalendar: (event: MobileEventPreview) => void | Promise<void>;
+  onDownloadIcs: (event: MobileEventPreview) => void | Promise<void>;
 }) {
   const { t } = useTheme();
   const [filter, setFilter] = useState<EventListFilter>('upcoming');
+  const [viewMode, setViewMode] = useState<EventViewMode>('list');
   const [selectedId, setSelectedId] = useState<string | null>(initialEventId);
   const selected = events.find((event) => event.id === selectedId) ?? null;
 
@@ -58,6 +47,8 @@ export default function EventsScreen({
         event={selected}
         onBack={() => setSelectedId(null)}
         onRsvp={(state) => onRsvp(selected.id, state)}
+        onAddToCalendar={() => onAddToCalendar(selected)}
+        onDownloadIcs={() => onDownloadIcs(selected)}
       />
     );
   }
@@ -65,82 +56,108 @@ export default function EventsScreen({
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="Events" onBack={onBack} backLabel="Back to More">
-        <View style={[styles.segment, { backgroundColor: t.surfaceSoft }]}>
-          {(
-            [
-              ['upcoming', 'Upcoming'],
-              ['rsvps', 'My RSVPs'],
-              ['past', 'Past'],
-            ] as [EventListFilter, string][]
-          ).map(([id, label]) => {
-            const active = filter === id;
+        <View style={[styles.viewSegment, { borderColor: t.ruleHairline }]}>
+          {(['list', 'calendar'] as EventViewMode[]).map((mode) => {
+            const active = viewMode === mode;
             return (
               <Pressable
-                key={id}
-                onPress={() => setFilter(id)}
+                key={mode}
+                onPress={() => setViewMode(mode)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
-                style={[styles.segmentButton, active && { backgroundColor: t.surfacePaper }]}
+                style={[styles.viewButton, active && { backgroundColor: t.surfacePaper }]}
               >
-                <Text style={[styles.segmentLabel, { color: active ? t.inkStrong : t.inkMuted }]}>
-                  {label}
+                <Text style={[styles.viewLabel, { color: active ? t.inkStrong : t.inkMuted }]}>
+                  {mode === 'list' ? 'List' : 'Calendar'}
                 </Text>
               </Pressable>
             );
           })}
         </View>
-      </ScreenHeader>
-
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        <View style={styles.introRow}>
-          <View>
-            <Text style={[styles.introTitle, { color: t.inkStrong }]}>Member calendar</Text>
-            <Text style={[styles.introCopy, { color: t.inkMuted }]}>Briefings, meetings and peer sessions.</Text>
-          </View>
-          <MastheadMeta size={10}>{`${visible.length} EVENT${visible.length === 1 ? '' : 'S'}`}</MastheadMeta>
-        </View>
-
-        {visible.length ? (
-          <View style={[styles.eventBand, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-            {visible.map((event, index) => (
-              <Pressable
-                key={event.id}
-                onPress={() => setSelectedId(event.id)}
-                style={({ pressed }) => [
-                  styles.eventRow,
-                  index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                  pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
-                ]}
-              >
-                <DateBlock month={event.month} day={event.day} />
-                <View style={styles.eventBody}>
-                  <View style={styles.metaLine}>
-                    <Text style={[styles.eventType, { color: t.brandAmber }]}>{event.type}</Text>
-                    <MastheadMeta size={9.5}>{event.timeLabel}</MastheadMeta>
-                  </View>
-                  <Text style={[styles.eventTitle, { color: t.inkStrong }]} numberOfLines={2}>{event.title}</Text>
-                  <Text style={[styles.eventLocation, { color: t.inkMuted }]} numberOfLines={1}>
-                    {event.location} · {event.format}
+        {viewMode === 'list' && (
+          <View style={[styles.segment, { backgroundColor: t.surfaceSoft }]}>
+            {(
+              [
+                ['upcoming', 'Upcoming'],
+                ['rsvps', 'My RSVPs'],
+                ['past', 'Past'],
+              ] as [EventListFilter, string][]
+            ).map(([id, label]) => {
+              const active = filter === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => setFilter(id)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  style={[styles.segmentButton, active && { backgroundColor: t.surfacePaper }]}
+                >
+                  <Text style={[styles.segmentLabel, { color: active ? t.inkStrong : t.inkMuted }]}>
+                    {label}
                   </Text>
-                  <View style={styles.badgeRow}>
-                    <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
-                      {rsvpLabel(event.rsvp)}
-                    </Badge>
-                    {event.registrationOpen && <Badge variant="tag-default" size={9}>Registration open</Badge>}
-                  </View>
-                </View>
-                <ArrowRight size={16} color={t.brandGreen} />
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={[styles.empty, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-            <CalendarDots size={28} color={t.inkFaint} />
-            <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No events here yet</Text>
-            <Text style={[styles.emptyCopy, { color: t.inkMuted }]}>Try another view to browse the member calendar.</Text>
+                </Pressable>
+              );
+            })}
           </View>
         )}
-      </ScrollView>
+      </ScreenHeader>
+
+      {viewMode === 'calendar' ? (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <EventMonthCalendar events={events} onSelectEvent={setSelectedId} />
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          <View style={styles.introRow}>
+            <View>
+              <Text style={[styles.introTitle, { color: t.inkStrong }]}>Member calendar</Text>
+              <Text style={[styles.introCopy, { color: t.inkMuted }]}>Briefings, meetings and peer sessions.</Text>
+            </View>
+            <MastheadMeta size={10}>{`${visible.length} EVENT${visible.length === 1 ? '' : 'S'}`}</MastheadMeta>
+          </View>
+
+          {visible.length ? (
+            <View style={[styles.eventBand, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+              {visible.map((event, index) => (
+                <Pressable
+                  key={event.id}
+                  onPress={() => setSelectedId(event.id)}
+                  style={({ pressed }) => [
+                    styles.eventRow,
+                    index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                    pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
+                  ]}
+                >
+                  <DateBlock month={event.month} day={event.day} />
+                  <View style={styles.eventBody}>
+                    <View style={styles.metaLine}>
+                      <Text style={[styles.eventType, { color: t.brandAmber }]}>{event.type}</Text>
+                      <MastheadMeta size={9.5}>{event.timeLabel}</MastheadMeta>
+                    </View>
+                    <Text style={[styles.eventTitle, { color: t.inkStrong }]} numberOfLines={2}>{event.title}</Text>
+                    <Text style={[styles.eventLocation, { color: t.inkMuted }]} numberOfLines={1}>
+                      {event.location} · {event.format}
+                    </Text>
+                    <View style={styles.badgeRow}>
+                      <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
+                        {rsvpLabel(event.rsvp)}
+                      </Badge>
+                      {event.registrationOpen && <Badge variant="tag-default" size={9}>Registration open</Badge>}
+                    </View>
+                  </View>
+                  <ArrowRight size={16} color={t.brandGreen} />
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={[styles.empty, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+              <CalendarDots size={28} color={t.inkFaint} />
+              <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No events here yet</Text>
+              <Text style={[styles.emptyCopy, { color: t.inkMuted }]}>Try another view to browse the member calendar.</Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -149,10 +166,14 @@ function EventDetail({
   event,
   onBack,
   onRsvp,
+  onAddToCalendar,
+  onDownloadIcs,
 }: {
   event: MobileEventPreview;
   onBack: () => void;
   onRsvp: (state: EventRsvpState) => void;
+  onAddToCalendar: () => void | Promise<void>;
+  onDownloadIcs: () => void | Promise<void>;
 }) {
   const { t } = useTheme();
 
@@ -172,9 +193,11 @@ function EventDetail({
         <View style={[styles.factCard, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
           <Fact icon="calendar" label={event.dateLabel} detail={event.timeLabel} />
           <Fact icon="pin" label={event.location} detail={event.format} divided />
-          {!!event.attendeeCount && (
-            <Fact icon="people" label={`${event.attendeeCount} members attending`} detail={rsvpLabel(event.rsvp)} divided />
-          )}
+        </View>
+
+        <SectionHeading label="Attendance" />
+        <View style={[styles.attendeeCard, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+          <EventAttendees count={event.attendeeCount} attendees={event.attendees} />
         </View>
 
         <SectionHeading label="Agenda" />
@@ -199,6 +222,23 @@ function EventDetail({
             <ArrowRight size={16} color={t.brandGreen} />
           </Pressable>
         )}
+
+        <View style={styles.calendarActions}>
+          <Pressable
+            onPress={() => void onAddToCalendar()}
+            style={[styles.secondaryAction, styles.calendarAction, { borderColor: t.ruleStrong }]}
+          >
+            <CalendarDots size={17} color={t.brandGreen} />
+            <Text style={[styles.secondaryActionText, { color: t.brandGreen }]}>Add to calendar</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void onDownloadIcs()}
+            style={[styles.secondaryAction, styles.calendarAction, { borderColor: t.ruleStrong }]}
+          >
+            <DownloadSimple size={17} color={t.brandGreen} />
+            <Text style={[styles.secondaryActionText, { color: t.brandGreen }]}>Download .ics</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       {event.status === 'upcoming' && event.registrationOpen && (
@@ -238,13 +278,13 @@ function Fact({
   detail,
   divided = false,
 }: {
-  icon: 'calendar' | 'pin' | 'people';
+  icon: 'calendar' | 'pin';
   label: string;
   detail: string;
   divided?: boolean;
 }) {
   const { t } = useTheme();
-  const Icon = icon === 'calendar' ? CalendarDots : icon === 'pin' ? MapPin : CheckCircle;
+  const Icon = icon === 'calendar' ? CalendarDots : MapPin;
   return (
     <View style={[styles.factRow, divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}>
       <Icon size={19} color={t.brandGreen} />
@@ -269,6 +309,9 @@ function rsvpLabel(state: EventRsvpState) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  viewSegment: { flexDirection: 'row', gap: 3, marginBottom: 8, padding: 3, borderWidth: 1, borderRadius: 9 },
+  viewButton: { flex: 1, minHeight: 31, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  viewLabel: { fontFamily: sans(600), fontSize: 11.5 },
   segment: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 9 },
   segmentButton: { flex: 1, minHeight: 34, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   segmentLabel: { fontFamily: sans(600), fontSize: 11.5 },
@@ -298,6 +341,7 @@ const styles = StyleSheet.create({
   factRow: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14 },
   factLabel: { fontFamily: sans(600), fontSize: 13.5 },
   factDetail: { marginTop: 2, fontFamily: sans(400), fontSize: 12 },
+  attendeeCard: { borderWidth: 1, borderRadius: 9, padding: 14 },
   sectionHeading: { marginTop: 24, marginBottom: 10, fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
   agendaCard: { borderWidth: 1, borderRadius: 9 },
   agendaRow: { flexDirection: 'row', gap: 14, padding: 14 },
@@ -306,6 +350,8 @@ const styles = StyleSheet.create({
   agendaDetail: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
   secondaryAction: { marginTop: 18, minHeight: 46, borderWidth: 1, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   secondaryActionText: { fontFamily: sans(600), fontSize: 13 },
+  calendarActions: { flexDirection: 'row', gap: 10 },
+  calendarAction: { flex: 1, paddingHorizontal: 8 },
   actionBar: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 14 },
   actionTitle: { fontFamily: sans(600), fontSize: 13 },
   actionMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },

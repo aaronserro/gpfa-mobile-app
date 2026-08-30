@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useTheme } from '../../ds/ThemeProvider';
@@ -9,7 +10,7 @@ import { useTheme } from '../../ds/ThemeProvider';
  *
  * `peaks` are 0–1 amplitudes; 24–32 of them read well at row width.
  */
-export default function Waveform({
+function Waveform({
   peaks,
   progress = 0,
   height = 18,
@@ -23,23 +24,26 @@ export default function Waveform({
   gap?: number;
 }) {
   const { t } = useTheme();
+  const visiblePeaks = peaks.slice(0, 48);
 
   return (
     <View style={[styles.row, { height, gap }]}>
-      {peaks.map((peak, i) => (
+      {visiblePeaks.map((peak, i) => (
         <View
           key={i}
           style={{
             width: bar,
             height: Math.max(2, Math.round(peak * height)),
             borderRadius: 1,
-            backgroundColor: i / peaks.length < progress ? t.brandGreen : t.ruleHairline,
+            backgroundColor: i / visiblePeaks.length < progress ? t.brandGreen : t.ruleHairline,
           }}
         />
       ))}
     </View>
   );
 }
+
+export default memo(Waveform);
 
 /**
  * A stable peak set for an episode with no `peaks` from the API — seeded from

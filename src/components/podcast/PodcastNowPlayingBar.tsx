@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Article, ArrowClockwise, ArrowCounterClockwise, Pause, Play } from '../../ds/icons';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, sans } from '../../ds/tokens';
-import { formatTime, usePodcastPlayer } from './PlayerProvider';
+import { formatTime, usePodcastPlayer, usePodcastTimeline } from './PlayerProvider';
 
 /**
  * Dense transport docked above the tab bar, from the portal's
@@ -20,11 +20,28 @@ export default function PodcastNowPlayingBar({
   onOpenEpisode: (slug: string) => void;
 }) {
   const { t } = useTheme();
-  const { episode, isPlaying, position, toggle, skip } = usePodcastPlayer();
+  const {
+    episode,
+    isPlaying,
+    loading,
+    buffering,
+    error,
+    toggle,
+    skip,
+    retry,
+  } = usePodcastPlayer();
+  const { position, duration } = usePodcastTimeline();
 
   if (!episode) return null;
 
-  const progress = episode.durationSeconds > 0 ? Math.min(1, position / episode.durationSeconds) : 0;
+  const progress = duration > 0 ? Math.min(1, position / duration) : 0;
+  const controlsDisabled = loading || !!error;
+  const statusText = error
+    ?? (loading
+      ? 'Loading…'
+      : buffering
+        ? 'Buffering…'
+        : `${formatTime(position)} / ${formatTime(duration)}`);
 
   return (
     <View
@@ -41,8 +58,9 @@ export default function PodcastNowPlayingBar({
       <View style={styles.row}>
         <Pressable
           onPress={() => skip(-15)}
+          disabled={controlsDisabled}
           accessibilityLabel="Rewind 15 seconds"
-          style={styles.jump}
+          style={[styles.jump, controlsDisabled && styles.disabled]}
           hitSlop={6}
         >
           <ArrowCounterClockwise size={19} color={t.inkInverse} />
@@ -50,11 +68,16 @@ export default function PodcastNowPlayingBar({
         </Pressable>
 
         <Pressable
-          onPress={toggle}
-          accessibilityLabel={isPlaying ? 'Pause episode' : 'Play episode'}
+          onPress={error ? retry : toggle}
+          disabled={loading}
+          accessibilityLabel={error ? 'Retry episode' : isPlaying ? 'Pause episode' : 'Play episode'}
           style={({ pressed }) => [styles.play, { backgroundColor: pressed ? t.surfaceSoft : '#fff' }]}
         >
-          {isPlaying ? (
+          {loading ? (
+            <ActivityIndicator size="small" color={t.inkStrong} />
+          ) : error ? (
+            <ArrowClockwise size={17} color={t.inkStrong} />
+          ) : isPlaying ? (
             <Pause size={17} weight="fill" color={t.inkStrong} />
           ) : (
             <Play size={17} weight="fill" color={t.inkStrong} />
@@ -63,8 +86,9 @@ export default function PodcastNowPlayingBar({
 
         <Pressable
           onPress={() => skip(15)}
+          disabled={controlsDisabled}
           accessibilityLabel="Forward 15 seconds"
-          style={styles.jump}
+          style={[styles.jump, controlsDisabled && styles.disabled]}
           hitSlop={6}
         >
           <ArrowClockwise size={19} color={t.inkInverse} />
@@ -75,8 +99,8 @@ export default function PodcastNowPlayingBar({
           <Text numberOfLines={1} style={[styles.title, { color: '#fff' }]}>
             {episode.title}
           </Text>
-          <Text style={[styles.time, { color: alpha(t.inkInverse, 0.7) }]}>
-            {formatTime(position)} / {formatTime(episode.durationSeconds)}
+          <Text numberOfLines={1} style={[styles.time, { color: alpha(t.inkInverse, 0.7) }]}>
+            {statusText}
           </Text>
         </View>
 
@@ -117,6 +141,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  disabled: { opacity: 0.45 },
   jumpLabel: {
     position: 'absolute',
     fontFamily: mono(600),

@@ -19,6 +19,7 @@ export { ArrowRightIcon as ArrowRight } from 'phosphor-react-native/lib/commonjs
 export { ArrowSquareOutIcon as ArrowSquareOut } from 'phosphor-react-native/lib/commonjs/icons/ArrowSquareOut';
 export { ArrowUpIcon as ArrowUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowUp';
 export { ArticleIcon as Article } from 'phosphor-react-native/lib/commonjs/icons/Article';
+export { AtIcon as At } from 'phosphor-react-native/lib/commonjs/icons/At';
 export { BellIcon as Bell } from 'phosphor-react-native/lib/commonjs/icons/Bell';
 export { BookOpenIcon as BookOpen } from 'phosphor-react-native/lib/commonjs/icons/BookOpen';
 export { BookmarkSimpleIcon as BookmarkSimple } from 'phosphor-react-native/lib/commonjs/icons/BookmarkSimple';
@@ -26,6 +27,7 @@ export { BriefcaseIcon as Briefcase } from 'phosphor-react-native/lib/commonjs/i
 export { BuildingsIcon as Buildings } from 'phosphor-react-native/lib/commonjs/icons/Buildings';
 export { CurrencyCircleDollarIcon as CurrencyCircleDollar } from 'phosphor-react-native/lib/commonjs/icons/CurrencyCircleDollar';
 export { CalendarDotsIcon as CalendarDots } from 'phosphor-react-native/lib/commonjs/icons/CalendarDots';
+export { CaretDownIcon as CaretDown } from 'phosphor-react-native/lib/commonjs/icons/CaretDown';
 export { CaretLeftIcon as CaretLeft } from 'phosphor-react-native/lib/commonjs/icons/CaretLeft';
 export { CaretRightIcon as CaretRight } from 'phosphor-react-native/lib/commonjs/icons/CaretRight';
 export { ChartBarIcon as ChartBar } from 'phosphor-react-native/lib/commonjs/icons/ChartBar';
@@ -34,6 +36,7 @@ export { ChatCircleDotsIcon as ChatCircleDots } from 'phosphor-react-native/lib/
 export { CheckCircleIcon as CheckCircle } from 'phosphor-react-native/lib/commonjs/icons/CheckCircle';
 export { DownloadSimpleIcon as DownloadSimple } from 'phosphor-react-native/lib/commonjs/icons/DownloadSimple';
 export { DotsThreeIcon as DotsThree } from 'phosphor-react-native/lib/commonjs/icons/DotsThree';
+export { DesktopIcon as Desktop } from 'phosphor-react-native/lib/commonjs/icons/Desktop';
 export { FileTextIcon as FileText } from 'phosphor-react-native/lib/commonjs/icons/FileText';
 export { FireIcon as Fire } from 'phosphor-react-native/lib/commonjs/icons/Fire';
 export { HashIcon as Hash } from 'phosphor-react-native/lib/commonjs/icons/Hash';
@@ -45,6 +48,7 @@ export { MagnifyingGlassIcon as MagnifyingGlass } from 'phosphor-react-native/li
 export { MapPinIcon as MapPin } from 'phosphor-react-native/lib/commonjs/icons/MapPin';
 export { MegaphoneIcon as Megaphone } from 'phosphor-react-native/lib/commonjs/icons/Megaphone';
 export { MoonIcon as Moon } from 'phosphor-react-native/lib/commonjs/icons/Moon';
+export { MicrophoneIcon as Microphone } from 'phosphor-react-native/lib/commonjs/icons/Microphone';
 export { PaperclipIcon as Paperclip } from 'phosphor-react-native/lib/commonjs/icons/Paperclip';
 export { PaperPlaneTiltIcon as PaperPlaneTilt } from 'phosphor-react-native/lib/commonjs/icons/PaperPlaneTilt';
 export { PauseIcon as Pause } from 'phosphor-react-native/lib/commonjs/icons/Pause';
@@ -55,6 +59,7 @@ export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/R
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';
+export { TrashIcon as Trash } from 'phosphor-react-native/lib/commonjs/icons/Trash';
 export { UserIcon as User } from 'phosphor-react-native/lib/commonjs/icons/User';
 export { UsersThreeIcon as UsersThree } from 'phosphor-react-native/lib/commonjs/icons/UsersThree';
 export { XIcon as X } from 'phosphor-react-native/lib/commonjs/icons/X';

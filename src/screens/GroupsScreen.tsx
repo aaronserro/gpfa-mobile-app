@@ -12,10 +12,12 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import GroupDirectory from '../components/groups/GroupDirectory';
-import GroupView, { type GroupTab, type PostFilterId } from '../components/groups/GroupView';
+import GroupView, { type GroupTab } from '../components/groups/GroupView';
 import type { GroupSortId } from '../components/groups/GroupDirectory';
 import PostDetail from '../components/groups/PostDetail';
+import type { MutationNoticeValue } from '../components/MutationNotice';
 import { initials } from '../lib/format';
+import { DEFAULT_WORKING_GROUP_FEED_CONTROLS } from '../lib/workingGroupFeedControls';
 import type {
   FeedEntry,
   ForumAttachment,
@@ -23,13 +25,14 @@ import type {
   Group,
   LibraryResource,
   Member,
-  PostType,
+  MemberPoll,
+  MemberPollUpdateInput,
   Reply,
   RsvpChoice,
-  Thread,
+  WorkingGroupFeedControls,
+  WorkingGroupResourceModerationSubmission,
+  WorkingGroupResourceReviewInput,
 } from '../api/types';
-
-const POST_TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
 export interface GroupsScreenProps {
   /** The signed-in member — authors replies and fills the directory avatar. */
@@ -43,10 +46,24 @@ export interface GroupsScreenProps {
   selectedGroupLoadingMore?: boolean;
   selectedGroupError?: Error | null;
   selectedGroupNextCursor?: string | null;
+  selectedGroupTotalMatching?: number;
+  selectedGroupFeedControls?: WorkingGroupFeedControls;
   selectedGroupCoLeads?: Group['members'];
   selectedGroupMembers?: Group['members'];
+  selectedGroupMembershipRole?: 'member' | 'co_lead' | null;
   resources?: LibraryResource[];
+  moderationSubmissions?: WorkingGroupResourceModerationSubmission[];
+  moderationLoading?: boolean;
+  moderationError?: Error | null;
+  moderationPendingSubmissionId?: string | null;
+  onRefreshModeration: () => void;
+  onReviewResource: (
+    submissionId: string,
+    input: WorkingGroupResourceReviewInput
+  ) => Promise<boolean>;
+  onRemoveResource: (submissionId: string) => Promise<boolean>;
   onLoadMoreGroupFeed?: () => void;
+  onApplyGroupFeedControls: (groupId: string, controls: WorkingGroupFeedControls) => void;
   /** The group whose page is open; null shows the directory. */
   groupId: string | null;
   onOpenGroup: (id: string) => void;
@@ -62,7 +79,18 @@ export interface GroupsScreenProps {
   onChangePostStatus?: (threadId: string, status: 'open' | 'answered' | 'closed') => void;
   /** Replies posted this session, kept out of the static data and keyed by thread. */
   extraReplies: Record<string, Reply[] | undefined>;
-  onReply: (threadId: string, reply: Reply) => void;
+  onReply: (threadId: string, reply: Reply) => Promise<boolean>;
+  onDeleteReply: (threadId: string, replyId: string) => Promise<void>;
+  mutationNotice: MutationNoticeValue | null;
+  onDismissMutationNotice: () => void;
+  pendingMutations: Record<string, boolean | undefined>;
+  pollEditors: Record<string, MemberPoll | undefined>;
+  pollEditorErrors: Record<string, string | undefined>;
+  onOpenPollEditor: (pollId: string) => Promise<void>;
+  onClosePollEditor: (pollId: string) => void;
+  onSavePoll: (pollId: string, input: MemberPollUpdateInput) => Promise<boolean>;
+  onClosePoll: (pollId: string) => Promise<void>;
+  onDeletePoll: (pollId: string) => Promise<void>;
   /** Chosen option index per thread; absent means this member has not voted. */
   votes: Record<string, number | undefined>;
   onVote: (threadId: string, option: number) => void;
@@ -97,10 +125,21 @@ export default function GroupsScreen({
   selectedGroupLoadingMore = false,
   selectedGroupError = null,
   selectedGroupNextCursor = null,
+  selectedGroupTotalMatching = 0,
+  selectedGroupFeedControls = DEFAULT_WORKING_GROUP_FEED_CONTROLS,
   selectedGroupCoLeads = [],
   selectedGroupMembers = [],
+  selectedGroupMembershipRole = null,
   resources = [],
+  moderationSubmissions = [],
+  moderationLoading = false,
+  moderationError = null,
+  moderationPendingSubmissionId = null,
+  onRefreshModeration,
+  onReviewResource,
+  onRemoveResource,
   onLoadMoreGroupFeed,
+  onApplyGroupFeedControls,
   groupId,
   onOpenGroup,
   onCloseGroup,
@@ -115,6 +154,17 @@ export default function GroupsScreen({
   onChangePostStatus,
   extraReplies,
   onReply,
+  onDeleteReply,
+  mutationNotice,
+  onDismissMutationNotice,
+  pendingMutations,
+  pollEditors,
+  pollEditorErrors,
+  onOpenPollEditor,
+  onClosePollEditor,
+  onSavePoll,
+  onClosePoll,
+  onDeletePoll,
   votes,
   onVote,
   upvoted,
@@ -135,7 +185,6 @@ export default function GroupsScreen({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<GroupSortId>('recommended');
   const [tab, setTab] = useState<GroupTab>(defaultGroupTab);
-  const [filter, setFilter] = useState<PostFilterId>('all');
 
   const allPosts = useMemo(() => [...newPosts, ...(selectedGroupFeed ?? [])], [newPosts, selectedGroupFeed]);
 
@@ -162,6 +211,24 @@ export default function GroupsScreen({
         onUpdate={(input) => onUpdatePost?.(thread.id, input)}
         onDelete={() => onDeletePost?.(thread.id)}
         onChangeStatus={(status) => onChangePostStatus?.(thread.id, status)}
+        memberId={member.id}
+        mentionMembers={selectedGroupMembers}
+        mutationNotice={mutationNotice}
+        onDismissMutationNotice={onDismissMutationNotice}
+        replyPending={!!pendingMutations[`reply:create:${thread.id}`]}
+        deletingReplies={pendingMutations}
+        onDeleteReply={(replyId) => onDeleteReply(thread.id, replyId)}
+        pollEditor={pollEditors[thread.id]}
+        pollEditorError={pollEditorErrors[thread.id]}
+        pollLoading={!!pendingMutations[`poll:load:${thread.id}`]}
+        pollUpdating={!!pendingMutations[`poll:update:${thread.id}`]}
+        pollClosing={!!pendingMutations[`poll:close:${thread.id}`]}
+        pollDeleting={!!pendingMutations[`poll:delete:${thread.id}`]}
+        onOpenPollEditor={() => onOpenPollEditor(thread.id)}
+        onClosePollEditor={() => onClosePollEditor(thread.id)}
+        onSavePoll={(input) => onSavePoll(thread.id, input)}
+        onClosePoll={() => onClosePoll(thread.id)}
+        onDeletePoll={() => onDeletePoll(thread.id)}
         upvoted={!!upvoted[thread.id]}
         onToggleUpvote={() => onToggleUpvote(thread.id)}
         reposted={reposted[thread.id] ?? thread.hasReposted ?? false}
@@ -170,13 +237,13 @@ export default function GroupsScreen({
         onVote={(option) => onVote(thread.id, option)}
         rsvp={rsvps[thread.id]}
         onRsvp={(choice) => onRsvp(thread.id, choice)}
-        onReply={(text, mention, files) =>
+        onReply={(text, parentPostId, files) =>
           onReply(thread.id, {
             a: member.name,
             org: member.org,
             time: 'Just now',
             initials: member.initials ?? initials(member.name),
-            ...(mention ? { mention: `@${mention}` } : {}),
+            parentPostId,
             text,
             uploadFiles: files,
             attachments: optimisticAttachments(files),
@@ -191,26 +258,19 @@ export default function GroupsScreen({
   /* ── one group ───────────────────────────────────────────────────────── */
   if (group) {
     const groupPosts = selectedGroupFeed?.map((entry) => entry.post) ?? [];
-    const shown =
-      filter === 'all' ? groupPosts : groupPosts.filter((p) => (p.type ?? 'discussion') === filter);
-
-    const typeCounts = Object.fromEntries(
-      POST_TYPES.map((k) => [k, groupPosts.filter((p) => (p.type ?? 'discussion') === k).length])
-    ) as Record<PostType, number>;
 
     const replyCounts = Object.fromEntries(
       groupPosts.map((p) => [p.id, repliesFor(p.id).length])
     );
     const canModerate =
       member.role?.toLowerCase() === 'admin' ||
-      selectedGroupCoLeads.some((coLead) => coLead.name === member.name || coLead.initials === member.initials);
+      selectedGroupMembershipRole === 'co_lead';
 
     return (
       <GroupView
         group={group}
-        posts={shown}
+        posts={groupPosts}
         allPosts={groupPosts}
-        typeCounts={typeCounts}
         coLeads={selectedGroupCoLeads}
         members={selectedGroupMembers}
         resources={resources}
@@ -218,14 +278,26 @@ export default function GroupsScreen({
         loadingMore={selectedGroupLoadingMore}
         error={selectedGroupError}
         hasMore={!!selectedGroupNextCursor}
+        totalMatching={selectedGroupTotalMatching}
         onLoadMore={onLoadMoreGroupFeed}
         tab={tab}
         onTab={setTab}
-        filter={filter}
-        onFilter={setFilter}
+        feedControls={selectedGroupFeedControls}
+        onApplyFeedControls={(controls) => onApplyGroupFeedControls(group.id, controls)}
+        mutationNotice={mutationNotice}
+        onDismissMutationNotice={onDismissMutationNotice}
+        pendingMutations={pendingMutations}
         subscribed={isSubscribed(group)}
         onToggleSubscribe={() => onToggleSubscribe(group.id)}
         canModerate={canModerate}
+        moderationSubmissions={moderationSubmissions}
+        moderationLoading={moderationLoading}
+        moderationError={moderationError}
+        moderationPendingSubmissionId={moderationPendingSubmissionId}
+        onRefreshModeration={onRefreshModeration}
+        onReviewResource={onReviewResource}
+        onRemoveResource={onRemoveResource}
+        onChangePostStatus={onChangePostStatus}
         replyCounts={replyCounts}
         upvoted={upvoted}
         onToggleUpvote={onToggleUpvote}
@@ -263,7 +335,6 @@ export default function GroupsScreen({
         onOpen={(id) => {
           // A group always opens on the configured tab with the filter cleared.
           setTab(defaultGroupTab);
-          setFilter('all');
           onOpenGroup(id);
         }}
       />

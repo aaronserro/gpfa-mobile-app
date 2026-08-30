@@ -1,37 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ArrowRight, CalendarDots, CheckCircle, Megaphone } from '../ds/icons';
 import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
-
-export interface MobileAnnouncementPreview {
-  id: string;
-  title: string;
-  summary: string;
-  body: string[];
-  dateLabel: string;
-  unread: boolean;
-  important?: boolean;
-}
-
-export type MobileSurveyStatus = 'not-started' | 'in-progress' | 'submitted' | 'closed';
-
-export interface MobileSurveyQuestion {
-  id: string;
-  prompt: string;
-  options: string[];
-}
-
-export interface MobileSurveyPreview {
-  id: string;
-  title: string;
-  description: string;
-  closesLabel: string;
-  status: MobileSurveyStatus;
-  questions: MobileSurveyQuestion[];
-}
+import type {
+  MobileAnnouncementPreview,
+  MobileSurveyAnswer,
+  MobileSurveyPreview,
+  MobileSurveyStatus,
+} from '../api/types';
 
 type UpdatesFilter = 'all' | 'announcements' | 'surveys';
 export type UpdateSelection = { kind: 'announcement'; id: string } | { kind: 'survey'; id: string };
@@ -41,11 +20,15 @@ export default function UpdatesScreen({
   surveys,
   initialSelection = null,
   onBack,
+  onReadAnnouncement,
+  onSubmitSurvey,
 }: {
   announcements: MobileAnnouncementPreview[];
   surveys: MobileSurveyPreview[];
   initialSelection?: UpdateSelection | null;
   onBack: () => void;
+  onReadAnnouncement?: (notificationId: string) => void | Promise<void>;
+  onSubmitSurvey: (surveyId: string, answers: MobileSurveyAnswer[]) => Promise<void>;
 }) {
   const { t } = useTheme();
   const [filter, setFilter] = useState<UpdatesFilter>('all');
@@ -69,7 +52,13 @@ export default function UpdatesScreen({
   }
 
   if (selectedSurvey) {
-    return <SurveyFlow survey={selectedSurvey} onBack={() => setSelection(null)} />;
+    return (
+      <SurveyFlow
+        survey={selectedSurvey}
+        onBack={() => setSelection(null)}
+        onSubmit={onSubmitSurvey}
+      />
+    );
   }
 
   const rows = [
@@ -119,6 +108,7 @@ export default function UpdatesScreen({
                   key={`announcement-${row.item.id}`}
                   onPress={() => {
                     setReadIds((current) => [...current, row.item.id]);
+                    if (row.item.notificationId) void onReadAnnouncement?.(row.item.notificationId);
                     setSelection({ kind: 'announcement', id: row.item.id });
                   }}
                   style={({ pressed }) => [
@@ -167,7 +157,7 @@ export default function UpdatesScreen({
                     <Badge variant={row.item.status === 'submitted' ? 'tag-green' : 'tag-default'} size={9}>
                       {surveyStatusLabel(row.item.status)}
                     </Badge>
-                    <Text style={[styles.questionCount, { color: t.inkMuted }]}>{row.item.questions.length} questions</Text>
+                    <Text style={[styles.questionCount, { color: t.inkMuted }]}>{surveyStatementCount(row.item)} statements</Text>
                   </View>
                 </View>
                 <ArrowRight size={16} color={t.brandGreen} />
@@ -210,14 +200,38 @@ function AnnouncementDetail({
   );
 }
 
-function SurveyFlow({ survey, onBack }: { survey: MobileSurveyPreview; onBack: () => void }) {
+function SurveyFlow({
+  survey,
+  onBack,
+  onSubmit,
+}: {
+  survey: MobileSurveyPreview;
+  onBack: () => void;
+  onSubmit: (surveyId: string, answers: MobileSurveyAnswer[]) => Promise<void>;
+}) {
   const { t } = useTheme();
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const statements = useMemo(
+    () => survey.questions.flatMap((question) =>
+      question.statements.map((statement) => ({ question, statement }))
+    ),
+    [survey.questions]
+  );
+  const [answers, setAnswers] = useState<Record<string, MobileSurveyAnswer>>(() =>
+    Object.fromEntries(survey.answers.map((answer) => [answer.statementId, answer]))
+  );
   const [submitted, setSubmitted] = useState(survey.status === 'submitted');
-  const question = survey.questions[step];
+  const [submitting, setSubmitting] = useState(false);
+  const current = statements[step];
+  const currentAnswer = current ? answers[current.statement.id] : undefined;
+  const currentOption = current?.question.options.find((option) => option.id === currentAnswer?.optionId);
+  const currentAnswered = !!currentAnswer && (!currentOption?.isOther || !!currentAnswer.otherText?.trim());
   const answeredCount = Object.keys(answers).length;
-  const complete = answeredCount === survey.questions.length;
+  const complete = statements.every(({ question, statement }) => {
+    const answer = answers[statement.id];
+    const option = question.options.find((candidate) => candidate.id === answer?.optionId);
+    return !!answer && (!option?.isOther || !!answer.otherText?.trim());
+  });
 
   const leave = () => {
     if (answeredCount > 0 && !submitted) {
@@ -252,23 +266,32 @@ function SurveyFlow({ survey, onBack }: { survey: MobileSurveyPreview; onBack: (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="Member survey" onBack={leave} backLabel="Back to Updates" />
       <View style={[styles.progressTrack, { backgroundColor: t.surfaceSoft }]}>
-        <View style={[styles.progressFill, { backgroundColor: t.brandGreen, width: `${((step + 1) / survey.questions.length) * 100}%` }]} />
+        <View style={[styles.progressFill, { backgroundColor: t.brandGreen, width: `${statements.length ? ((step + 1) / statements.length) * 100 : 0}%` }]} />
       </View>
       <ScrollView contentContainerStyle={styles.surveyScroll} showsVerticalScrollIndicator={false}>
-        <MastheadMeta size={10}>{`QUESTION ${step + 1} OF ${survey.questions.length} · ${survey.closesLabel}`}</MastheadMeta>
+        <MastheadMeta size={10}>{`STATEMENT ${step + 1} OF ${statements.length} · ${survey.closesLabel}`}</MastheadMeta>
         <Text style={[styles.surveyTitle, { color: t.inkStrong }]}>{survey.title}</Text>
         <Text style={[styles.surveyDescription, { color: t.inkMuted }]}>{step === 0 ? survey.description : 'Choose the response that best reflects your organization.'}</Text>
 
-        {!!question && (
+        {!!current && (
           <View style={styles.questionBlock}>
-            <Text style={[styles.questionPrompt, { color: t.inkStrong }]}>{question.prompt}</Text>
+            <Text style={[styles.questionPrompt, { color: t.inkStrong }]}>{current.question.prompt}</Text>
+            <Text style={[styles.surveyDescription, { color: t.inkMuted }]}>{current.statement.text}</Text>
             <View style={styles.optionList}>
-              {question.options.map((option) => {
-                const selected = answers[question.id] === option;
+              {current.question.options.map((option) => {
+                const selected = answers[current.statement.id]?.optionId === option.id;
                 return (
                   <Pressable
-                    key={option}
-                    onPress={() => setAnswers((current) => ({ ...current, [question.id]: option }))}
+                    key={option.id}
+                    onPress={() => setAnswers((existing) => ({
+                      ...existing,
+                      [current.statement.id]: {
+                        questionId: current.question.id,
+                        statementId: current.statement.id,
+                        optionId: option.id,
+                        otherText: null,
+                      },
+                    }))}
                     style={[
                       styles.option,
                       {
@@ -280,32 +303,56 @@ function SurveyFlow({ survey, onBack }: { survey: MobileSurveyPreview; onBack: (
                     <View style={[styles.radio, { borderColor: selected ? t.brandGreen : t.ruleStrong }]}>
                       {selected && <View style={[styles.radioFill, { backgroundColor: t.brandGreen }]} />}
                     </View>
-                    <Text style={[styles.optionLabel, { color: t.inkStrong }]}>{option}</Text>
+                    <Text style={[styles.optionLabel, { color: t.inkStrong }]}>{option.label}</Text>
                   </Pressable>
                 );
               })}
             </View>
+            {currentOption?.isOther && (
+              <TextInput
+                value={currentAnswer?.otherText ?? ''}
+                onChangeText={(otherText) => setAnswers((existing) => ({
+                  ...existing,
+                  [current.statement.id]: { ...currentAnswer!, otherText },
+                }))}
+                placeholder="Please specify"
+                placeholderTextColor={t.inkFaint}
+                style={[styles.otherInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+              />
+            )}
           </View>
         )}
       </ScrollView>
 
       <View style={[styles.surveyFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
-        <Text style={[styles.footerCount, { color: t.inkMuted }]}>{answeredCount} of {survey.questions.length} answered</Text>
+        <Text style={[styles.footerCount, { color: t.inkMuted }]}>{answeredCount} of {statements.length} answered</Text>
         {step > 0 && (
           <Pressable onPress={() => setStep((current) => current - 1)} style={styles.textButton}>
             <Text style={[styles.textButtonLabel, { color: t.brandGreen }]}>Back</Text>
           </Pressable>
         )}
         <Pressable
-          disabled={!question || !answers[question.id]}
-          onPress={() => {
-            if (step < survey.questions.length - 1) setStep((current) => current + 1);
-            else if (complete) setSubmitted(true);
+          disabled={!currentAnswered || submitting}
+          onPress={async () => {
+            if (step < statements.length - 1) {
+              setStep((currentStep) => currentStep + 1);
+              return;
+            }
+            if (!complete) return;
+            setSubmitting(true);
+            try {
+              await onSubmit(survey.id, Object.values(answers));
+              setSubmitted(true);
+            } catch (error) {
+              Alert.alert('Response not saved', error instanceof Error ? error.message : 'Please try again.');
+            } finally {
+              setSubmitting(false);
+            }
           }}
-          style={[styles.continueButton, { backgroundColor: question && answers[question.id] ? t.surfaceAnchor : t.surfaceSoft }]}
+          style={[styles.continueButton, { backgroundColor: currentAnswered ? t.surfaceAnchor : t.surfaceSoft }]}
         >
-          <Text style={[styles.continueLabel, { color: question && answers[question.id] ? t.inkInverse : t.inkFaint }]}>
-            {step === survey.questions.length - 1 ? 'Submit response' : 'Continue'}
+          <Text style={[styles.continueLabel, { color: currentAnswered ? t.inkInverse : t.inkFaint }]}>
+            {submitting ? 'Submitting…' : step === statements.length - 1 ? 'Submit response' : 'Continue'}
           </Text>
         </Pressable>
       </View>
@@ -318,6 +365,10 @@ function surveyStatusLabel(status: MobileSurveyStatus) {
   if (status === 'submitted') return 'Submitted';
   if (status === 'closed') return 'Closed';
   return 'Not started';
+}
+
+function surveyStatementCount(survey: MobileSurveyPreview) {
+  return survey.questions.reduce((count, question) => count + question.statements.length, 0);
 }
 
 const styles = StyleSheet.create({
@@ -358,6 +409,7 @@ const styles = StyleSheet.create({
   radio: { width: 20, height: 20, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   radioFill: { width: 10, height: 10, borderRadius: 5 },
   optionLabel: { flex: 1, fontFamily: sans(500), fontSize: 13.5, lineHeight: 19 },
+  otherInput: { marginTop: 12, minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 13 },
   surveyFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 72, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 12 },
   footerCount: { flex: 1, fontFamily: mono(400), fontSize: 9.5 },
   textButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 8 },

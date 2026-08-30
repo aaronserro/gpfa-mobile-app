@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { MemberNotification } from '../api/types';
-import { ArrowClockwise, Bell, CheckCircle, X } from '../ds/icons';
+import { ArrowClockwise, Bell, CheckCircle, Trash, X } from '../ds/icons';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 
@@ -21,7 +21,10 @@ export default function NotificationsSheet({
   loading,
   error,
   pendingIds = [],
+  onOpen,
+  onMarkRead,
   onMarkAllRead,
+  onClearAll,
   onDismiss,
   onRetry,
   onClose,
@@ -30,7 +33,10 @@ export default function NotificationsSheet({
   loading: boolean;
   error?: Error;
   pendingIds?: string[];
+  onOpen: (notification: MemberNotification) => void;
+  onMarkRead?: (id: string) => void;
   onMarkAllRead?: () => void;
+  onClearAll?: () => void;
   onDismiss?: (id: string) => void;
   onRetry: () => void;
   onClose: () => void;
@@ -113,6 +119,24 @@ export default function NotificationsSheet({
               <Text style={[styles.markAllText, { color: t.inkStrong }]}>Mark all</Text>
             </Pressable>
           )}
+          {!!notifications.length && !!onClearAll && (
+            <Pressable
+              onPress={onClearAll}
+              disabled={hasPending}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all notifications"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.clearAll,
+                {
+                  backgroundColor: pressed ? alpha(t.surfaceSoft, 0.6) : 'transparent',
+                  opacity: hasPending ? 0.45 : 1,
+                },
+              ]}
+            >
+              <Trash size={15} color={t.inkMuted} />
+            </Pressable>
+          )}
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
@@ -167,12 +191,46 @@ export default function NotificationsSheet({
                   },
                 ]}
               >
-                <View style={styles.itemTop}>
-                  {!notification.read && <View style={[styles.dot, { backgroundColor: t.brandGreen }]} />}
-                  <Text style={[styles.itemTitle, { color: t.inkStrong }]}>{notification.title}</Text>
-                  {!!notification.time && (
-                    <Text style={[styles.time, { color: t.inkFaint }]}>{notification.time}</Text>
-                  )}
+                <View style={styles.itemRow}>
+                  <Pressable
+                    onPress={() => onOpen(notification)}
+                    disabled={pending.has(notification.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open notification: ${notification.title}`}
+                    accessibilityState={{ disabled: pending.has(notification.id) }}
+                    style={({ pressed }) => [styles.itemContent, { opacity: pressed ? 0.68 : 1 }]}
+                  >
+                    <View style={styles.itemTop}>
+                      {!notification.read && <View style={[styles.dot, { backgroundColor: t.brandGreen }]} />}
+                      <Text style={[styles.itemTitle, { color: t.inkStrong }]}>{notification.title}</Text>
+                      {!!notification.time && (
+                        <Text style={[styles.time, { color: t.inkFaint }]}>{notification.time}</Text>
+                      )}
+                    </View>
+                    {!!notification.body && (
+                      <Text style={[styles.body, { color: t.inkMuted }]}>{notification.body}</Text>
+                    )}
+                  </Pressable>
+                  <View style={styles.itemActions}>
+                    {!notification.read && !!onMarkRead && (
+                      <Pressable
+                        onPress={() => onMarkRead(notification.id)}
+                        disabled={pending.has(notification.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Mark notification read: ${notification.title}`}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.dismiss,
+                          {
+                            borderColor: t.ruleHairline,
+                            backgroundColor: pressed ? alpha(t.surfaceSoft, 0.6) : 'transparent',
+                            opacity: pending.has(notification.id) ? 0.35 : 1,
+                          },
+                        ]}
+                      >
+                        <CheckCircle size={13} color={t.brandGreen} />
+                      </Pressable>
+                    )}
                   {!!onDismiss && (
                     <Pressable
                       onPress={() => onDismiss(notification.id)}
@@ -192,10 +250,8 @@ export default function NotificationsSheet({
                       <X size={12} color={t.inkMuted} />
                     </Pressable>
                   )}
+                  </View>
                 </View>
-                {!!notification.body && (
-                  <Text style={[styles.body, { color: t.inkMuted }]}>{notification.body}</Text>
-                )}
               </View>
             ))}
           </ScrollView>
@@ -240,6 +296,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   markAllText: { fontFamily: sans(600), fontSize: 12 },
+  clearAll: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   divider: { height: 1 },
 
   state: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 10, minHeight: 190 },
@@ -259,6 +316,9 @@ const styles = StyleSheet.create({
 
   list: { padding: 16, gap: 10 },
   item: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 7 },
+  itemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  itemContent: { flex: 1, minWidth: 0, gap: 7 },
+  itemActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 7, height: 7, borderRadius: 3.5 },
   itemTitle: { flex: 1, fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },

@@ -8,6 +8,187 @@
  */
 import type { JobFunctionKey, OrgSector, WgRuleClass } from '../ds/tokens';
 
+export interface HomeMasthead {
+  title: string;
+  italic: string;
+  edition: string;
+}
+
+export type HomeImmediateActionKind = 'annual-meeting' | 'survey' | 'mention' | 'announcement';
+
+export interface HomeImmediateAction {
+  id: string;
+  kind: HomeImmediateActionKind;
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+  notificationId?: string;
+}
+
+export interface HomeImmediateActionsResponse {
+  status: 'success';
+  masthead: HomeMasthead;
+  actions: HomeImmediateAction[];
+}
+
+export interface HomeGroupPreview {
+  slug: string;
+  href: string;
+  name: string;
+  unread: number | null;
+}
+
+export interface HomeThreadPreview {
+  id: string;
+  href: string;
+  title: string;
+  groupName: string;
+  authorName: string;
+  replies: number;
+  age: string;
+  unread: boolean;
+  participants: Array<{ id: string; name: string; initials: string }>;
+}
+
+export interface WorkingGroupsData {
+  groups: Group[];
+  home: {
+    groups: HomeGroupPreview[];
+    threads: HomeThreadPreview[];
+  };
+}
+
+export type EventRsvpState = 'attending' | 'not-attending' | 'not-responded';
+
+export interface MobileEventAttendee {
+  name: string;
+  org?: string;
+}
+
+export interface MobileEventPreview {
+  id: string;
+  contentItemId: string | null;
+  startsAt: string;
+  endsAt?: string;
+  timezone?: string;
+  datePrecision?: 'day' | 'datetime';
+  detailsUrl: string;
+  month: string;
+  day: string;
+  title: string;
+  dateLabel: string;
+  timeLabel: string;
+  location: string;
+  format: 'In person' | 'Virtual' | 'Hybrid';
+  type: string;
+  status: 'upcoming' | 'past';
+  rsvp: EventRsvpState;
+  registrationOpen: boolean;
+  summary: string;
+  attendeeCount: number;
+  attendees: MobileEventAttendee[];
+  joinUrl?: string;
+  agenda: { time: string; title: string; detail?: string }[];
+}
+
+export interface MobileAnnouncementPreview {
+  id: string;
+  notificationId: string;
+  title: string;
+  summary: string;
+  body: string[];
+  dateLabel: string;
+  unread: boolean;
+  important?: boolean;
+}
+
+export type MobileSurveyStatus = 'not-started' | 'in-progress' | 'submitted' | 'closed';
+
+export interface MobileSurveyOption {
+  id: string;
+  label: string;
+  isOther: boolean;
+}
+
+export interface MobileSurveyQuestion {
+  id: string;
+  prompt: string;
+  context?: string;
+  options: MobileSurveyOption[];
+  statements: { id: string; text: string }[];
+}
+
+export interface MobileSurveyAnswer {
+  questionId: string;
+  statementId: string;
+  optionId: string;
+  otherText?: string | null;
+}
+
+export interface MobileSurveyPreview {
+  id: string;
+  title: string;
+  description: string;
+  closesLabel: string;
+  status: MobileSurveyStatus;
+  questions: MobileSurveyQuestion[];
+  answers: MobileSurveyAnswer[];
+}
+
+export interface MemberUpdates {
+  announcements: MobileAnnouncementPreview[];
+  surveys: MobileSurveyPreview[];
+}
+
+export type AnnualMeetingAnswerValue = string | boolean | string[];
+
+export interface AnnualMeetingFormField {
+  id: string;
+  type: 'short_text' | 'long_text' | 'yes_no' | 'single_choice' | 'multiple_choice' | 'information';
+  label: string;
+  helpText: string;
+  required: boolean;
+  options: { id: string; label: string }[];
+}
+
+export interface AnnualMeetingPreview {
+  draftId: string;
+  title: string;
+  subtitle: string;
+  dateLabel: string;
+  location: string;
+  timezone: string;
+  summary: string;
+  registrationStatus: 'Registered' | 'Not registered' | 'Waitlisted';
+  registrationOpen: boolean;
+  allowsMemberEdits: boolean;
+  expectedUpdatedAt: string | null;
+  formFields: AnnualMeetingFormField[];
+  answers: { fieldId: string; value: AnnualMeetingAnswerValue }[];
+  agenda: {
+    id: string;
+    label: string;
+    date: string;
+    sessions: { time: string; title: string; detail: string; location: string }[];
+  }[];
+  logistics: { title: string; detail: string }[];
+}
+
+export interface AnnualMeetingRegistrationInput {
+  draftId: string;
+  expectedUpdatedAt?: string | null;
+  answers: { fieldId: string; value: AnnualMeetingAnswerValue }[];
+}
+
+export interface AnnualMeetingRegistrationState {
+  registrationStatus: 'Registered' | 'Not registered' | 'Waitlisted';
+  registrationOpen: boolean;
+  allowsMemberEdits: boolean;
+  expectedUpdatedAt: string | null;
+  answers: { fieldId: string; value: AnnualMeetingAnswerValue }[];
+}
+
 /** A persisted forum file that can be shown and opened from a thread or reply. */
 export interface ForumAttachment {
   id: string;
@@ -28,12 +209,14 @@ export interface ForumUploadFile {
 export interface Reply {
   /** Stable backend id when the reply has been persisted. */
   id?: string;
+  /** Canonical parent reply id; null/absent means a top-level reply. */
+  parentPostId?: string | null;
+  /** Canonical member id used only to expose author-owned reply actions. */
+  authorId?: string;
   a: string;
   org: string;
   time: string;
   initials?: string;
-  /** Rendered as a highlighted @-mention prefix before the body text. */
-  mention?: string;
   text: string;
   /** Legacy fixture count only; reply upvote mutations are not supported. */
   up?: number;
@@ -106,6 +289,8 @@ export interface Thread {
 
 /** Someone in a working group, listed on its Members and About tabs. */
 export interface GroupMember {
+  /** Canonical member id when this row comes from the member directory. */
+  id?: string;
   name: string;
   /** Job title, e.g. "Portfolio Manager, Securities Lending". */
   role: string;
@@ -113,6 +298,10 @@ export interface GroupMember {
   org: string;
   /** Avatar fallback; derived from `name` when absent. */
   initials?: string;
+  photo?: string;
+  /** Stable lowercase handle used for working-group mentions. */
+  mentionHandle?: string;
+  isCurrentMember?: boolean;
   /** Co-leads carry a badge and fill the About tab's Co-leads list. */
   isLead?: boolean;
 }
@@ -226,6 +415,11 @@ export interface WorkingGroupFeedQuery {
   snapshotAt?: string;
   cursor?: string;
 }
+
+/** Applied server-side controls for one working-group feed. */
+export type WorkingGroupFeedControls = Required<
+  Pick<WorkingGroupFeedQuery, 'query' | 'type' | 'status' | 'sort'>
+>;
 
 export interface WorkingGroupFeedResponse {
   status: 'success';
@@ -395,6 +589,65 @@ export interface WorkingGroupResourceSubmissionResponse {
   submission: { id: string; status: string; submittedAt: string };
 }
 
+export type WorkingGroupResourceModerationStatus =
+  | 'pending'
+  | 'changes_requested'
+  | 'approved'
+  | 'rejected';
+
+export type WorkingGroupResourceModerationFilter =
+  | 'all'
+  | WorkingGroupResourceModerationStatus
+  | 'removed';
+
+export interface WorkingGroupResourceModerationPerson {
+  id: string;
+  fullName: string;
+  roleTitle: string;
+}
+
+export interface WorkingGroupResourceModerationFile {
+  id: string;
+  originalFilename: string;
+  contentType: string;
+  byteSize: number;
+  downloadUrl: string | null;
+}
+
+export interface WorkingGroupResourceModerationSubmission {
+  id: string;
+  workingGroupSlug: string;
+  title: string;
+  resourceType: WorkingGroupResourceType;
+  status: WorkingGroupResourceModerationStatus;
+  isRemoved: boolean;
+  submittedAt: string;
+  reviewedAt: string | null;
+  summary: string | null;
+  contributorNotes: string | null;
+  sourceUrl: string | null;
+  tags: string[];
+  reviewerNotes: string | null;
+  submitter: WorkingGroupResourceModerationPerson | null;
+  reviewer: WorkingGroupResourceModerationPerson | null;
+  files: WorkingGroupResourceModerationFile[];
+}
+
+export interface WorkingGroupResourceModerationResponse {
+  status: 'success';
+  submissions: WorkingGroupResourceModerationSubmission[];
+}
+
+export interface WorkingGroupResourceReviewInput {
+  status: Exclude<WorkingGroupResourceModerationStatus, 'pending'>;
+  reviewerNotes?: string;
+}
+
+export interface WorkingGroupResourceReviewResponse {
+  status: 'success';
+  approvedContentItemId?: string;
+}
+
 export interface WorkingGroupEventRsvpInput {
   threadId: string;
   groupSlug: string;
@@ -502,6 +755,17 @@ export interface PollQuestionInput {
   options: Array<{ label: string }>;
 }
 
+export interface MemberPollOption {
+  id: string;
+  label: string;
+}
+
+export interface MemberPollQuestion {
+  id: string;
+  text: string;
+  options: MemberPollOption[];
+}
+
 export interface MemberPollCreateInput {
   title: string;
   description?: string | null;
@@ -525,15 +789,17 @@ export interface MemberPoll {
   title: string;
   description?: string | null;
   tags: string[];
-  author: { id?: string; name: string; [key: string]: unknown };
+  status: 'active' | 'closed';
+  createdBy: string;
+  authorId?: string;
   createdAt: string;
-  updatedAt: string;
-  closesAt: string;
+  updatedAt?: string;
+  closesAt?: string | null;
   closedAt?: string | null;
   totalResponses: number;
   groupSlug?: string | null;
   groupName?: string | null;
-  questions: unknown[];
+  questions: MemberPollQuestion[];
   upvoteCount: number;
   hasUpvoted: boolean;
   repostCount: number;
@@ -617,7 +883,8 @@ export interface Answer {
   /** Lowercased substrings matched against the question. */
   k: string[];
   text: string;
-  sources: string[];
+  sources: AskSource[];
+  sourceState: AskSourceState;
 }
 
 export type Relevance = 'high' | 'medium' | 'low';
@@ -641,6 +908,8 @@ export interface NewsStory {
   title: string;
   /** Provenance line, rendered as sent, e.g. "RISK.NET · 5H". The app never parses it. */
   meta: string;
+  /** Website-provided publication label used by the Home digest. */
+  publishedAt?: string;
   /** Standfirst paragraph. Clamped to three or four lines on the card. */
   body: string;
   /** Relevance dot on the Home digest. Absent reads as 'low'. */
@@ -707,12 +976,112 @@ export interface NewPostInput {
   closesAt?: string;
 }
 
-/** An answer from Ask GPFA, with the member material it cites. */
+/** A saved Ask GPFA conversation, newest activity first in history lists. */
+export interface AskConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+export type AskSourceType =
+  | 'event'
+  | 'discussion'
+  | 'reply'
+  | 'working_group_activity'
+  | 'member'
+  | 'leader'
+  | 'organization'
+  | 'resource'
+  | 'podcast'
+  | 'article'
+  | 'news'
+  | 'intelligence'
+  | 'public_content'
+  | 'file_material';
+
+export type AskSourceState = 'ready' | 'partial' | 'failed' | 'not_applicable';
+
+/** A server-validated supporting source attached to a saved Ask GPFA answer. */
+export interface AskSource {
+  rank: number;
+  type: AskSourceType;
+  label: string;
+  title: string;
+  href: string;
+  excerpt: string | null;
+  updatedAt: string | null;
+}
+
+/** A saved member question or Ask GPFA response. */
+export interface AskMessage {
+  id: string;
+  role: 'user' | 'ai';
+  text: string;
+  createdAt: string;
+  sources: AskSource[];
+  sourceState?: AskSourceState | null;
+}
+
+export type AskResearchPhase = 'thinking' | 'searching' | 'reviewing' | 'answering';
+export type AskStreamStatus = 'generating' | 'saving' | 'complete' | 'stopped' | 'failed';
+
+export interface AskTraceRow {
+  id: string;
+  name: string;
+  summary: string;
+  status: 'pending' | 'done';
+}
+
+/** Device-only state for the assistant row currently being generated. */
+export interface AskDisplayMessage extends AskMessage {
+  stream?: {
+    status: AskStreamStatus;
+    phase: AskResearchPhase;
+    trace: AskTraceRow[];
+    startedAt: number;
+    durationSeconds?: number;
+  };
+}
+
+/** One chronological page from a saved Ask GPFA conversation. */
+export interface AskConversationPage {
+  conversation: AskConversationSummary;
+  messages: AskMessage[];
+  hasEarlier: boolean;
+  earlierCursor: string | null;
+}
+
+/** An answer from Ask GPFA, with the persisted records used to reconcile history. */
 export interface AskAnswer {
   text: string;
-  sources: string[];
+  sources: AskSource[];
+  sourceState?: AskSourceState | null;
   conversationId?: string;
+  conversation?: AskConversationSummary;
+  userMessage?: AskMessage;
+  assistantMessage?: AskMessage;
 }
+
+export type AskStreamEvent =
+  | {
+      type: 'ready';
+      conversationId: string;
+      conversationTitle: string;
+      userMessage: AskMessage;
+    }
+  | { type: 'tool_call'; name: string; summary: string }
+  | { type: 'tool_result'; name: string; summary: string }
+  | { type: 'text_delta'; text: string }
+  | {
+      type: 'done';
+      answer: { content: string; sources: AskSource[]; sourceState: AskSourceState };
+    }
+  | {
+      type: 'persisted';
+      conversation: AskConversationSummary;
+      assistantMessage: AskMessage;
+    }
+  | { type: 'error'; message: string };
 
 /** RSVP state for an event post. */
 export type RsvpChoice = 'yes' | 'no';
@@ -736,6 +1105,136 @@ export interface Member {
    * directory's names, which only works while the strings agree.
    */
   orgId?: string;
+  avatarUrl?: string | null;
+}
+
+/** Editable details returned only for the signed-in member. */
+export interface OwnProfile extends Member {
+  avatarUrl: string | null;
+  country: string;
+  bio: string;
+  skills: string[];
+  mentionHandle: string;
+  organizationSlug: string | null;
+}
+
+export interface OwnProfileUpdateInput {
+  fullName: string;
+  roleTitle: string;
+  country: string;
+  bio: string;
+  skills: string[];
+}
+
+export interface DirectoryMemberProfileOrganization {
+  id: string;
+  name: string;
+  abbreviation: string;
+  slug: string;
+  country: string;
+  organizationType: string;
+  assetsLabel: string | null;
+  description: string | null;
+}
+
+export interface DirectoryMemberProfileWorkingGroup {
+  slug: string;
+  name: string;
+  description: string;
+  leadLabel: string;
+  cardImageUrl?: string;
+  memberCount: number;
+  role: string;
+  joinedAt: string;
+  postCount: number;
+}
+
+export interface DirectoryMemberProfileEvent {
+  id: string;
+  source: 'member_event' | 'working_group_event';
+  title: string;
+  startsAt: string;
+  endsAt?: string;
+  timezone?: string;
+  datePrecision?: 'day' | 'datetime';
+  location: string;
+  sourceLabel: string;
+  formatLabel: string;
+  lifecycleLabel: string;
+  timing: 'upcoming' | 'past';
+  summary?: string;
+  canUpdateRsvp: boolean;
+  contentItemId?: string;
+  threadId?: string;
+  groupSlug?: string;
+}
+
+export interface DirectoryMemberProfile {
+  id: string;
+  mentionHandle: string;
+  fullName: string;
+  roleTitle: string;
+  country: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  memberSince: string;
+  skills: string[];
+  organization: DirectoryMemberProfileOrganization;
+  workingGroups: DirectoryMemberProfileWorkingGroup[];
+  isSelf: boolean;
+  /** Present only when viewing your own profile. */
+  events?: DirectoryMemberProfileEvent[];
+}
+
+export type MemberProfileActivityKind = 'posts' | 'replies' | 'reposts';
+
+export interface MemberProfileActivityItem {
+  activityId: string;
+  kind: 'post' | 'reply' | 'repost';
+  postType: 'discussion' | 'poll' | 'announcement' | 'event';
+  targetType: 'thread' | 'poll' | 'event' | 'announcement';
+  targetId: string;
+  groupSlug: string;
+  groupName: string;
+  title: string;
+  excerpt: string;
+  createdAt: string;
+  parentTitle?: string;
+  parentAuthorName?: string;
+  upvoteCount?: number;
+  replyCount?: number;
+  repostCount?: number;
+}
+
+export interface MemberProfileActivityPage {
+  kind: MemberProfileActivityKind;
+  items: MemberProfileActivityItem[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  hasMore: boolean;
+}
+
+export type MemberEmailPreferenceKey =
+  | 'workingGroupPosts'
+  | 'siteEvents'
+  | 'siteAnnouncements'
+  | 'surveyEmails'
+  | 'marketingCampaigns';
+
+export type MemberEmailPreferences = Record<MemberEmailPreferenceKey, boolean>;
+
+export interface MemberMentionActivity {
+  id: string;
+  context: string;
+  targetType: 'thread' | 'reply';
+  targetId: string;
+  workingGroupSlug: string;
+  groupName: string;
+  postType: string | null;
+  title: string;
+  excerpt: string | null;
+  createdAt: string;
 }
 
 /** A notification addressed to the signed-in member. */
@@ -748,6 +1247,8 @@ export interface MemberNotification {
   body?: string;
   /** Display string, e.g. "2h ago" or "Aug 20". The app never parses it. */
   time?: string;
+  /** Canonical server timestamp used for ordering and membership-boundary checks. */
+  createdAt?: string;
   /** False means it contributes to the bell badge. Missing is treated as unread. */
   read?: boolean;
   /** Optional deep link or web URL for a later open action. */
@@ -757,6 +1258,11 @@ export interface MemberNotification {
   contentType?: string;
   contentId?: string;
   contentDeletedAt?: string | null;
+}
+
+export interface MemberNotificationsResponse {
+  memberCreatedAt: string | null;
+  notifications: MemberNotification[];
 }
 
 /** A badge on the calendar card. */
@@ -809,9 +1315,11 @@ export interface LibraryResource {
 /** A guest or host on an episode. */
 export interface PodcastPerson {
   name: string;
-  role: string;
+  role?: string;
   /** Avatar fallback; derived from `name` when absent. */
   initials?: string;
+  avatarUrl?: string | null;
+  memberHref?: string | null;
 }
 
 /** Who published a job listing: a member organization, or the secretariat. */
@@ -898,6 +1406,8 @@ export interface DirectoryPerson {
   id: string;
   /** `MemberOrg.id` — the profile's People list and the search meta both key off it. */
   orgId: string;
+  /** Stable directory route handle used for direct profile navigation. */
+  mentionHandle?: string;
   name: string;
   /** Job title, e.g. "Assistant VP, Treasury & Liquidity". */
   role: string;
@@ -905,6 +1415,18 @@ export interface DirectoryPerson {
   initials?: string;
   /** Raster portrait. RN's Image can't decode SVG; absent falls back to initials. */
   photoUrl?: string;
+}
+
+/** Viewer-scoped details for one active directory member. */
+export interface DirectoryMemberSummary {
+  id: string;
+  roleTitle: string | null;
+  region: string | null;
+  organization: string | null;
+  organizationSlug: string | null;
+  threadCount: number | null;
+  replyCount: number | null;
+  sharedGroupCount: number;
 }
 
 /** A member as exposed by the private messaging service. */
@@ -1048,10 +1570,22 @@ export interface PodcastEpisode {
   /** Duration in seconds — drives the transport, resume label and waveform fill. */
   durationSeconds: number;
   summary: string;
+  /** Full Markdown episode notes when distinct from the short summary. */
+  showNotes?: string;
   hasTranscript: boolean;
+  /** Authenticated JSON endpoint used to load synchronized transcript segments. */
+  transcriptEndpoint?: string;
+  /** Authenticated plain-text download URL. */
   transcriptUrl?: string;
   audioUrl?: string;
-  /** 0–1 amplitudes, 24–32 of them. Absent falls back to seeded peaks. */
+  /** Expiry for an object-scoped signed audio URL. Public URLs omit it. */
+  audioExpiresAt?: string;
+  /** 0–1 amplitudes, at most 48. Absent falls back to seeded peaks. */
   peaks?: number[];
   people: PodcastPerson[];
+}
+
+export interface PodcastTranscriptSegment {
+  start: number;
+  text: string;
 }

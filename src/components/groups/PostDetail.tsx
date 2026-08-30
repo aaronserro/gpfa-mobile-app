@@ -1,19 +1,20 @@
 /**
  * Groups tab, level three: one post in full, with its discussion.
  *
- * Replies nest exactly one level: a reply that opens with an @mention of an
- * earlier top-level replier hangs under that reply. Anything else — including a
- * mention of someone already nested — stays at the top level, which is what the
- * design's own tree walk does.
+ * Replies nest exactly one level. The API's parentPostId is authoritative;
+ * deeper descendants are flattened under their top-level ancestor to match the
+ * website discussion layout.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,9 +39,15 @@ import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens'
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
 import ForumFilePicker from './ForumFilePicker';
+import { MentionInput, MentionText } from './MentionInput';
+import PollEditor from './PollEditor';
+import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import type {
   ForumAttachment,
   ForumUploadFile,
+  GroupMember,
+  MemberPoll,
+  MemberPollUpdateInput,
   Poll,
   PostType,
   Reply,
@@ -58,15 +65,56 @@ export interface ReplyNode {
 
 /** Group a flat reply list into the design's one-level tree. */
 export function replyTree(threadId: string, replies: Reply[]): ReplyNode[] {
+  const nodes = replies.map((reply, index) => ({
+    reply,
+    key: reply.id ?? `${threadId}:${index}`,
+    children: [],
+  } satisfies ReplyNode));
+  const byId = new Map(
+    nodes.flatMap((node) => node.reply.id ? [[node.reply.id, node] as const] : [])
+  );
   const roots: ReplyNode[] = [];
-  replies.forEach((reply, i) => {
-    const node: ReplyNode = { reply, key: reply.id ?? `${threadId}:${i}`, children: [] };
-    const mentioned = reply.mention?.slice(1).trim();
-    const parent = mentioned ? roots.find((r) => r.reply.a === mentioned) : undefined;
-    if (parent) parent.children.push(node);
-    else roots.push(node);
-  });
-  return roots;
+  const childrenByRoot = new Map<string, ReplyNode[]>();
+
+  const rootOf = (node: ReplyNode) => {
+    let current = node;
+    const seen = new Set<string>();
+
+    while (current.reply.parentPostId) {
+      const parent = byId.get(current.reply.parentPostId);
+      if (!parent) break;
+      if (seen.has(parent.key)) return node;
+      seen.add(current.key);
+      current = parent;
+    }
+
+    return current;
+  };
+
+  for (const node of nodes) {
+    if (!node.reply.parentPostId) {
+      roots.push(node);
+      continue;
+    }
+
+    const root = rootOf(node);
+    if (root === node) {
+      roots.push(node);
+      continue;
+    }
+
+    const children = childrenByRoot.get(root.key) ?? [];
+    children.push(node);
+    childrenByRoot.set(root.key, children);
+  }
+
+  return roots.map((root) => ({ ...root, children: childrenByRoot.get(root.key) ?? [] }));
+}
+
+interface ReplyTarget {
+  id: string;
+  authorName: string;
+  preview: string;
 }
 
 export interface PostDetailProps {
@@ -81,6 +129,24 @@ export interface PostDetailProps {
   onUpdate?: (input: { title?: string; body?: string }) => void;
   onDelete?: () => void;
   onChangeStatus?: (status: 'open' | 'answered' | 'closed') => void;
+  memberId: string;
+  mentionMembers: GroupMember[];
+  mutationNotice: MutationNoticeValue | null;
+  onDismissMutationNotice: () => void;
+  replyPending: boolean;
+  deletingReplies: Record<string, boolean | undefined>;
+  onDeleteReply: (replyId: string) => Promise<void>;
+  pollEditor?: MemberPoll;
+  pollEditorError?: string;
+  pollLoading: boolean;
+  pollUpdating: boolean;
+  pollClosing: boolean;
+  pollDeleting: boolean;
+  onOpenPollEditor: () => Promise<void>;
+  onClosePollEditor: () => void;
+  onSavePoll: (input: MemberPollUpdateInput) => Promise<boolean>;
+  onClosePoll: () => Promise<void>;
+  onDeletePoll: () => Promise<void>;
   upvoted: boolean;
   onToggleUpvote: () => void;
   reposted: boolean;
@@ -90,8 +156,7 @@ export interface PostDetailProps {
   onVote: (option: number) => void;
   rsvp: RsvpChoice | undefined;
   onRsvp: (choice: RsvpChoice) => void;
-  /** `mention` is the name to prefix, when the member replied to someone. */
-  onReply: (text: string, mention: string | null, files: ForumUploadFile[]) => void;
+  onReply: (text: string, parentPostId: string | null, files: ForumUploadFile[]) => Promise<boolean>;
   onOpenAttachment: (attachment: ForumAttachment) => void;
   onBack: () => void;
 }
@@ -106,6 +171,24 @@ export default function PostDetail({
   onUpdate,
   onDelete,
   onChangeStatus,
+  memberId,
+  mentionMembers,
+  mutationNotice,
+  onDismissMutationNotice,
+  replyPending,
+  deletingReplies,
+  onDeleteReply,
+  pollEditor,
+  pollEditorError,
+  pollLoading,
+  pollUpdating,
+  pollClosing,
+  pollDeleting,
+  onOpenPollEditor,
+  onClosePollEditor,
+  onSavePoll,
+  onClosePoll,
+  onDeletePoll,
   upvoted,
   onToggleUpvote,
   reposted,
@@ -120,9 +203,10 @@ export default function PostDetail({
 }: PostDetailProps) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
+  const replyInputRef = useRef<TextInput | null>(null);
   const [draft, setDraft] = useState('');
   const [replyFiles, setReplyFiles] = useState<ForumUploadFile[]>([]);
-  const [replyTarget, setReplyTarget] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(post.title);
   const [editBody, setEditBody] = useState(post.body);
@@ -143,17 +227,34 @@ export default function PostDetail({
 
   const roots = replyTree(post.id, replies);
   const canReply = post.canReply ?? !isAnnouncement;
-  const canEdit = !!post.canEdit && !!onUpdate;
-  const canDelete = !!post.canDelete && !!onDelete;
-  const canChangeStatus = !!post.canChangeStatus && !!onChangeStatus;
+  const canEdit = type !== 'poll' && !!post.canEdit && !!onUpdate;
+  const canDelete = type !== 'poll' && !!post.canDelete && !!onDelete;
+  const canChangeStatus = type !== 'poll' && !!post.canChangeStatus && !!onChangeStatus;
+  const canManagePoll = type === 'poll' && !!post.canEdit;
+  const upvotePending = !!deletingReplies[`upvote:${post.id}`];
+  const repostPending = !!deletingReplies[`repost:${post.id}`];
+  const votePending = !!deletingReplies[`poll:vote:${post.id}`];
+  const rsvpPending = !!deletingReplies[`rsvp:${post.id}`];
+  const threadUpdatePending = !!deletingReplies[`thread:update:${post.id}`];
+  const threadDeletePending = !!deletingReplies[`thread:delete:${post.id}`];
+  const threadStatusPending = !!deletingReplies[`thread:status:${post.id}`];
 
-  const send = () => {
+  const send = async () => {
     const text = draft.trim();
-    if (!text) return;
-    onReply(text, replyTarget, replyFiles);
-    setDraft('');
-    setReplyFiles([]);
-    setReplyTarget(null);
+    if (!text || replyPending) return;
+    const succeeded = await onReply(text, replyTarget?.id ?? null, replyFiles);
+    if (succeeded) {
+      setDraft('');
+      setReplyFiles([]);
+      setReplyTarget(null);
+    }
+  };
+
+  const confirmReplyDelete = (replyId: string) => {
+    Alert.alert('Delete reply?', 'This removes your reply permanently.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void onDeleteReply(replyId) },
+    ]);
   };
 
   return (
@@ -169,9 +270,10 @@ export default function PostDetail({
           <View style={styles.topActions}>
             <Pressable
               onPress={onToggleRepost}
+              disabled={repostPending}
               accessibilityRole="button"
               accessibilityLabel={reposted ? 'Remove repost' : 'Repost'}
-              accessibilityState={{ selected: reposted }}
+              accessibilityState={{ selected: reposted, disabled: repostPending }}
               hitSlop={8}
             >
               <Repeat
@@ -195,6 +297,7 @@ export default function PostDetail({
             },
           ]}
         >
+          <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
           <View style={styles.kindRow}>
             <View style={[styles.kindChip, { backgroundColor: kind.chipBg, borderColor: kind.chipBd }]}>
               <TypeIcon size={12} color={kind.ink} />
@@ -223,9 +326,10 @@ export default function PostDetail({
                     onUpdate?.({ title: editTitle.trim(), body: editBody.trim() });
                     setEditing(false);
                   }}
-                  style={[styles.manageBtn, { backgroundColor: t.surfaceAnchor, borderColor: t.surfaceAnchor }]}
+                  disabled={threadUpdatePending}
+                  style={[styles.manageBtn, { backgroundColor: threadUpdatePending ? t.muted : t.surfaceAnchor, borderColor: threadUpdatePending ? t.ruleHairline : t.surfaceAnchor }]}
                 >
-                  <Text style={styles.manageBtnOnText}>Save changes</Text>
+                  <Text style={styles.manageBtnOnText}>{threadUpdatePending ? 'Saving…' : 'Save changes'}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setEditing(false)}
@@ -242,7 +346,7 @@ export default function PostDetail({
               {hasStructuredDetailCard ? (
                 <TypeDetailCard groupName={groupName} post={post} type={type} />
               ) : (
-                <Text style={[styles.postBody, { color: t.inkBody }]}>{post.body}</Text>
+                <MentionText style={[styles.postBody, { color: t.inkBody }]}>{post.body}</MentionText>
               )}
             </>
           )}
@@ -305,6 +409,8 @@ export default function PostDetail({
               <View style={styles.rsvpRow}>
                 <Pressable
                   onPress={() => onRsvp('yes')}
+                  disabled={rsvpPending}
+                  accessibilityState={{ disabled: rsvpPending }}
                   style={[
                     styles.rsvpBtn,
                     {
@@ -324,6 +430,8 @@ export default function PostDetail({
                 </Pressable>
                 <Pressable
                   onPress={() => onRsvp('no')}
+                  disabled={rsvpPending}
+                  accessibilityState={{ disabled: rsvpPending }}
                   style={[
                     styles.rsvpBtn,
                     {
@@ -361,6 +469,8 @@ export default function PostDetail({
                       <Pressable
                         key={o.label}
                         onPress={() => onVote(i)}
+                        disabled={voted || votePending || post.lifecycle === 'closed'}
+                        accessibilityState={{ disabled: voted || votePending || post.lifecycle === 'closed', selected: chosen }}
                         style={[
                           styles.pollOption,
                           {
@@ -402,6 +512,16 @@ export default function PostDetail({
                   {(voted ? `${total} votes · ` : '') + post.poll.closes}
                 </MastheadMeta>
               </View>
+
+              {!!pollEditor && (
+                <PollEditor
+                  poll={pollEditor}
+                  pending={pollUpdating}
+                  error={pollEditorError}
+                  onSave={onSavePoll}
+                  onCancel={onClosePollEditor}
+                />
+              )}
             </>
           )}
 
@@ -414,7 +534,13 @@ export default function PostDetail({
           )}
 
           <View style={styles.actions}>
-            <Pressable style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]} onPress={onToggleUpvote} hitSlop={6}>
+            <Pressable
+              style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
+              onPress={onToggleUpvote}
+              disabled={upvotePending}
+              accessibilityState={{ disabled: upvotePending }}
+              hitSlop={6}
+            >
               <ArrowFatUp
                 size={15}
                 weight={upvoted ? 'fill' : 'regular'}
@@ -431,9 +557,10 @@ export default function PostDetail({
             <Pressable
               style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
               onPress={onToggleRepost}
+              disabled={repostPending}
               accessibilityRole="button"
               accessibilityLabel={`${reposted ? 'Remove repost' : 'Repost'} (${repostCount} ${repostCount === 1 ? 'repost' : 'reposts'})`}
-              accessibilityState={{ selected: reposted }}
+              accessibilityState={{ selected: reposted, disabled: repostPending }}
               hitSlop={6}
             >
               <Repeat
@@ -460,13 +587,53 @@ export default function PostDetail({
               </Pressable>
             )}
             {canEdit && (
-              <Pressable onPress={() => setEditing(true)} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
+              <Pressable disabled={threadUpdatePending} onPress={() => setEditing(true)} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
                 <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Edit</Text>
               </Pressable>
             )}
             {canDelete && (
-              <Pressable onPress={onDelete} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
-                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Delete</Text>
+              <Pressable
+                disabled={threadDeletePending}
+                onPress={() => Alert.alert('Delete post?', 'This removes the post permanently.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: onDelete },
+                ])}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{threadDeletePending ? 'Deleting…' : 'Delete'}</Text>
+              </Pressable>
+            )}
+            {canManagePoll && post.lifecycle !== 'closed' && !pollEditor && (
+              <Pressable
+                onPress={() => void onOpenPollEditor()}
+                disabled={pollLoading || pollClosing || pollDeleting}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{pollLoading ? 'Loading…' : 'Edit poll'}</Text>
+              </Pressable>
+            )}
+            {canManagePoll && post.lifecycle !== 'closed' && (
+              <Pressable
+                onPress={() => Alert.alert('Close poll?', 'Members will no longer be able to vote. Closed polls cannot be reopened.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Close poll', style: 'destructive', onPress: () => void onClosePoll() },
+                ])}
+                disabled={pollClosing || pollUpdating || pollDeleting}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{pollClosing ? 'Closing…' : 'Close poll'}</Text>
+              </Pressable>
+            )}
+            {type === 'poll' && !!post.canDelete && (
+              <Pressable
+                onPress={() => Alert.alert('Delete poll?', 'This removes the poll and its responses permanently.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => void onDeletePoll() },
+                ])}
+                disabled={pollDeleting || pollUpdating || pollClosing}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{pollDeleting ? 'Deleting…' : 'Delete poll'}</Text>
               </Pressable>
             )}
           </View>
@@ -477,6 +644,8 @@ export default function PostDetail({
                 <Pressable
                   key={status}
                   onPress={() => onChangeStatus?.(status)}
+                  disabled={threadStatusPending}
+                  accessibilityState={{ disabled: threadStatusPending }}
                   style={[styles.statusBtn, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
                 >
                   <Text style={[styles.statusText, { color: t.inkMuted }]}>{status}</Text>
@@ -529,7 +698,16 @@ export default function PostDetail({
                   <View style={styles.flex}>
                     <ReplyBody
                       node={node}
-                      onReplyTo={() => setReplyTarget(node.reply.a)}
+                      onReplyTo={node.reply.id ? () => {
+                        setReplyTarget({
+                          id: node.reply.id!,
+                          authorName: node.reply.a,
+                          preview: node.reply.text.slice(0, 60),
+                        });
+                        requestAnimationFrame(() => replyInputRef.current?.focus());
+                      } : undefined}
+                      onDelete={canReply && node.reply.id && node.reply.authorId === memberId ? () => confirmReplyDelete(node.reply.id!) : undefined}
+                      deleting={!!node.reply.id && !!deletingReplies[`reply:delete:${node.reply.id}`]}
                       onOpenAttachment={onOpenAttachment}
                     />
 
@@ -546,6 +724,8 @@ export default function PostDetail({
                             <ReplyBody
                               node={child}
                               nested
+                              onDelete={canReply && child.reply.id && child.reply.authorId === memberId ? () => confirmReplyDelete(child.reply.id!) : undefined}
+                              deleting={!!child.reply.id && !!deletingReplies[`reply:delete:${child.reply.id}`]}
                               onOpenAttachment={onOpenAttachment}
                             />
                           </View>
@@ -577,7 +757,7 @@ export default function PostDetail({
             <View style={[styles.targetChip, { backgroundColor: alpha(t.surfaceAnchor, 0.08) }]}>
               <ArrowBendUpLeft size={13} color={t.brandGreen} />
               <Text style={[styles.targetText, { color: t.inkMuted }]}>
-                Replying to {replyTarget}
+                Replying to {replyTarget.authorName}
               </Text>
               <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} accessibilityLabel="Clear reply target">
                 <X size={13} color={t.inkMuted} />
@@ -585,23 +765,32 @@ export default function PostDetail({
             </View>
           )}
           <View style={styles.composerRow}>
-            <Input
+            <MentionInput
+              ref={replyInputRef}
               value={draft}
               onChangeText={setDraft}
+              members={mentionMembers}
+              suggestionsPlacement="above"
               placeholder="Reply — @ to mention a member"
-              style={styles.composerInput}
+              containerStyle={styles.composerInputWrap}
+              inputStyle={styles.composerInput}
               returnKeyType="send"
-              onSubmitEditing={send}
+              onSubmitEditing={() => void send()}
+              editable={!replyPending}
             />
             <Pressable
-              onPress={send}
+              onPress={() => void send()}
+              disabled={replyPending || !draft.trim()}
               accessibilityLabel="Post reply"
+              accessibilityState={{ disabled: replyPending || !draft.trim() }}
               style={({ pressed }) => [
                 styles.send,
-                { backgroundColor: pressed ? t.brandGreenStrong : t.brandGreen },
+                { backgroundColor: replyPending || !draft.trim() ? t.muted : pressed ? t.brandGreenStrong : t.brandGreen },
               ]}
             >
-              <ArrowUp size={18} color={t.primaryForeground} />
+              {replyPending
+                ? <Text style={[styles.sendingText, { color: t.inkMuted }]}>…</Text>
+                : <ArrowUp size={18} color={t.primaryForeground} />}
             </Pressable>
           </View>
           <ForumFilePicker files={replyFiles} onChange={setReplyFiles} compact />
@@ -616,12 +805,16 @@ function ReplyBody({
   node,
   nested = false,
   onReplyTo,
+  onDelete,
+  deleting = false,
   onOpenAttachment,
 }: {
   node: ReplyNode;
   nested?: boolean;
   /** Absent on a nested reply — the design only offers Reply at the top level. */
   onReplyTo?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   onOpenAttachment: (attachment: ForumAttachment) => void;
 }) {
   const { t } = useTheme();
@@ -641,10 +834,9 @@ function ReplyBody({
           {`${r.org} · ${r.time}`}
         </MastheadMeta>
       </View>
-      <Text style={[nested ? styles.childText : styles.replyText, { color: t.inkBody }]}>
-        {!!r.mention && <Text style={{ color: t.brandBlue, fontFamily: sans(600) }}>{r.mention} </Text>}
+      <MentionText style={[nested ? styles.childText : styles.replyText, { color: t.inkBody }]}>
         {r.text}
-      </Text>
+      </MentionText>
       {!!r.attachments?.length && (
         <AttachmentList attachments={r.attachments} onOpen={onOpenAttachment} compact />
       )}
@@ -653,6 +845,11 @@ function ReplyBody({
           <Pressable style={styles.replyAction} onPress={onReplyTo} hitSlop={6}>
             <ArrowBendUpLeft size={13} color={t.inkFaint} />
             <Text style={[styles.replyActionText, { color: t.inkFaint }]}>Reply</Text>
+          </Pressable>
+        )}
+        {!!onDelete && (
+          <Pressable style={styles.replyAction} onPress={onDelete} disabled={deleting} hitSlop={6}>
+            <Text style={[styles.replyActionText, { color: t.brandRed }]}>{deleting ? 'Deleting…' : 'Delete'}</Text>
           </Pressable>
         )}
       </View>
@@ -749,9 +946,9 @@ function TypeDetailCard({
       {!!post.body && (
         <View style={styles.typeDetailBodyWrap}>
           <Text style={[styles.typeDetailSectionLabel, { color: t.inkMuted }]}>{sectionLabel}</Text>
-          <Text style={[styles.typeDetailBody, { color: type === 'event' ? t.inkStrong : t.inkMuted }]}>
+          <MentionText style={[styles.typeDetailBody, { color: type === 'event' ? t.inkStrong : t.inkMuted }]}>
             {post.body}
-          </Text>
+          </MentionText>
         </View>
       )}
     </View>
@@ -1106,8 +1303,9 @@ const styles = StyleSheet.create({
   tail: { height: 16 },
 
   composer: { borderTopWidth: 1, paddingTop: 10, paddingHorizontal: 16 },
-  composerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  composerInput: { flex: 1, height: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 13.5 },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  composerInputWrap: { flex: 1 },
+  composerInput: { height: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 13.5 },
   send: {
     width: 44,
     height: 44,
@@ -1115,6 +1313,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sendingText: { fontFamily: sans(600), fontSize: 18 },
   targetChip: {
     flexDirection: 'row',
     alignItems: 'center',

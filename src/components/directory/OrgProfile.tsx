@@ -26,10 +26,11 @@ export interface OrgProfileProps {
   onBack: () => void;
   /** Opens a role on the job board. Absent leaves the rows inert. */
   onOpenJob?: (job: JobListing) => void;
+  onOpenPerson: (memberId: string) => void;
   onMessagePerson: (memberId: string) => void;
 }
 
-export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onMessagePerson }: OrgProfileProps) {
+export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpenPerson, onMessagePerson }: OrgProfileProps) {
   const { t } = useTheme();
   const [tab, setTab] = useState<ProfileTab>('members');
 
@@ -119,32 +120,41 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onMes
               ]}
             >
               {people.map((p) => (
-                <Pressable
+                <View
                   key={p.id}
-                  onPress={() => onMessagePerson(p.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Message ${p.name}`}
-                  style={({ pressed }) => [
-                    styles.personRow,
-                    {
-                      borderBottomColor: t.ruleHairline,
-                      backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
-                    },
-                  ]}
+                  style={[styles.personRow, { borderBottomColor: t.ruleHairline }]}
                 >
-                  <Avatar
-                    initials={p.initials ?? initialsOf(p.name)}
-                    photoUrl={p.photoUrl}
-                    size={36}
-                  />
-                  <View style={styles.flex}>
-                    <Text style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
-                    <Text numberOfLines={1} style={[styles.personRole, { color: t.inkMuted }]}>
-                      {p.role}
-                    </Text>
-                  </View>
-                  <ChatCircle size={18} color={t.brandGreen} />
-                </Pressable>
+                  <Pressable
+                    onPress={() => onOpenPerson(p.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${p.name}'s profile`}
+                    style={({ pressed }) => [
+                      styles.personIdentity,
+                      { backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent' },
+                    ]}
+                  >
+                    <Avatar
+                      initials={p.initials ?? initialsOf(p.name)}
+                      photoUrl={p.photoUrl}
+                      size={36}
+                    />
+                    <View style={styles.flex}>
+                      <Text style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
+                      <Text numberOfLines={1} style={[styles.personRole, { color: t.inkMuted }]}>
+                        {p.role}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => onMessagePerson(p.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Message ${p.name}`}
+                    hitSlop={6}
+                    style={styles.messageAction}
+                  >
+                    <ChatCircle size={18} color={t.brandGreen} />
+                  </Pressable>
+                </View>
               ))}
               {people.length === 0 && (
                 <Text style={[styles.empty, { color: t.inkMuted }]}>
@@ -249,10 +259,23 @@ const styles = StyleSheet.create({
   personRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderBottomWidth: 1,
+  },
+  personIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
     paddingVertical: 11,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    paddingLeft: 20,
+  },
+  messageAction: {
+    minWidth: 52,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 12,
   },
   personName: { fontFamily: sans(500), fontSize: 13.5 },
   personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },

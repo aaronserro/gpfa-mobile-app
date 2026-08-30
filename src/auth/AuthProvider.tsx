@@ -1,7 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ApiError, request, setUnauthorizedHandler } from '../api/client';
 import { AUTH_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_REMOTE_API } from '../api/config';
-import { clearTokens, getAccessToken, saveTokens } from '../api/tokens';
+import {
+  getSessionForRequest,
+  invalidateStoredSession,
+  revokeCurrentSession,
+  SessionError,
+} from '../api/session';
+import { getStoredSession, saveTokens } from '../api/tokens';
 
 interface LoginResponse {
   /** Common aliases so a backend can use any of them without a code change. */
@@ -16,6 +22,8 @@ interface LoginResponse {
     token?: string;
     refreshToken?: string;
     refresh_token?: string;
+    expiresAt?: number | null;
+    expiresIn?: number;
   };
 }
 
@@ -27,18 +35,21 @@ interface AuthContextValue {
   isSignedIn: boolean;
   /** Set while a sign-in request is in flight. */
   busy: boolean;
+  /** Set while remote revocation and local credential cleanup are in flight. */
+  signingOut: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<boolean>;
-  signOut: () => void;
+  signOut: () => Promise<{ remoteRevocationConfirmed: boolean }>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   status: 'signedOut',
   isSignedIn: false,
   busy: false,
+  signingOut: false,
   error: null,
   signIn: async () => false,
-  signOut: () => {},
+  signOut: async () => ({ remoteRevocationConfirmed: true }),
 });
 
 /**
@@ -56,6 +67,7 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>(USING_REMOTE_API ? 'restoring' : 'signedOut');
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Restore a stored session before showing the sign-in screen.
@@ -63,25 +75,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!USING_REMOTE_API) return;
     let alive = true;
     void (async () => {
-      const token = await getAccessToken();
-      if (alive) setStatus(token ? 'signedIn' : 'signedOut');
+      try {
+        const stored = await getStoredSession();
+        if (!stored) {
+          if (alive) setStatus('signedOut');
+          return;
+        }
+        await getSessionForRequest();
+        if (alive) setStatus('signedIn');
+      } catch (cause) {
+        if (cause instanceof SessionError && cause.terminal) {
+          await invalidateStoredSession();
+          if (alive) setStatus('signedOut');
+          return;
+        }
+        // Keep a recoverable session during an outage; requests expose retry UI.
+        if (alive) setStatus('signedIn');
+      }
     })();
     return () => {
       alive = false;
     };
   }, []);
 
-  const signOut = useCallback(() => {
-    void clearTokens();
+  const invalidateLocalSession = useCallback(() => {
+    void invalidateStoredSession();
     setError(null);
     setStatus('signedOut');
   }, []);
 
+  const signOut = useCallback(async (): Promise<{ remoteRevocationConfirmed: boolean }> => {
+    if (signingOut) return { remoteRevocationConfirmed: false };
+    setSigningOut(true);
+    let remoteRevocationConfirmed = true;
+    try {
+      if (USING_REMOTE_API) {
+        // Refresh first when needed so Supabase can identify and revoke this session.
+        const session = await getSessionForRequest();
+        if (session) await revokeCurrentSession(session.accessToken);
+      }
+    } catch {
+      remoteRevocationConfirmed = false;
+    } finally {
+      await invalidateStoredSession();
+      setError(null);
+      setStatus('signedOut');
+      setSigningOut(false);
+    }
+    return { remoteRevocationConfirmed };
+  }, [signingOut]);
+
   // A 401 from anywhere in the app drops the session.
   useEffect(() => {
-    setUnauthorizedHandler(signOut);
+    setUnauthorizedHandler(invalidateLocalSession);
     return () => setUnauthorizedHandler(null);
-  }, [signOut]);
+  }, [invalidateLocalSession]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
     setError(null);
@@ -111,10 +159,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         res.auth?.access_token ??
         res.auth?.token;
       if (!access) throw new ApiError('Sign-in succeeded but returned no token.', 500, res);
-      await saveTokens(
-        access,
-        res.refreshToken ?? res.refresh_token ?? res.auth?.refreshToken ?? res.auth?.refresh_token
-      );
+      const refresh =
+        res.refreshToken ?? res.refresh_token ?? res.auth?.refreshToken ?? res.auth?.refresh_token;
+      if (!refresh) throw new ApiError('Sign-in succeeded but returned no refresh token.', 500, res);
+      const expiresAt = res.auth?.expiresAt;
+      const expiresIn = res.auth?.expiresIn;
+      const resolvedExpiry =
+        typeof expiresAt === 'number' && Number.isFinite(expiresAt)
+          ? expiresAt
+          : typeof expiresIn === 'number' && Number.isFinite(expiresIn)
+            ? Math.floor(Date.now() / 1000) + expiresIn
+            : null;
+      if (resolvedExpiry === null) {
+        throw new ApiError('Sign-in succeeded but returned no token expiry.', 500, res);
+      }
+      await saveTokens(access, refresh, resolvedExpiry);
       setStatus('signedIn');
       return true;
     } catch (cause) {
@@ -132,8 +191,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, isSignedIn: status === 'signedIn', busy, error, signIn, signOut }),
-    [status, busy, error, signIn, signOut]
+    () => ({ status, isSignedIn: status === 'signedIn', busy, signingOut, error, signIn, signOut }),
+    [status, busy, signingOut, error, signIn, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -3,20 +3,24 @@
 How the GPFA mobile app expects to talk to a backend, and what you need to do to
 plug one in.
 
-Everything here describes code that exists today. The app currently runs on
-local fixtures; nothing about the UI changes when you point it at a real server.
+Everything here describes code that exists today. The app can run on local
+fixtures or the authenticated member API without changing screen components.
 
 ---
 
 ## 1. The switch
 
-The app decides where data comes from by reading one required env var plus one
-optional auth env var:
+The app decides where data comes from with one backend URL. Remote auth also
+needs the Supabase project URL and public publishable key so the native client
+can refresh and revoke its own session without sending refresh tokens through
+the GPFA API:
 
 ```bash
 # .env  (see .env.example)
 EXPO_PUBLIC_API_URL=https://api.example.org
 EXPO_PUBLIC_GPFA_WEB_ORIGIN=http://192.168.1.25:3000
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
 | `EXPO_PUBLIC_API_URL` | Behaviour |
@@ -85,15 +89,23 @@ Rules that keep this working:
 
 ### 3.1 What the app does
 
-1. On launch, reads a stored token from SecureStore. If present → signed in,
-   skip the sign-in screen. If absent → show sign-in.
+1. On launch, reads the stored access token, refresh token, and expiry from
+  SecureStore. A missing or nearly expired access token is refreshed before
+  the app restores the signed-in state.
 2. Sign-in `POST`s to `/api/members/sign-in` with `{ email, password }`, and
   includes `webOrigin` when `EXPO_PUBLIC_GPFA_WEB_ORIGIN` is set, **without** an
    `Authorization` header.
-3. On success, stores the token and enters the app.
+3. On success, atomically stores the access token, refresh token, and expiry,
+  then enters the app.
 4. Every later request sends `Authorization: Bearer <token>`.
-5. Any `401` or `403` from **any** endpoint clears the token and returns the
-   user to sign-in.
+5. Before an authenticated request, an access token within 60 seconds of expiry
+  is refreshed directly through Supabase Auth. A `401` also triggers one
+  refresh and one retry. Concurrent callers share one refresh operation.
+6. A `403`, rejected refresh token, or second `401` clears the session and
+  returns the user to sign-in. Network failures and Supabase `5xx` responses
+  remain retryable and do not erase credentials.
+7. User-initiated sign-out asks Supabase Auth to revoke this device's refresh
+  session, then clears local credentials even if remote revocation fails.
 
 ### 3.2 Login
 
@@ -133,17 +145,21 @@ field if present.
 > apps have no per-origin cookie jar. You need a token-issuing route for mobile.
 > This is the single most likely server-side change required.
 
-### 3.3 Not yet implemented
+### 3.3 Refresh and revocation boundary
 
-- **Refresh tokens are stored but never used.** There is no refresh-on-401
-  retry — a 401 signs the user out. If your access tokens are short-lived, add
-  the refresh call in `src/api/client.ts` before shipping.
-- `ROUTES.logout` and `ROUTES.session` are declared in `config.ts` but **not
-  called**. Sign-out is currently local-only (clears the token).
-- **No UI triggers sign-out.** `signOut` exists in `AuthProvider` and is
-  destructured in `App.tsx`, but the tab bar is Home / Ask GPFA / Groups with no
-  profile screen, so the only way the session ends is a 401. Add a control when
-  you add a profile screen.
+The refresh token is sent only to the configured Supabase Auth
+`/auth/v1/token?grant_type=refresh_token` endpoint. Rotated access and refresh
+tokens replace the stored session as one payload before queued requests resume.
+GPFA member API routes receive only the current access token.
+
+Sign-out calls Supabase Auth `/auth/v1/logout?scope=local` with the current
+access token. This revokes the current device's refresh session; already-issued
+JWT access tokens remain subject to their normal short expiry. The app does not
+currently list or control sessions on other devices.
+
+`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` must be a public publishable/anonymous
+client key. A secret or service-role key must never be embedded in a mobile
+build.
 
 ---
 
@@ -180,36 +196,54 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `PUT` | signed storage URL from prepare | Resource submission attachment upload | non-error status |
 | `POST` | `/api/members/working-groups/:slug/resource-submissions/uploads/finalize` | Resource submission attachment finalize | `WorkingGroupResourceUploadFinalizeResponse` |
 | `POST` | `/api/members/working-groups/:slug/resource-submissions` | Resource submission metadata | `WorkingGroupResourceSubmissionResponse` |
+| `GET` | `/api/admin/resource-submissions?groupSlug=:slug&status=all` | Co-lead resource moderation queue | `{ status: "success", submissions: WorkingGroupResourceModerationSubmission[] }`; bearer required, co-lead scoped to `groupSlug` |
+| `PATCH` | `/api/admin/resource-submissions/:id/status` | Co-lead approve/reject/request-changes action | `{ status, reviewerNotes? }` → `{ status: "success", approvedContentItemId? }`; server authorizes against the submission's group |
+| `DELETE` | `/api/admin/resource-submissions/:id/status` | Co-lead removal of an approved resource | `{ status: "success" }`; archives published content while preserving submission history |
 | `POST` | `/api/members/working-groups/events/rsvp` | Event detail RSVP | `{ status, message }` |
 | `POST` | `/api/members/forum/threads` | Create post sheet | `multipart/form-data` → `{ status, redirectTo }` |
 | `PATCH`/`DELETE` | `/api/members/forum/threads/:threadId` | Post detail edit/delete controls | `{ status }` |
 | `PATCH` | `/api/members/forum/threads/:threadId/status` | Post detail status controls | `{ status, threadStatus }` |
 | `POST` | `/api/members/forum/replies` | Post detail reply composer | `{ status, message }` |
-| `DELETE` | `/api/members/forum/replies/:replyId` | Prepared route | `{ status }` |
+| `DELETE` | `/api/members/forum/replies/:replyId` | Post detail own-reply deletion | `{ status }` |
 | `POST` | `/api/members/forum/uploads/prepare` | Thread/reply attachment prepare | `ForumUploadPrepareResponse` |
 | `PUT` | signed storage URL from forum prepare | Thread/reply attachment upload | non-error status |
 | `POST` | `/api/members/forum/uploads/finalize` | Thread/reply attachment finalize | `ForumUploadFinalizeResponse` |
 | `GET` | `/api/content-assets/:assetId` | Open thread/reply attachment | file response; bearer required for member assets |
 | `POST` | `/api/members/forum/summarize` | Post detail summarize action | `ForumSummarizeResponse` |
 | `GET`/`POST` | `/api/members/polls` | Poll detail/create poll | `MemberPollsResponse` / `{ status, pollId }` |
-| `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Prepared route | `MemberPollResponse` / `{ status }` |
+| `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Post detail poll editor, close, and delete actions | `MemberPollResponse` / `{ status }` |
 | `POST` | `/api/members/polls/vote` | Poll detail vote action | `{ status, message }` |
 | `GET`/`POST`/`DELETE` | `/api/members/upvotes` | Feed/detail upvote actions | member content list / mutation response |
 | `GET`/`POST`/`DELETE` | `/api/members/saved-content` | Feed/detail repost actions + profile Reposts | member content list / mutation response |
 | `GET` | `/api/members/profile` | Greeting, avatars, authorship | `{ status: "success", member: Member }` |
+| `GET` | `/api/members/home/immediate-actions` | Home masthead + What You Missed | `{ status: "success", masthead, actions }`, mapped to `HomeImmediateActionsResponse` |
 | `GET` | `/me/saved` | Member profile → Saved | `LibraryResource[]`, newest first |
 | `GET` | `/groups` | Home, Groups drawer | legacy `Group[]` shape, not used while `/api/members/working-groups` is configured |
 | `GET` | `/events/next` | Home calendar card | `CalendarEvent \| null` |
 | `GET` | `/posts` | Groups feed | `FeedEntry[]` |
 | `GET` | `/api/members/news` | News screen + Home digest | `{ status: "success", items, relatedThreads }`, mapped to `NewsStory[]`, newest first |
+| `GET` | `/api/members/events` | Home calendar + More → Events | `{ status: "success", events: PortalEvent[] }`, including raw dates, timezone, attendee roster, and details URL; mapped to `MobileEventPreview[]` |
+| `POST` | `/api/members/events/rsvp` | Event detail RSVP | `{ contentItemId, status }` → `{ status, message }` |
+| `GET` | `/api/members/announcements` | Home actions + More → Updates | `{ status, announcements, surveys }`, including survey question/statement matrices and the caller's saved answers |
+| `POST` | `/api/members/surveys/:id/response` | Survey final submission | `{ answers: MobileSurveyAnswer[] }` → `{ status: "success" }` |
+| `PATCH` | `/api/members/surveys/:id/response` | Prepared survey progress save | `{ resumeStepKey, answer?, feedback? }` → `{ status: "success" }` |
+| `GET` | `/api/members/annual-meeting` | Home + More → Annual Meeting | `{ status, page, registration }`, mapped to `AnnualMeetingPreview` |
+| `GET`/`POST` | `/api/members/annual-meeting/registration` | Registration load/save | safe member context / `{ draftId, expectedUpdatedAt?, answers }` |
+| `GET` | `/api/members/annual-meeting/assets/:assetId` | Protected meeting materials | private file response; bearer required |
 | `GET` | `/api/members/resources` | Resources → Library + News Radar | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`, mapped to `ResourceHubData`. Called whenever `EXPO_PUBLIC_API_URL` is set, even if `EXPO_PUBLIC_FIXTURE_PORTAL_DATA=true`. |
-| `GET` | `/podcasts` | Resources → Podcasts | `PodcastEpisode[]`, newest first |
-| `GET` | `/podcasts/:slug/transcript` | Episode sheet | `text/plain` transcript |
-| `GET` | `/jobs` | Resources → Job board | `JobListing[]` |
+| `GET` | `/api/members/podcasts?waveform=mobile` | Resources → Podcasts + playback source metadata | `{ status: "success", episodes: PodcastEpisode[] }`, newest first; includes distinct `showNotes`, optional `people[].memberHref`, a JSON `transcriptEndpoint`, and plain-text `transcriptUrl`; protected episodes include a short-lived signed `audioUrl` and `audioExpiresAt`; waveforms are capped at 48 amplitudes |
+| `GET` | `/api/members/podcasts/:slug/transcript` | Episode sheet | `{ revisionId: string, segments: PodcastTranscriptSegment[] \| null }`; active-member bearer required; `?download=1` returns the plain-text export |
+| `GET` | signed Supabase Storage URL from the podcast catalog | Native playback for member-only podcast audio | Audio response with Storage byte-range support; no GPFA bearer header |
+| `GET` | `/api/content-assets/:assetId` | Legacy protected podcast/file playback | Audio/file response; bearer supplied only for this trusted same-origin route |
+| `GET` | `/api/members/job-postings?pageSize=100` | Resources → Job board | paginated postings mapped to `JobListing[]` |
 | `GET` | `/api/members/directory/organizations` | Directory index + profile | `{ status, organizations }`, mapped to `MemberOrg[]` |
 | `GET` | `/api/members/directory?limit=500` | Directory search + organization profiles | `{ status, members }`, mapped to `DirectoryPerson[]` |
+| `GET` | `/api/members/directory/profiles/:memberId` | Self, directory, organization, and linked podcast profiles | `{ status: "success", profile: DirectoryMemberProfile }`; active-member bearer required; RSVP events are omitted unless `isSelf` is true |
+| `GET` | `/api/members/directory/profiles/:memberId/activity?kind=:kind&page=:page` | Profile Posts, Replies, and Reposts tabs | `MemberProfileActivityPage`; `kind` is `posts`, `replies`, or `reposts`; 10 items per page |
 | local only | Ask suggestions | Ask GPFA empty state | `string[]` from fixtures/static prompts |
-| `POST` | `/api/members/knowledge/messages/stream` | Ask GPFA | SSE stream mapped to `AskAnswer` |
+| `GET` | `/api/members/knowledge/conversations` | Ask GPFA history | `{ status: "success", conversations: AskConversationSummary[] }`, newest first, latest 20 |
+| `GET` | `/api/members/knowledge/conversations/:id?before=:cursor` | Ask GPFA saved conversation | `{ status, conversation, messages, hasEarlier, earlierCursor }` mapped to `AskConversationPage` |
+| `POST` | `/api/members/knowledge/messages/stream` | Ask GPFA | Incremental SSE mapped to `AskStreamEvent`; `askGpfa()` remains an assembled compatibility wrapper |
 | `POST` | `/posts` | Composer | `Thread` |
 | `POST` | `/posts/:id/replies` | Post detail | `Reply` |
 | `POST`/`DELETE` | `/posts/:id/upvote` | Feed + detail | ignored |
@@ -218,6 +252,20 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `POST`/`DELETE` | `/groups/:id/subscribe` | Legacy group subscription route | ignored |
 | `POST` | `/posts/:id/vote` | Poll | ignored |
 | `POST` | `/posts/:id/rsvp` | Event post | ignored |
+
+### Home dashboard source map
+
+Home loads each band independently so a slow or failed route does not block the
+rest of the dashboard. Pull-to-refresh refetches all of these sources:
+
+| Dashboard band | Repository function | Route |
+| --- | --- | --- |
+| Masthead + What You Missed | `getHomeImmediateActions()` | `/api/members/home/immediate-actions` |
+| Upcoming | `getEvents()` | `/api/members/events` |
+| Your Groups | `getWorkingGroups()` | `/api/members/working-groups` |
+| Industry News | `getNews()` | `/api/members/news` |
+| Library | `getLibrary()` | `/api/members/resources` |
+| Podcast | `getPodcasts()` | `/api/members/podcasts?waveform=mobile` |
 
 Declared in `ROUTES` but **not called**: `/auth/logout`, `/auth/session`,
 `/posts/:id`. The post detail screen reads from the already-loaded feed rather
@@ -230,6 +278,49 @@ Private messaging is always remote whenever `EXPO_PUBLIC_API_URL` is set. All
 ten `/api/members/messages*` operations send the stored bearer token and ignore
 `EXPO_PUBLIC_FIXTURE_PORTAL_DATA`; fixture conversations are used only when no
 remote API is configured.
+
+### Podcast playback delivery
+
+Podcasts also always use the remote catalog whenever `EXPO_PUBLIC_API_URL` is
+set. The fixture flag cannot replace remote podcast data, because fixture
+episodes do not contain playable protected-audio URLs.
+
+After active-member authentication, `/api/members/podcasts` signs each
+member-only Storage object and returns the object-scoped URL with
+`audioExpiresAt`. The mobile player refreshes the catalog before loading an
+episode when that expiry is invalid, elapsed, or less than ten minutes away.
+Signed Storage URLs are never persisted or logged, and the app never attaches
+the GPFA bearer token to them. The bearer is only attached to the trusted,
+same-origin `/api/content-assets/:assetId` compatibility URL.
+
+The default web catalog may contain up to 4,000 signed min/max waveform
+samples. Mobile requests `waveform=mobile`, which compacts each waveform on the
+server to at most 48 nonnegative amplitude buckets. The mobile repository
+validates and re-bounds that input before it reaches React Native rendering.
+
+Transcript JSON uses the bearer-safe
+`/api/members/podcasts/:slug/transcript` route rather than the cookie-oriented
+member page route. A successful response includes the stable `revisionId` and
+either timestamped `{ start, text }` segments or `segments: null` when no
+transcript can be delivered. The repository validates this boundary: malformed
+JSON and HTML redirects are load errors, not empty transcripts. When
+`EXPO_PUBLIC_API_URL` is unset, transcript-enabled fixture episodes resolve
+their synthetic segments from the local fixture map.
+
+The catalog's `transcriptEndpoint` is the authenticated JSON source used for
+timestamp seeking, active-line highlighting, and opt-in transcript following.
+Its `transcriptUrl` is the separate `?download=1` plain-text response used by
+the native save/share action. Audio export refreshes the catalog first so the
+download receives a current signed Storage URL. The app sends its bearer token
+only to configured GPFA API/web origins; signed Storage and third-party URLs
+never receive it. Both exports use a disposable cache directory that is removed
+after the platform share sheet closes or an error occurs.
+
+Podcast guests become interactive only when the server supplies a valid
+`memberHref` in the form `/members/directory/:organizationSlug/:mentionHandle`.
+The app validates that route, matches it to the loaded active-member directory,
+and then requests the viewer-scoped summary endpoint. External guests remain
+plain text and cannot be used to probe directory membership.
 
 ### 4.1 Request/response details
 
@@ -273,7 +364,7 @@ entry can't disagree. An empty array renders the profile's empty state.
 There is no mutation for this yet: `POST`/`DELETE /posts/:id/save` bookmarks a
 **post**, and nothing in the app writes to `/me/saved`. See §8.
 
-**`GET /api/members/notifications` → `MemberNotification[]`**
+**`GET /api/members/notifications` → `MemberNotificationsResponse`**
 
 Notifications for the signed-in member, newest first. The request includes the
 stored token:
@@ -282,9 +373,9 @@ stored token:
 Authorization: Bearer <accessToken>
 ```
 
-The API currently returns `{ "status": "success", "memberCreatedAt": "...",
-"notifications": [...] }`. The app reads the `notifications` array and
-normalizes each row. It also tolerates common aliases such as `_id`, `uuid`,
+The API returns `{ "status": "success", "memberCreatedAt": "...",
+"notifications": [...] }`. The app preserves `memberCreatedAt` for realtime
+membership-boundary checks and normalizes each row. It also tolerates common aliases such as `_id`, `uuid`,
 `subject`, `message`, `text`, `createdAt`, `date`, `isRead`, and `readAt`, but
 this is the target shape:
 
@@ -298,9 +389,9 @@ this is the target shape:
     "created_at": "2026-08-20T12:34:56.000Z",
     "read": false,
     "navigation_href": "/members/...",
-    "target_type": "member",
+    "target_type": "site",
     "target_id": "...",
-    "content_type": "post",
+    "content_type": "working_group_post",
     "content_id": "...",
     "content_deleted_at": null,
     "readAt": null
@@ -309,8 +400,16 @@ this is the target shape:
 ```
 
 `read: false` or a missing `read` value counts toward the bell badge. `href` is
-stored from `navigation_href` for a later open action; the current sheet only
-displays the list.
+stored from `navigation_href`. Tapping a row marks it read without dismissing it
+and opens supported destinations through native state: announcements, surveys,
+events, Annual Meeting, working groups, discussions, and polls. Relative member
+paths are validated before use. External, malformed, traversal, and member
+destinations without a native equivalent are never opened; the app reports that
+the destination is unavailable.
+
+When `content_deleted_at` is present, the app closes the notification sheet,
+marks the notification read, and shows a content-specific unavailable alert.
+The notification remains in history until the member explicitly dismisses it.
 
 **`POST /api/members/notifications/read` → `{ status, readAt }`**
 
@@ -321,8 +420,10 @@ and this JSON body:
 { "notificationIds": ["notif-cl1"] }
 ```
 
-The app optimistically sets matching notifications to `read: true`, which also
-updates the header badge. If the request fails, it restores the previous list.
+The app supports one-row and mark-all actions. It optimistically sets matching
+notifications to `read: true`, which also updates the header badge without
+removing the rows. If the request fails, it restores the previous state and
+shows an error.
 
 **`POST /api/members/notifications/dismiss` → `{ status, dismissedAt }`**
 
@@ -333,9 +434,31 @@ same body shape as mark-read:
 { "notificationIds": ["notif-cl1"] }
 ```
 
-The app optimistically removes matching notifications from the sheet. If the
-request fails, it restores the previous list. Dismissing the last notification
-renders the sheet's empty state.
+The app supports one-row dismissal and a distinct **Clear all** action. Clear
+all sends the IDs in the currently loaded notification window (at most 30) in
+one request; it does not imply historical deletion. The app optimistically
+removes matching notifications from the sheet. If the request fails, it
+restores the previous list and shows an error. Dismissing the last notification
+renders the sheet's empty state. Both operations remain per-user soft dismissals;
+the durable notification row is not deleted.
+
+**Foreground realtime delivery**
+
+When `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and
+`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are configured, the signed-in app uses
+the existing secure session's access token to subscribe to `INSERT` events on
+`public.notifications`. Database RLS remains authoritative for target access.
+The app validates each row, rejects notifications from before `memberCreatedAt`,
+deduplicates by ID, and keeps the newest 30. A new realtime row produces an
+accessible in-app banner with an Open action that uses the same native routing
+as the notification sheet.
+
+The socket exists only while the app is active. It is removed on background,
+sign-out, and unmount. Foregrounding triggers a REST refresh before reconnecting,
+and a 60-second foreground refresh reconciles disconnect gaps. Rows discovered
+by initial load, polling, or foreground reconciliation do not replay arrival
+banners. Notification titles and bodies must never be written to logs or
+analytics.
 
 **`GET /api/members/working-groups` → `WorkingGroupsResponse`**
 
@@ -438,6 +561,33 @@ hidden entirely.
 `month` and `day` are pre-formatted display strings, not a date. `tone` is
 `"green"` (accented) or `"default"` (neutral).
 
+**`GET /api/members/events` → `{ status: "success", events: PortalEvent[] }`**
+
+The Events screen uses the active-member bearer token and maps each row into a
+`MobileEventPreview`. In addition to display labels, the response must preserve
+the source calendar fields and the member-visible attendee roster:
+
+```ts
+type MobileEventPreview = {
+  id: string;
+  contentItemId: string | null;
+  startsAt: string;
+  endsAt?: string;
+  timezone?: string;
+  datePrecision?: 'day' | 'datetime';
+  detailsUrl: string;
+  attendeeCount: number;
+  attendees: Array<{ name: string; org?: string }>;
+  // Existing title, location, format, RSVP, summary, agenda, and join fields.
+};
+```
+
+The app uses these fields for the month view and generates `.ics` files on the
+device. “Add to calendar” opens the system event editor with prefilled event
+data; it does not request broad calendar permission. Calendar exports include
+the summary and `detailsUrl`, but deliberately exclude attendee identities and
+the private member meeting URL. No separate calendar-download API call is made.
+
 **`GET /groups` → `Group[]`**
 
 Must include each group's `threads`. Home shows the newest thread's title, and
@@ -456,6 +606,43 @@ The cross-group feed. Flat, not nested:
 Return every post the member may see. **Filtering, sorting, and search are all
 client-side today** (§6), so pagination is not supported — see §8.
 
+**`GET /api/members/knowledge/conversations` → saved Ask GPFA conversations**
+
+Requires the same active-member bearer authentication as the stream endpoint.
+It returns at most the 20 most recently updated active conversations owned by
+the caller:
+
+```json
+{
+  "status": "success",
+  "conversations": [
+    { "id": "uuid", "title": "Agency-lending indemnification", "updatedAt": "2026-08-28T15:30:00.000Z" }
+  ]
+}
+```
+
+**`GET /api/members/knowledge/conversations/:id?before=:cursor` → `AskConversationPage`**
+
+The first request omits `before` and returns the latest 40 messages in
+chronological order. When `hasEarlier` is true, pass `earlierCursor` back
+unchanged as `before` and prepend the returned messages by id. Cursors are
+opaque and must not be decoded or constructed by the mobile client. Missing,
+inactive, and conversations owned by another member all return `404` without
+revealing ownership information.
+
+```json
+{
+  "status": "success",
+  "conversation": { "id": "uuid", "title": "Agency-lending indemnification", "updatedAt": "2026-08-28T15:30:00.000Z" },
+  "messages": [
+    { "id": "uuid", "role": "user", "text": "How do peers structure it?", "createdAt": "2026-08-28T15:29:00.000Z", "sources": [] },
+    { "id": "uuid", "role": "ai", "text": "Members generally…", "createdAt": "2026-08-28T15:30:00.000Z", "sources": [] }
+  ],
+  "hasEarlier": false,
+  "earlierCursor": null
+}
+```
+
 **`POST /api/members/knowledge/messages/stream` → Server-sent events → `AskAnswer`**
 
 ```http
@@ -466,10 +653,28 @@ Authorization: Bearer <accessToken>
 { "conversationId": "optional-existing-conversation", "message": "How do peers structure indemnification?" }
 ```
 
-The app understands `ready`, `text_delta`, `done`, `persisted`, and `error`
-events. It stores the returned `conversationId` in `AskScreen` state and sends
-it with the next question in the same screen session. Ask suggestions are local
+The app incrementally handles `ready`, `tool_call`, `tool_result`, `text_delta`,
+`done`, `persisted`, and `error` events. `ready` replaces the optimistic member
+message and establishes the saved conversation. Tool events drive a safe,
+server-authored research trace. Text deltas are decoded across arbitrary chunk
+boundaries and flushed to the UI in small batches. `done` supplies canonical
+answer Markdown and structured sources; `persisted` replaces the transient
+assistant row with the durable message id. `App.tsx` owns this state and sends
+the conversation id with follow-up questions. Ask suggestions remain local
 until a real member suggestions endpoint exists.
+
+Stop aborts response-body consumption before `done`. The partial assistant text
+stays visible in memory and is explicitly marked unsaved; it is never written
+to local storage or treated as a persisted message. The already acknowledged
+member question remains durable. Source navigation only uses validated relative
+member routes: supported destinations open natively, and the rest open on the
+configured trusted GPFA web origin. Model-authored Markdown links are inert.
+
+Starting a new conversation only clears the selected id. It does not create an
+empty database row; the first streamed question creates the conversation. The
+last active conversation id is stored per member in AsyncStorage and reloaded
+from this API after restart. Message bodies and sources are never persisted in
+that local preference.
 
 Failures are caught and rendered as a chat message: *"Ask GPFA is unavailable
 right now."* — the screen does not throw. Development builds log the underlying
@@ -559,19 +764,20 @@ Order matters: a profile lists its people **in the order you send them**, so put
 the ones that should lead first. The index's people search sorts by name
 instead, and only runs once the member types something.
 
-**Upvote / vote / RSVP** — return anything; the app ignores the body and only
-checks for a non-error status.
+**Upvote / vote / RSVP** — the app checks for a non-error status, shows visible
+mutation feedback, and reconciles canonical detail when needed.
 
 - Upvote / repost / subscribe: `POST` to set, `DELETE` to unset. Reposts use
   `/api/members/saved-content`; “saved content” is the storage/API name, not the
   mobile UI label.
-- Reply upvote: `:replyId` is `Reply.id`. **A reply without an `id` is never
-  sent** — the member can still tap it, but the state stays on the device and is
-  lost on reload. Give every reply an id if you want them to persist.
-- Vote: `{ "option": 0 }` — zero-based index into `poll.options`. One vote per
-  organization; the app blocks a second vote client-side, but **enforce it
-  server-side**.
-- RSVP: `{ "choice": "yes" | "no" }`.
+- Reply creation uses the forum reply route and then refetches the canonical
+  item detail. Reply deletion is available only when the canonical reply has an
+  id and its `author.id` matches the signed-in member.
+- Poll voting sends canonical question and option ids through
+  `/api/members/polls/vote`. The app blocks a duplicate write while pending,
+  but the server must enforce vote constraints.
+- Working-group event RSVP maps `yes`/`no` UI choices to the route's canonical
+  attendance statuses.
 
 ---
 
@@ -625,28 +831,30 @@ Universal response rules for GPFA web API routes:
 | `POST /api/members/sign-out` | Deferred / web session route. Source: `members/sign-out/route.ts`. | No body. | Redirect or status response depending on caller. | Mobile sign-out is local-only today; do not call until a token-mode logout/session endpoint is added. |
 | `POST /api/members/forgot-password` | Deferred / Public, rate-limited. Source: `members/forgot-password/route.ts`. | JSON `{ email }`. | `{ status: "success" }` or uniform recovery message. | No pagination. Keep account discovery narrow; the current mobile app has no forgot-password UI. |
 | `POST /api/members/reset-password` | Deferred / Public token flow. Source: `members/reset-password/route.ts`. | JSON reset token plus password fields. | `{ status: "success" }`. | No pagination. Invalid or expired token returns `400`/`401`; not part of first mobile shell. |
-| `POST /api/members/change-password` | Deferred / active member, migration needed. Source: `members/change-password/route.ts`. | JSON `{ currentPassword, newPassword }`. | `{ status: "success" }`. | No pagination. `401` when not active; validation errors return `400`. Requires a profile/settings mobile screen. |
+| `POST /api/members/change-password` | Current / Member bearer-ready. Source: `members/change-password/route.ts`. | No body. | `{ status: "success", message }`. | Sends a verified recovery link to the authenticated profile email. Rate limits return `429`; auth errors return `401`. |
 | `POST /api/auth/verify-email-link` | Deferred / Public token flow. Source: `auth/verify-email-link/route.ts`. | JSON `{ token }`. | `{ status: "success" }`. | No pagination. Invalid token returns error; include only when mobile owns email verification. |
 
 #### Member profile and onboarding
 
-The current-member read powers the mobile greeting, avatar, and authorship.
-Profile editing, avatar upload, and onboarding mutations remain deferred until
-the corresponding mobile controls are implemented.
+The current-member read powers the mobile greeting, avatar, authorship, and
+account settings. Profile and avatar changes refresh this authoritative read.
 
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
-| `GET /api/members/profile` | Current / Member bearer-ready. Source: `members/profile/route.ts`. | No body. | `{ status: "success", member: { id, name, firstName, initials, org, role?, orgId? } }`. | No pagination. Uses the current authenticated member only and returns `Cache-Control: private, no-store`. Auth errors return `401`; malformed or unavailable profile data returns `500`. |
-| `PATCH /api/members/profile` | Deferred / active member, migration needed. Source: `members/profile/route.ts`. | JSON `{ fullName, roleTitle, country, bio }`. | `{ status: "success" }`. | No pagination. Invalid body returns `400` with field errors; unauthenticated/inactive returns `401`; write failures return `500`. |
-| `PATCH /api/members/email-preferences` | Deferred / active member, migration needed. Source: `members/email-preferences/route.ts`. | JSON preference booleans keyed by email category. | `{ status: "success" }`. | No pagination. Add only with a notifications/settings screen. |
+| `GET /api/members/profile` | Current / Member bearer-ready. Source: `members/profile/route.ts`. | No body. | `{ status: "success", member: { id, name, firstName, initials, org, role?, orgId?, avatarUrl, country, bio, skills, mentionHandle, organizationSlug } }`. | No pagination. Uses the current authenticated member only and returns `Cache-Control: private, no-store`. Auth errors return `401`; malformed or unavailable profile data returns `500`. |
+| `PATCH /api/members/profile` | Current / Member bearer-ready. Source: `members/profile/route.ts`. | JSON `{ fullName, roleTitle, country, bio, skills }`. | `{ status: "success", member }`. | Invalid body returns `400` with field errors; unauthenticated/inactive returns `401`; write failures return `500`. |
+| `PATCH /api/members/profile/handle` | Current / Member bearer-ready. | JSON `{ mentionHandle }`. | `{ status: "success", mentionHandle, href }`. | Invalid handles return `400`; collisions return `409`. The member id always comes from authentication. |
+| `GET /api/members/email-preferences` | Current / Member bearer-ready. | No body. | `{ status: "success", preferences }`. | Returns all five boolean preferences with `Cache-Control: private, no-store`. |
+| `PATCH /api/members/email-preferences` | Current / Member bearer-ready. | JSON `{ preference, enabled }`. | `{ status: "success", preferences }`. | Updates exactly one validated preference and returns the complete authoritative state. |
+| `GET /api/members/mentions` | Current / Member bearer-ready. | No body. | `{ status: "success", items }`. | Durable received-mention history, newest first. Empty state is `items: []`; notification dismissal does not remove these records. |
 | `GET /api/members/onboarding/state` | Deferred / active member, migration needed. Source: `members/onboarding/state/route.ts`. | No body. | Current onboarding step/state payload. | No pagination. Empty state is the server-defined incomplete/completed state, not a guessed client fallback. |
 | `POST /api/members/onboarding/profile` | Deferred / active member, migration needed. Source: `members/onboarding/profile/route.ts`. | JSON profile details matching `MemberProfileDetailsSchema`. | `{ status: "success" }`. | No pagination. Validation `400`; inactive/unauthenticated `401`. |
 | `POST /api/members/onboarding/password` | Deferred / active member, migration needed. Source: `members/onboarding/password/route.ts`. | JSON password payload. | `{ status: "success" }`. | No pagination. Validation `400`; auth errors `401`. |
 | `POST /api/members/onboarding/complete` | Deferred / active member, migration needed. Source: `members/onboarding/complete/route.ts`. | No body. | `{ status: "success" }`. | No pagination. Missing active profile fails closed. |
-| `POST /api/members/avatar/prepare` | Deferred / active member, migration needed. Source: `members/avatar/prepare/route.ts`. | JSON filename/content-type/size metadata. | Direct-upload URL and server upload identifier. | No pagination. Validation `400`; storage errors `500`. |
-| `POST /api/members/avatar/finalize` | Deferred / active member, migration needed. Source: `members/avatar/finalize/route.ts`. | JSON upload identifier. | `{ status: "success" }` plus persisted avatar metadata. | No pagination. Invalid upload `400`/`404`; storage errors `500`. |
-| `DELETE /api/members/avatar` | Deferred / active member, migration needed. Source: `members/avatar/route.ts`. | No body. | `{ status: "success" }`. | Empty state is no avatar; UI may fall back to initials. |
-| `POST /api/members/avatar/linkedin` | Deferred / active member, migration needed. Source: `members/avatar/linkedin/route.ts`. | No body or provider payload as implemented by the route. | `{ status: "success" }` plus avatar result. | External-provider errors should surface as recoverable failures. |
+| `POST /api/members/avatar/prepare` | Current / Member bearer-ready. Source: `members/avatar/prepare/route.ts`. | JSON `{ filename, byteSize, contentType: "image/jpeg" }`. | `{ storagePath, signedUrl }`. | Mobile normalizes selected photos to a 512×512 JPEG below 512 KB before preparing the upload. |
+| `POST /api/members/avatar/finalize` | Current / Member bearer-ready. Source: `members/avatar/finalize/route.ts`. | JSON `{ storagePath, contentType: "image/jpeg" }`. | `{ status: "success", imageUrl }`. | The server verifies ownership, bytes, size, and moderation before persisting. |
+| `DELETE /api/members/avatar` | Current / Member bearer-ready. Source: `members/avatar/route.ts`. | No body. | `{ status: "success" }`. | Empty state is no avatar; UI falls back to initials. |
+| `POST /api/members/avatar/linkedin` | Current / Member bearer-ready. Source: `members/avatar/linkedin/route.ts`. | JSON `{ includeName: false }` from mobile. | `{ status: "success", imageUrl, imported, fullName }`. | Mobile imports only the linked identity photo; no-body web callers preserve the existing name-and-photo behavior. |
 
 #### Notifications
 
@@ -687,7 +895,7 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `DELETE /api/members/forum/threads/:threadId` | Current / Member bearer-ready. Source: same route. | Path `threadId`; no body. | `{ status: "success" }`. | No pagination. Mobile rolls back optimistic deletion on failure. Owner/moderator checks required. |
 | `PATCH /api/members/forum/threads/:threadId/status` | Current / Member bearer-ready. Source: `members/forum/threads/[threadId]/status/route.ts`. | JSON `{ status: "open" | "answered" | "closed" }`. | `{ status: "success", threadStatus }`. | No pagination. Co-lead/moderator authorization required; invalid status `400`; auth `401`/`403`. |
 | `POST /api/members/forum/replies` | Current / Member bearer-ready. Source: `members/forum/replies/route.ts`. | JSON `{ threadId, groupSlug, body, attachmentIds?, parentPostId? }`. Device files are prepared/uploaded/finalized before this request. | `{ status: "success", message }`. | No pagination. Empty reply rejected even when files are attached. Must verify active member and group contribution rights. |
-| `DELETE /api/members/forum/replies/:replyId` | Prepared / Member bearer-ready. Source: `members/forum/replies/[replyId]/route.ts`. | Path `replyId`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
+| `DELETE /api/members/forum/replies/:replyId` | Current / Member bearer-ready. Source: `members/forum/replies/[replyId]/route.ts`. | Path `replyId`; no body. | `{ status: "success" }`. | No pagination. The mobile UI exposes this only for canonical replies whose `author.id` matches the signed-in member. The route remains authoritative and currently permits authors to delete their own replies while the discussion is open. |
 | `POST /api/members/forum/uploads/prepare` | Current / Member bearer-ready. Source: `members/forum/uploads/prepare/route.ts`. | JSON `{ groupSlug, fileName, contentType, byteSize }`. | `ForumUploadPrepareResponse`: upload `assetId`, bucket, storage path, signed URL, expected content type/size. | Used by thread and reply composers. Validate type/size before issuing URL; maximum 25MB. |
 | `PUT signedUrl` | Current / signed storage URL. | Raw file body with the prepared `Content-Type`; no bearer header. | Any non-error storage response. | Mobile does not finalize or create the thread/reply after a failed upload. |
 | `POST /api/members/forum/uploads/finalize` | Current / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | Used by thread and reply composers. Reject mismatched upload metadata; storage errors `500`. |
@@ -700,9 +908,9 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | --- | --- | --- | --- | --- |
 | `GET /api/members/polls` | Current / Member bearer-ready. Source: `members/polls/route.ts`. | Query `groupSlug?`, `cursor?`, `limit?`. | `MemberPollsResponse`: `{ status, polls, resultsByPoll, answersByPoll, member }`. | Cursor pagination where supplied; default server order is newest/relevant poll order. Empty state is `polls: []`. Invalid query `400`; auth `401`. |
 | `POST /api/members/polls` | Current / Member bearer-ready. Source: same route. | JSON `MemberPollCreateInput`: `title`, `description?`, `tags?`, `closesAt`, `groupSlug?`, `questions[]`. | `{ status: "success", pollId }`. | No pagination. Validate at least one question and options; contributor auth required for group polls. |
-| `GET /api/members/polls/:id` | Prepared / Member bearer-ready. Source: `members/polls/[id]/route.ts`. | Path `id`. | `MemberPollResponse`: `{ status, poll }`. | No pagination. Unknown/inaccessible poll should return not-found/permission-safe error. |
-| `PUT /api/members/polls/:id` | Prepared / Member bearer-ready. Source: same route. | JSON `MemberPollUpdateInput`. | `{ status: "success" }`. | No pagination. Owner/moderator checks required; validation `400`. |
-| `DELETE /api/members/polls/:id` | Prepared / Member bearer-ready. Source: same route. | Path `id`; no body. | `{ status: "success" }`. | No pagination. Owner/moderator checks required. |
+| `GET /api/members/polls/:id` | Current / Member bearer-ready. Source: `members/polls/[id]/route.ts`. | Path `id`. | `MemberPollResponse`: `{ status, poll }`. | Loads the canonical mobile poll editor. Unknown/inaccessible polls return a permission-safe error. |
+| `PUT /api/members/polls/:id` | Current / Member bearer-ready. Source: same route. | JSON `MemberPollUpdateInput`. | `{ status: "success" }`. | The mobile editor sends full questions/options only before the first response; afterward it sends metadata only. Closing sends `{ status: "closed" }`. Closed polls cannot reopen. Validation `400`; lifecycle conflicts `409`. |
+| `DELETE /api/members/polls/:id` | Current / Member bearer-ready. Source: same route. | Path `id`; no body. | `{ status: "success" }`. | Used by the confirmed destructive mobile poll action. The server remains authoritative for ownership and active membership. |
 | `POST /api/members/polls/vote` | Current / Member bearer-ready. Source: `members/polls/vote/route.ts`. | JSON `{ pollId, groupSlug?, answers: [{ questionId, optionId }] }`. | `{ status: "success", message }`. | No pagination. Server must enforce one valid vote set per member/question; validation `400`; closed/inaccessible poll errors should fail closed. |
 
 #### Reposts (saved content) and upvotes
@@ -725,11 +933,13 @@ treating the remaining deferred routes as remote-ready.
 | Workflow | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- | --- |
 | Resources/library | `GET /api/members/resources` | Current / Member bearer-ready. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`. Map to `ResourceHubData`. | Server-defined resource and radar order; no pagination. Empty state `resources: []`, `newsRadar: []`. `401` inactive; `500` load failure. |
-| Podcasts | `GET /api/members/podcasts` | Deferred / active member, migration needed. Source: `members/podcasts/route.ts`. | No query params. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. |
+| Podcasts | `GET /api/members/podcasts?waveform=mobile` | Current / Member bearer-ready. Source: `members/podcasts/route.ts`. | Optional `waveform=mobile`; omitted returns the detailed web waveform and any other value returns `400`. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. Each playable episode supplies `audioUrl`; protected audio also supplies `audioExpiresAt`; mobile waveforms contain at most 48 amplitudes. Missing audio remains browsable but is shown as unavailable. |
 | Jobs | `GET /api/members/job-postings` | Current / Member bearer-ready. Source: `members/job-postings/route.ts`. | Query `page?` default `1`, `pageSize?` default `20`, max `100`. Mobile requests `pageSize=100`. | Active job-posting page from `getCachedActiveJobPostings`. Maps `jobPostings` to `JobListing[]`. | Page-based pagination from the API; mobile loads the first page for the Resources hub and Job board card count. Empty page is an empty jobs array with total metadata. Invalid pagination `400`; auth `401`; load failure `500`. |
 | Jobs write | `POST /api/members/job-postings`, `PATCH/DELETE /api/members/job-postings/:jobId` | Excluded first pass / Organization admin. Sources: job posting routes. | JSON job posting payload for create/update; path `jobId` for update/delete. | `{ status: "success", jobPosting }` or `{ status: "success" }`. | Org-admin mobile workflow does not exist; exclude until it does. |
 | Directory people | `GET /api/members/directory?limit=500` | Current / Member bearer-ready. Source: `members/directory/route.ts`. | Mobile requests `limit=500`; route also accepts `query?`, `workingGroupSlug?`, and `region?`. | `{ status: "success", members: DirectoryMember[] }`, mapped to `DirectoryPerson[]` using `orgSlug` as the organization join. | Sorted by `full_name` ascending before optional region filter. Empty state `members: []`. Invalid/internal query failures return `500`; auth `401`. |
 | Directory detail | `GET /api/members/directory/:memberId` | Current / Member bearer-ready; prepared but not currently called by mobile. Source: `members/directory/[memberId]/route.ts`. | Path `memberId`. | `{ status: "success", summary }` with role, region, organization, and viewer-scoped activity counts. | No pagination. Invalid id `400`; unknown/inaccessible profile `404`; auth `401`. |
+| Directory profile | `GET /api/members/directory/profiles/:memberId` | Current / Member bearer-ready. | Active member UUID in the path. | `{ status: "success", profile }` with public identity, organization, skills, working groups, and `isSelf`; `events` is owner-only. | No pagination. Missing, inactive, and locked targets all return permission-safe `404`; auth `401`; responses are private/no-store. |
+| Directory profile activity | `GET /api/members/directory/profiles/:memberId/activity` | Current / Member bearer-ready. | Query `kind=posts|replies|reposts`, `page` defaults to `1`. | `{ status: "success", kind, items, page, pageSize, totalItems, hasMore }`; activity items carry native `groupSlug`, `targetType`, and `targetId` navigation identity. | 10 items per page, newest first. Empty state `items: []`; invalid query `400`; unavailable member `404`; auth `401`. |
 | Directory organizations | `GET /api/members/directory/organizations` | Current / Member bearer-ready. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations }`, mapped to `MemberOrg[]`. | Server order is A-Z. Empty state `organizations: []`. Auth `401`; load failure `500`. |
 | News feed | `GET /api/members/news` | Current / Member bearer-ready. Source: `members/news/route.ts`. | Query `topic?`, `source?`, `limit?`, `cursor?`, `snapshotAt?`, `story?`. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order and cursor metadata. Empty state `items: []`. Invalid filters `400`; auth `401`; load failure `500`. |
 | News Radar | `GET /api/members/news-radar` | Current / Member bearer-ready. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
@@ -747,7 +957,7 @@ suggestions API yet.
 | `GET /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/route.ts`. | No query params. | `{ status: "success", conversations }`. | Sorted by `updated_at` descending, limited to 20. Empty state `conversations: []`. Auth `401`; load failure `500`. |
 | `POST /api/members/knowledge/conversations` | Deferred / active member, migration needed. Source: same route. | JSON `{ title?: string }`, max 120 chars. | `{ status: "success", conversation }`. | No pagination. Validation `400`; auth `401`; create failure `500`. |
 | `GET /api/members/knowledge/conversations/:id` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/[id]/route.ts`. | Path `id`; query `before?` cursor for earlier messages. | `{ status, conversation, messages, hasEarlier, earlierCursor }`. | Cursor pagination backward through messages. Empty state `messages: []`. Invalid cursor `400`; unknown/not-owned conversation `404`. |
-| `POST /api/members/knowledge/messages/stream` | Current / Member bearer-ready. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Server-sent event stream with ready/persisted answer events, plus persisted conversation/message records. Mobile maps the final answer to `{ text, sources }`. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON as implemented. |
+| `POST /api/members/knowledge/messages/stream` | Current / Member bearer-ready. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Incremental SSE: `ready`, zero or more `tool_call`, `tool_result`, `text_delta`, then `done`, followed by `persisted` or `error`. `done` includes canonical Markdown, `sourceState`, and structured sources. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON. Cancellation before `done` preserves only an unsaved in-memory partial assistant response. |
 
 #### Member messaging
 
@@ -886,22 +1096,27 @@ Two fields deserve attention:
 
 ```ts
 {
-  id?: string;        // needed to persist a reply upvote — see §4.1
+  id?: string;        // canonical server id after persistence
+  parentPostId?: string | null; // null/absent = top-level reply
   a: string;          // author name  ← note the terse key
   org: string;
   time: string;       // display string
   initials?: string;
-  mention?: string;   // "@Marcus Chen" — rendered highlighted before text
-  text: string;
+  text: string;       // body; canonical mentions are embedded as @handle tokens
   up?: number;
 }
 ```
 
-**`mention` also decides nesting.** Replies come back flat, and the detail
-screen nests them one level: a reply whose `mention` names an earlier
-*top-level* replier is drawn underneath that reply. Anything else — including a
-mention of someone who is already nested, or of the post's author — stays at the
-top level. Send replies in chronological order or the nesting will not resolve.
+Replies come back flat, and `parentPostId` is the authoritative relationship.
+The detail screen follows that chain to its root and renders every descendant
+under the root at one visual depth, matching the website. A missing, unknown,
+or cyclic parent is shown as a top-level reply rather than dropped.
+
+Mentions are independent of nesting. New-post and reply bodies use canonical
+lowercase handles such as `@marcus-chen`. Autocomplete candidates come from the
+active subscribed-member directory for the selected working group. The server
+resolves handles from the body, persists mention records, and sends the
+notification; the client never submits display names as mention identity.
 
 ### `Poll`, `PollOption`, `EventRow`
 
@@ -994,16 +1209,35 @@ it the button does nothing.
 ```ts
 PodcastPerson  { name: string; role: string; initials? }
 PodcastEpisode { slug, title, date, mins?, duration, durationSeconds,
-                 summary, hasTranscript, transcriptUrl?, audioUrl?,
+                 summary, hasTranscript, transcriptUrl?, audioUrl?, audioExpiresAt?,
                  peaks?: number[], people: PodcastPerson[] }
 ```
 
-Return `/podcasts` **newest first** — the screen features `[0]` as the New
+Return `/api/members/podcasts` **newest first** — the screen features `[0]` as the New
 episode and never re-sorts it. `duration` is display ("38 min");
 `durationSeconds` is what the transport, the resume label and the waveform fill
-read, so both are required. `peaks` are 24–32 amplitudes in 0–1; when absent the
-app draws a stable set seeded from `slug`. `initials` is derived from `name`
-when omitted.
+read, so both are required. `peaks` contain at most 48 amplitudes in 0–1; when
+absent the app draws a stable set seeded from `slug`. `initials` is derived
+from `name` when omitted.
+
+`audioUrl` is the existing playback contract; mobile does not request a second
+playback endpoint. The authenticated catalog replaces private podcast assets
+with short-lived, object-scoped Supabase Storage URLs and supplies their
+`audioExpiresAt`. Signed, public, and external HTTPS URLs are passed to
+`expo-audio` without GPFA credentials. Relative `/api/content-assets/:assetId`
+URLs remain a compatibility path and receive the stored bearer token through
+`AudioSource.headers` only when the resolved origin exactly matches the
+configured API origin. A token must never be attached to redirects, Supabase
+Storage, or third-party hosts, and the resolved source object must never be
+logged or persisted.
+
+Playback uses one provider-owned native `expo-audio` player with background and
+lock-screen controls. A play request replaces the source once and queues native
+playback while the remote source prepares; lock-screen setup is best-effort and
+must not block foreground playback. Per-episode resume positions are stored in
+AsyncStorage; signed URLs, tokens, and audio source headers remain in memory
+only. Signed Storage startup and seeking must be verified with byte-range
+responses on physical iOS and Android devices.
 
 ### `JobSource`, `JobStat`, `JobListing`
 
@@ -1084,11 +1318,19 @@ read existing group conversations but its first compose flow starts direct
 conversations with one searched directory member. `createdAt` values are ISO
 timestamps and `ordinal` is the stable server ordering/read-cursor key.
 
-### `NewPostInput`, `AskAnswer`, `FeedEntry`, `RsvpChoice`
+### `NewPostInput`, Ask GPFA, `FeedEntry`, `RsvpChoice`
 
 ```ts
 NewPostInput { groupId: string; type: PostType; title: string; body: string }
-AskAnswer    { text: string; sources: string[] }
+AskConversationSummary { id: string; title: string; updatedAt: string }
+AskMessage   { id: string; role: 'user' | 'ai'; text: string;
+               createdAt: string; sources: AskSource[]; sourceState?: AskSourceState }
+AskConversationPage { conversation: AskConversationSummary; messages: AskMessage[];
+                      hasEarlier: boolean; earlierCursor: string | null }
+AskAnswer    { text: string; sources: AskSource[]; sourceState?: AskSourceState;
+               conversationId?: string;
+               conversation?: AskConversationSummary; userMessage?: AskMessage;
+               assistantMessage?: AskMessage }
 FeedEntry    { post: Thread; groupId: string }
 RsvpChoice   'yes' | 'no'
 ```
@@ -1097,16 +1339,18 @@ RsvpChoice   'yes' | 'no'
 
 ## 6. What the client does, so your server doesn't have to
 
-These are **client-side over the already-loaded feed**:
+These are client-side where the table says so. Working-group activity controls
+are server-backed because that feed is cursor-paginated.
 
 | Behaviour | Where |
 | --- | --- |
 | Working group search (name) | `GroupsScreen.tsx` |
 | Splitting the directory into subscribed / not | `GroupsScreen.tsx` |
 | Working group directory sort: recommended, active, members, A-Z | `GroupsScreen.tsx` |
-| Per-group post-type filter, newest-first (`mins`) order | `groups/GroupView.tsx` |
-| A group's stats grid and topics list | `groups/GroupView.tsx` |
-| One-level reply nesting, from `mention` | `groups/PostDetail.tsx` |
+| Per-group search, type, status, and sort | Server-backed through `/api/members/working-groups/:slug/feed`; applied state lives in `App.tsx` |
+| A group's topics list | Derived from the currently loaded canonical page in `groups/GroupView.tsx`; it is not presented as a complete feed count |
+| One-level reply nesting, from `parentPostId` | `groups/PostDetail.tsx` |
+| Working-group mention autocomplete and highlighting | `groups/MentionInput.tsx` |
 | Poll percentages | computed from `options[].votes` |
 | Reply counts | derived from `replies[]` |
 | Job search (title, org, location, function, blurb) | `jobs/JobBoard.tsx` |
@@ -1215,36 +1459,42 @@ class ApiError extends Error {
   *"Request failed (500)."*
 - Requests time out after **15s** (`REQUEST_TIMEOUT_MS`). Ask GPFA stream
   requests use **60s** (`AI_REQUEST_TIMEOUT_MS`) because retrieval and model
-  generation can take longer than ordinary JSON endpoints.
-- Read failures on Home and Groups render `DataGate`'s retry screen. Mutation
-  failures roll the optimistic update back silently.
+  generation can take longer than ordinary JSON endpoints. The stream timeout
+  and caller abort signal remain attached until response-body consumption ends.
+  A `401` retry is allowed only before body consumption starts.
+- Read failures on Home and Groups render `DataGate`'s retry screen. Working-
+  group mutation failures roll back where appropriate and render an accessible
+  error notice with the server message.
 
 ---
 
 ## 10. Mutation semantics
 
-Every write is **optimistic with rollback**. The UI updates immediately, the
-request fires, and the change reverts if it fails.
+Safe toggles remain **optimistic with rollback**. Non-idempotent writes preserve
+member input until the request succeeds. Operation/target pending keys prevent
+duplicate working-group writes, and every working-group success or failure
+produces visible feedback.
 
 | Action | Optimistic effect | On failure |
 | --- | --- | --- |
 | Create post | Prepended to feed, `mins: 0` | Removed |
-| Reply | Appended to thread | Removed |
+| Reply | Shown optimistically while uploading/posting | Draft and selected files stay in the composer; canonical detail is refetched after success because create does not return a reply id |
+| Delete own reply | Canonical reply is removed | Canonical detail is refetched and the server message is shown |
 | Upvote | Count ±1, icon turns green | Reverted |
-| Reply upvote | Count ±1 | Reverted (no request when the reply has no `id`) |
 | Repost | Repeat icon turns green, label becomes "Reposted", count increases | Reverted |
 | Subscribe | Group moves between directory sections | Reverted |
 | Vote | Option selected, percentages shown | Cleared |
 | RSVP | Button state changes | Reverted to previous |
+| Poll edit/close/delete | Controls show a pending state; destructive actions require confirmation | Editor input is preserved for `400`/`409`; server message is shown |
 
 Implications for your server:
 
 - **Be idempotent where you can.** Double-taps happen.
-- **Return the created resource** for `POST /posts` and `POST /posts/:id/replies`
-  so the app can replace its placeholder with the real record.
+- The member reply route currently returns only `{ status, message }`, so the
+  app refetches canonical item detail after posting to obtain the reply id.
 - **Enforce one-vote-per-org server-side.** The client guard is UX, not security.
-- A failed write is currently silent — no toast. If you want the member told,
-  add it at the `catch` sites in `App.tsx`.
+- Treat client visibility and disabled controls as UX only. Every route must
+  continue to authenticate, authorize, and validate the mutation.
 
 ---
 

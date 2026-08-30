@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans } from '../ds/tokens';
 
-export type TabId = 'home' | 'groups' | 'directory' | 'ask' | 'more';
+export const TAB_IDS = ['home', 'groups', 'directory', 'ask', 'more'] as const;
+export type TabId = (typeof TAB_IDS)[number];
 
 interface TabDef {
   id: TabId;

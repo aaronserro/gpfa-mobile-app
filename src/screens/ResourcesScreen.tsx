@@ -1,10 +1,30 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ListRenderItemInfo,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ArrowRight,
   Article,
+  DownloadSimple,
   MagnifyingGlass,
   Pause,
   Play,
@@ -14,6 +34,8 @@ import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import Waveform, { fallbackPeaks } from '../components/podcast/Waveform';
+import PodcastShowNotes from '../components/podcast/PodcastShowNotes';
+import PodcastTranscript from '../components/podcast/PodcastTranscript';
 import {
   formatTime,
   playedRatio,
@@ -29,6 +51,8 @@ import type {
   Member,
   NewsStory,
   PodcastEpisode,
+  PodcastPerson,
+  PodcastTranscriptSegment,
   ResourceType,
 } from '../api/types';
 
@@ -43,14 +67,123 @@ const TYPE_GLYPH: Record<ResourceType, string> = {
   'Event Notes': '✎',
 };
 
+const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
+  episode,
+  first,
+  last,
+  active,
+  playing,
+  loading,
+  buffering,
+  failed,
+  remaining,
+  progress,
+  onOpenEpisode,
+  onToggleEpisode,
+}: {
+  episode: PodcastEpisode;
+  first: boolean;
+  last: boolean;
+  active: boolean;
+  playing: boolean;
+  loading: boolean;
+  buffering: boolean;
+  failed: boolean;
+  remaining: string | null;
+  progress: number;
+  onOpenEpisode: (slug: string) => void;
+  onToggleEpisode: (episode: PodcastEpisode) => void;
+}) {
+  const { t } = useTheme();
+  const label = !episode.audioUrl
+    ? 'Audio unavailable'
+    : failed
+      ? 'Playback failed · tap to retry'
+      : active && buffering
+        ? 'Buffering…'
+        : remaining;
+  const actionLabel = !episode.audioUrl
+    ? 'Audio unavailable'
+    : loading
+      ? 'Loading'
+      : failed
+        ? 'Try again'
+        : playing
+          ? 'Pause'
+          : remaining
+            ? `Resume: ${remaining}`
+            : 'Play episode';
+
+  return (
+    <View
+      style={[
+        styles.epRow,
+        {
+          backgroundColor: t.surfacePaper,
+          borderTopColor: t.ruleHairline,
+          borderBottomColor: t.ruleHairline,
+        },
+        first && styles.epRowFirst,
+        last && styles.epRowLast,
+      ]}
+    >
+      <Pressable
+        onPress={() => onToggleEpisode(episode)}
+        disabled={!episode.audioUrl || loading}
+        accessibilityLabel={`${actionLabel}: ${episode.title}`}
+        style={[
+          styles.epPlay,
+          {
+            borderColor: playing ? t.surfaceAnchor : t.ruleHairline,
+            backgroundColor: playing ? t.surfaceAnchor : t.surfacePaper,
+          },
+          (!episode.audioUrl || loading) && styles.disabled,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={t.brandGreen} />
+        ) : playing ? (
+          <Pause size={14} weight="fill" color="#fff" />
+        ) : (
+          <Play size={14} weight="fill" color={t.brandGreen} />
+        )}
+      </Pressable>
+
+      <Pressable style={styles.epBody} onPress={() => onOpenEpisode(episode.slug)}>
+        <Text numberOfLines={1} style={[styles.epTitle, { color: t.inkStrong }]}>
+          {episode.title}
+        </Text>
+        <MastheadMeta size={10}>{episodeMeta(episode)}</MastheadMeta>
+        <View style={styles.epFoot}>
+          <Waveform
+            peaks={episode.peaks ?? fallbackPeaks(episode.slug)}
+            progress={progress}
+          />
+          {!!label && <Text style={[styles.epProgress, { color: t.inkMuted }]}>{label}</Text>}
+        </View>
+      </Pressable>
+    </View>
+  );
+});
+
 type View_ = 'hub' | 'library' | 'podcasts' | 'jobs';
 type SortId = 'newest' | 'oldest';
 type Sheet = { kind: 'resource'; id: string } | { kind: 'episode'; slug: string } | null;
+
+export interface ResourcesNavigationRequest {
+  sequence: number;
+  origin: 'home' | 'more' | 'return';
+  view: View_;
+  episodeSlug?: string;
+  jobId?: string;
+  returnWithinResources?: boolean;
+}
 
 export interface ResourcesScreenProps {
   member: Member;
   /** Returns from the Resources hub to its parent navigation surface. */
   onBack?: () => void;
+  navigationRequest?: ResourcesNavigationRequest | null;
   resources: LibraryResource[];
   episodes: PodcastEpisode[];
   jobs: JobListing[];
@@ -65,7 +198,15 @@ export interface ResourcesScreenProps {
   /** Called when the member taps Open on a resource. */
   onOpenResource?: (resource: LibraryResource) => void;
   /** Called when the member asks for an episode transcript. */
-  onOpenTranscript?: (episode: PodcastEpisode) => void;
+  onOpenTranscript?: (episode: PodcastEpisode) => Promise<PodcastTranscriptSegment[]>;
+  /** Opens a linked podcast guest in the native member directory. */
+  onOpenPodcastPerson?: (person: PodcastPerson) => void;
+  /** Opens a safe external link found in episode show notes. */
+  onOpenShowNotesLink?: (href: string) => void;
+  /** Downloads the current signed audio source and opens the native share sheet. */
+  onDownloadPodcastAudio?: (episode: PodcastEpisode) => Promise<void>;
+  /** Downloads the plain-text transcript and opens the native share sheet. */
+  onDownloadPodcastTranscript?: (episode: PodcastEpisode) => Promise<void>;
   /** Called when the member taps Apply on a job listing. */
   onApplyToJob?: (job: JobListing) => void;
   /** Opens News Radar. It renders outside this screen, as it does from Home. */
@@ -75,6 +216,7 @@ export interface ResourcesScreenProps {
 export default function ResourcesScreen({
   member,
   onBack,
+  navigationRequest = null,
   resources,
   episodes,
   jobs,
@@ -84,6 +226,10 @@ export default function ResourcesScreen({
   initialJobId = null,
   onOpenResource,
   onOpenTranscript,
+  onOpenPodcastPerson,
+  onOpenShowNotesLink,
+  onDownloadPodcastAudio,
+  onDownloadPodcastTranscript,
   onApplyToJob,
   onGoNews,
 }: ResourcesScreenProps) {
@@ -97,11 +243,47 @@ export default function ResourcesScreen({
   const [sheet, setSheet] = useState<Sheet>(
     initialEpisodeSlug ? { kind: 'episode', slug: initialEpisodeSlug } : null
   );
+  const [transcript, setTranscript] = useState<{
+    slug: string;
+    segments: PodcastTranscriptSegment[];
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
+  const [downloadKind, setDownloadKind] = useState<'audio' | 'transcript' | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [sheetViewportHeight, setSheetViewportHeight] = useState(0);
+  const [manualScrollVersion, setManualScrollVersion] = useState(0);
+  const episodeSheetScrollRef = useRef<ScrollView>(null);
   // Job board state lives here, not in JobBoard, so a trip into a posting and
   // back doesn't reset the search and the filter.
   const [jobQuery, setJobQuery] = useState('');
   const [jobFilter, setJobFilter] = useState<JobFilterId>('all');
   const [jobId, setJobId] = useState<string | null>(initialJobId);
+  const returnViewRef = useRef<View_ | null>(null);
+  const toggleEpisodeRef = useRef(player.toggleEpisode);
+  toggleEpisodeRef.current = player.toggleEpisode;
+
+  const openPodcastEpisode = useCallback((slug: string) => {
+    setDownloadError(null);
+    setSheet({ kind: 'episode', slug });
+  }, []);
+  const togglePodcastEpisode = useCallback((episode: PodcastEpisode) => {
+    toggleEpisodeRef.current(episode);
+  }, []);
+
+  useEffect(() => {
+    if (!navigationRequest) return;
+    setView((current) => {
+      returnViewRef.current = navigationRequest.returnWithinResources ? current : null;
+      return navigationRequest.view;
+    });
+    setSheet(
+      navigationRequest.episodeSlug
+        ? { kind: 'episode', slug: navigationRequest.episodeSlug }
+        : null
+    );
+    setJobId(navigationRequest.jobId ?? null);
+  }, [navigationRequest]);
 
   const dir = sortId === 'newest' ? 1 : -1;
 
@@ -123,16 +305,99 @@ export default function ResourcesScreen({
     return sortId === 'newest' ? rest : [...rest].reverse();
   }, [episodes, sortId]);
 
+  const renderPodcastEpisode = useCallback(
+    ({ item, index }: ListRenderItemInfo<PodcastEpisode>) => {
+      const active = player.episode?.slug === item.slug;
+      return (
+        <PodcastEpisodeRow
+          episode={item}
+          first={index === 0}
+          last={index === listEpisodes.length - 1}
+          active={active}
+          playing={active && player.isPlaying}
+          loading={active && player.loading}
+          buffering={active && player.buffering}
+          failed={active && !!player.error}
+          remaining={remainingLabel(item, player.positions)}
+          progress={playedRatio(item, player.positions)}
+          onOpenEpisode={openPodcastEpisode}
+          onToggleEpisode={togglePodcastEpisode}
+        />
+      );
+    },
+    [
+      listEpisodes.length,
+      openPodcastEpisode,
+      player.buffering,
+      player.episode?.slug,
+      player.error,
+      player.isPlaying,
+      player.loading,
+      player.positions,
+      togglePodcastEpisode,
+    ]
+  );
+
   const visibleJobs = useMemo(
     () => filterJobs(jobs, jobQuery, jobFilter),
     [jobFilter, jobQuery, jobs]
   );
   const openJob = jobId ? jobs.find((j) => j.id === jobId) ?? null : null;
 
+  const openTranscript = async (episode: PodcastEpisode) => {
+    if (!onOpenTranscript) return;
+    setTranscript({ slug: episode.slug, segments: [], loading: true, error: null });
+    try {
+      const segments = await onOpenTranscript(episode);
+      setTranscript({ slug: episode.slug, segments, loading: false, error: null });
+    } catch {
+      setTranscript({
+        slug: episode.slug,
+        segments: [],
+        loading: false,
+        error: 'The transcript could not be loaded.',
+      });
+    }
+  };
+
+  const downloadPodcast = async (
+    kind: 'audio' | 'transcript',
+    episode: PodcastEpisode
+  ) => {
+    const action = kind === 'audio' ? onDownloadPodcastAudio : onDownloadPodcastTranscript;
+    if (!action) return;
+    setDownloadKind(kind);
+    setDownloadError(null);
+    try {
+      await action(episode);
+    } catch (cause) {
+      setDownloadError(
+        cause instanceof Error ? cause.message : 'The file could not be downloaded.'
+      );
+    } finally {
+      setDownloadKind(null);
+    }
+  };
+
   const sheetResource =
     sheet?.kind === 'resource' ? resources.find((r) => r.id === sheet.id) ?? null : null;
   const sheetEpisode =
     sheet?.kind === 'episode' ? episodes.find((e) => e.slug === sheet.slug) ?? null : null;
+  const closeSheet = () => {
+    setDownloadError(null);
+    if (
+      sheet?.kind === 'episode' &&
+      navigationRequest?.origin === 'return' &&
+      navigationRequest.episodeSlug === sheet.slug
+    ) {
+      setSheet(null);
+      if (returnViewRef.current) setView(returnViewRef.current);
+      returnViewRef.current = null;
+      onBack?.();
+      return;
+    }
+    setSheet(null);
+  };
 
   const sortToggle = (
     <View style={[styles.segment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
@@ -159,7 +424,7 @@ export default function ResourcesScreen({
   );
 
   /* ── hub ──────────────────────────────────────────────────────────────── */
-  const hub = (
+  const hub = view === 'hub' ? (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <ScreenHeader title="Resources" accent="." onBack={onBack} backLabel="Back to More" />
 
@@ -202,10 +467,10 @@ export default function ResourcesScreen({
         />
       </View>
     </ScrollView>
-  );
+  ) : null;
 
   /* ── library ──────────────────────────────────────────────────────────── */
-  const library = (
+  const library = view === 'library' ? (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <SubHead title="Resource library" onBack={() => setView('hub')} />
 
@@ -283,107 +548,78 @@ export default function ResourcesScreen({
         )}
       </View>
     </ScrollView>
-  );
+  ) : null;
 
   /* ── podcasts ─────────────────────────────────────────────────────────── */
-  const podcasts = (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <SubHead title="Podcasts" onBack={() => setView('hub')} />
-
-      {!!featured && (
-        <View style={styles.featuredWrap}>
-          <View
-            style={[styles.featured, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
-          >
-            <View style={styles.featuredTop}>
-              <View style={[styles.newChip, { borderColor: alpha(t.brandRed, 0.5) }]}>
-                <Text style={[styles.newChipText, { color: t.brandRed }]}>New</Text>
-              </View>
-              <MastheadMeta size={11}>{episodeMeta(featured)}</MastheadMeta>
-            </View>
-
-            <Pressable onPress={() => setSheet({ kind: 'episode', slug: featured.slug })}>
-              <Text style={[styles.featuredTitle, { color: t.inkStrong }]}>{featured.title}</Text>
-            </Pressable>
-            <Text style={[styles.featuredBody, { color: t.inkMuted }]}>{featured.summary}</Text>
-
-            <View style={styles.featuredFoot}>
-              <Text style={[styles.people, { color: t.inkMuted }]} numberOfLines={1}>
-                {featured.people.map((p) => p.name).join(' · ')}
-              </Text>
-              <Pressable
-                onPress={() => player.toggleEpisode(featured)}
-                accessibilityLabel={`Play ${featured.title}`}
-                style={({ pressed }) => [
-                  styles.featuredPlay,
-                  { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
-                ]}
+  const podcasts = view === 'podcasts' ? (
+    <FlatList
+      data={listEpisodes}
+      keyExtractor={(episode) => episode.slug}
+      renderItem={renderPodcastEpisode}
+      ListHeaderComponent={(
+        <>
+          <SubHead
+            title="Podcasts"
+            onBack={() => {
+              if (navigationRequest?.origin === 'home') onBack?.();
+              else setView('hub');
+            }}
+          />
+          {!!featured && (
+            <View style={styles.featuredWrap}>
+              <View
+                style={[styles.featured, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
               >
-                {isLive(player, featured) ? (
-                  <Pause size={19} weight="fill" color="#fff" />
-                ) : (
-                  <Play size={19} weight="fill" color="#fff" />
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-
-      <View style={[styles.controlRow, styles.podControls]}>
-        <MastheadMeta size={10.5}>{episodes.length} EPISODES</MastheadMeta>
-        {sortToggle}
-      </View>
-
-      <View style={[styles.band, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-        {listEpisodes.map((e, i) => {
-          const live = isLive(player, e);
-          const label = remainingLabel(e, player.positions);
-          return (
-            <View
-              key={e.slug}
-              style={[styles.epRow, i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline }]}
-            >
-              <Pressable
-                onPress={() => player.toggleEpisode(e)}
-                accessibilityLabel={`${live ? 'Pause' : 'Play'} ${e.title}`}
-                style={[
-                  styles.epPlay,
-                  {
-                    borderColor: live ? t.surfaceAnchor : t.ruleHairline,
-                    backgroundColor: live ? t.surfaceAnchor : t.surfacePaper,
-                  },
-                ]}
-              >
-                {live ? (
-                  <Pause size={14} weight="fill" color="#fff" />
-                ) : (
-                  <Play size={14} weight="fill" color={t.brandGreen} />
-                )}
-              </Pressable>
-
-              <Pressable
-                style={styles.epBody}
-                onPress={() => setSheet({ kind: 'episode', slug: e.slug })}
-              >
-                <Text numberOfLines={1} style={[styles.epTitle, { color: t.inkStrong }]}>
-                  {e.title}
-                </Text>
-                <MastheadMeta size={10}>{episodeMeta(e)}</MastheadMeta>
-                <View style={styles.epFoot}>
-                  <Waveform
-                    peaks={e.peaks ?? fallbackPeaks(e.slug)}
-                    progress={playedRatio(e, player.positions)}
-                  />
-                  {!!label && <Text style={[styles.epProgress, { color: t.inkMuted }]}>{label}</Text>}
+                <View style={styles.featuredTop}>
+                  <View style={[styles.newChip, { borderColor: alpha(t.brandRed, 0.5) }]}>
+                    <Text style={[styles.newChipText, { color: t.brandRed }]}>New</Text>
+                  </View>
+                  <MastheadMeta size={11}>{episodeMeta(featured)}</MastheadMeta>
                 </View>
-              </Pressable>
+                <Pressable onPress={() => setSheet({ kind: 'episode', slug: featured.slug })}>
+                  <Text style={[styles.featuredTitle, { color: t.inkStrong }]}>{featured.title}</Text>
+                </Pressable>
+                <Text style={[styles.featuredBody, { color: t.inkMuted }]}>{featured.summary}</Text>
+                <View style={styles.featuredFoot}>
+                  <Text style={[styles.people, { color: t.inkMuted }]} numberOfLines={1}>
+                    {featured.people.map((person) => person.name).join(' · ')}
+                  </Text>
+                  <Pressable
+                    onPress={() => player.toggleEpisode(featured)}
+                    disabled={!featured.audioUrl || isLoading(player, featured)}
+                    accessibilityLabel={`${playLabel(player, featured)}: ${featured.title}`}
+                    style={({ pressed }) => [
+                      styles.featuredPlay,
+                      { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+                      (!featured.audioUrl || isLoading(player, featured)) && styles.disabled,
+                    ]}
+                  >
+                    {isLoading(player, featured) ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : isLive(player, featured) ? (
+                      <Pause size={19} weight="fill" color="#fff" />
+                    ) : (
+                      <Play size={19} weight="fill" color="#fff" />
+                    )}
+                  </Pressable>
+                </View>
+              </View>
             </View>
-          );
-        })}
-      </View>
-    </ScrollView>
-  );
+          )}
+          <View style={[styles.controlRow, styles.podControls]}>
+            <MastheadMeta size={10.5}>{episodes.length} EPISODES</MastheadMeta>
+            {sortToggle}
+          </View>
+        </>
+      )}
+      contentContainerStyle={styles.scroll}
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      windowSize={7}
+      removeClippedSubviews
+      showsVerticalScrollIndicator={false}
+    />
+  ) : null;
 
   /* ── sheets ───────────────────────────────────────────────────────────── */
   const resourceSheet = !!sheetResource && (
@@ -438,7 +674,12 @@ export default function ResourcesScreen({
   );
 
   const episodeSheet = !!sheetEpisode && (
-    <Sheet_ onClose={() => setSheet(null)}>
+    <Sheet_
+      onClose={closeSheet}
+      scrollRef={episodeSheetScrollRef}
+      onViewportHeight={setSheetViewportHeight}
+      onManualScroll={() => setManualScrollVersion((current) => current + 1)}
+    >
       <View
         style={[
           styles.typeChip,
@@ -457,27 +698,56 @@ export default function ResourcesScreen({
         <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
           <View style={styles.peopleList}>
             {sheetEpisode.people.map((p) => (
-              <View key={p.name} style={styles.person}>
-                <Avatar initials={p.initials ?? initials(p.name)} size={32} />
+              <Pressable
+                key={p.name}
+                accessibilityRole={p.memberHref ? 'button' : undefined}
+                accessibilityLabel={p.memberHref ? `Open ${p.name}'s member profile` : undefined}
+                disabled={!p.memberHref}
+                onPress={() => onOpenPodcastPerson?.(p)}
+                style={({ pressed }) => [
+                  styles.person,
+                  pressed && p.memberHref ? { backgroundColor: t.surfaceSoft } : null,
+                ]}
+              >
+                <Avatar
+                  initials={p.initials ?? initials(p.name)}
+                  photoUrl={p.avatarUrl ?? undefined}
+                  size={32}
+                />
                 <View style={styles.personBody}>
                   <Text style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
-                  <Text style={[styles.personRole, { color: t.inkMuted }]}>{p.role}</Text>
+                  {p.role ? (
+                    <Text style={[styles.personRole, { color: t.inkMuted }]}>{p.role}</Text>
+                  ) : null}
                 </View>
-              </View>
+                {p.memberHref ? <ArrowRight size={14} color={t.ruleStrong} /> : null}
+              </Pressable>
             ))}
           </View>
         </View>
       )}
 
+      <PodcastShowNotes
+        markdown={sheetEpisode.showNotes}
+        episodeTitle={sheetEpisode.title}
+        summary={sheetEpisode.summary}
+        onOpenLink={onOpenShowNotesLink}
+      />
+
       <View style={styles.sheetActions}>
         <Pressable
           onPress={() => player.toggleEpisode(sheetEpisode)}
+          disabled={!sheetEpisode.audioUrl || isLoading(player, sheetEpisode)}
+          accessibilityLabel={`${playLabel(player, sheetEpisode)}: ${sheetEpisode.title}`}
           style={({ pressed }) => [
             styles.primaryBtn,
             { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+            (!sheetEpisode.audioUrl || isLoading(player, sheetEpisode)) && styles.disabled,
           ]}
         >
-          {isLive(player, sheetEpisode) ? (
+          {isLoading(player, sheetEpisode) ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : isLive(player, sheetEpisode) ? (
             <Pause size={15} weight="fill" color="#fff" />
           ) : (
             <Play size={15} weight="fill" color="#fff" />
@@ -486,38 +756,128 @@ export default function ResourcesScreen({
         </Pressable>
         {sheetEpisode.hasTranscript && (
           <Pressable
-            onPress={() => onOpenTranscript?.(sheetEpisode)}
+            onPress={() => void openTranscript(sheetEpisode)}
+            disabled={transcript?.slug === sheetEpisode.slug && transcript.loading}
             style={[styles.secondaryBtn, { borderColor: t.ruleHairline }]}
           >
             <Article size={15} color={t.brandGreen} />
-            <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Transcript</Text>
+            <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>
+              {transcript?.slug === sheetEpisode.slug && transcript.loading
+                ? 'Loading…'
+                : 'Transcript'}
+            </Text>
           </Pressable>
         )}
       </View>
+      <View style={styles.downloadActions}>
+        {sheetEpisode.audioUrl && onDownloadPodcastAudio ? (
+          <Pressable
+            onPress={() => void downloadPodcast('audio', sheetEpisode)}
+            disabled={downloadKind !== null}
+            style={[styles.secondaryBtn, { borderColor: t.ruleHairline }, downloadKind && styles.disabled]}
+          >
+            {downloadKind === 'audio' ? (
+              <ActivityIndicator size="small" color={t.brandGreen} />
+            ) : (
+              <DownloadSimple size={15} color={t.brandGreen} />
+            )}
+            <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Download audio</Text>
+          </Pressable>
+        ) : null}
+        {sheetEpisode.transcriptUrl && onDownloadPodcastTranscript ? (
+          <Pressable
+            onPress={() => void downloadPodcast('transcript', sheetEpisode)}
+            disabled={downloadKind !== null}
+            style={[styles.secondaryBtn, { borderColor: t.ruleHairline }, downloadKind && styles.disabled]}
+          >
+            {downloadKind === 'transcript' ? (
+              <ActivityIndicator size="small" color={t.brandGreen} />
+            ) : (
+              <DownloadSimple size={15} color={t.brandGreen} />
+            )}
+            <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Download transcript</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {downloadError ? (
+        <Text style={[styles.playbackError, { color: t.brandRed }]}>{downloadError}</Text>
+      ) : null}
+      {isActive(player, sheetEpisode) && player.error ? (
+        <Text style={[styles.playbackError, { color: t.brandRed }]}>{player.error}</Text>
+      ) : null}
+      {isActive(player, sheetEpisode) && !player.error && player.phase === 'preparing' ? (
+        <Text style={[styles.playbackError, { color: t.inkMuted }]}>Preparing audio…</Text>
+      ) : null}
+      {isActive(player, sheetEpisode) && !player.error && player.phase === 'loading' ? (
+        <Text style={[styles.playbackError, { color: t.inkMuted }]}>Loading episode…</Text>
+      ) : null}
+      {isActive(player, sheetEpisode) && !player.error && player.phase === 'buffering' ? (
+        <Text style={[styles.playbackError, { color: t.inkMuted }]}>Buffering…</Text>
+      ) : null}
+      {transcript?.slug === sheetEpisode.slug && !transcript.loading ? (
+        transcript.error ? (
+          <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
+            <Text style={[styles.sheetBody, { color: t.brandRed }]}>{transcript.error}</Text>
+          </View>
+        ) : transcript.segments.length ? (
+          <PodcastTranscript
+            key={sheetEpisode.slug}
+            episode={sheetEpisode}
+            segments={transcript.segments}
+            scrollRef={episodeSheetScrollRef}
+            viewportHeight={sheetViewportHeight}
+            manualScrollVersion={manualScrollVersion}
+          />
+        ) : (
+          <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
+            <Text style={[styles.sheetBody, { color: t.inkMuted }]}>Transcript unavailable.</Text>
+          </View>
+        )
+      ) : null}
     </Sheet_>
   );
 
   /* ── job board ────────────────────────────────────────────────────────── */
-  const jobBoard = openJob ? (
-    <JobPosting job={openJob} onBack={() => setJobId(null)} onApply={onApplyToJob} />
-  ) : (
-    <JobBoard
-      jobs={visibleJobs}
-      query={jobQuery}
-      onQuery={setJobQuery}
-      filter={jobFilter}
-      onFilter={setJobFilter}
-      onBack={() => setView('hub')}
-      onOpen={setJobId}
-    />
-  );
+  const jobBoard = view === 'jobs'
+    ? openJob
+      ? (
+          <JobPosting
+            job={openJob}
+            onBack={() => {
+              if (
+                navigationRequest?.origin === 'return' &&
+                navigationRequest.jobId === openJob.id
+              ) {
+                setJobId(null);
+                if (returnViewRef.current) setView(returnViewRef.current);
+                returnViewRef.current = null;
+                onBack?.();
+              } else {
+                setJobId(null);
+              }
+            }}
+            onApply={onApplyToJob}
+          />
+        )
+      : (
+          <JobBoard
+            jobs={visibleJobs}
+            query={jobQuery}
+            onQuery={setJobQuery}
+            filter={jobFilter}
+            onFilter={setJobFilter}
+            onBack={() => setView('hub')}
+            onOpen={setJobId}
+          />
+        )
+    : null;
 
   return (
     <View style={styles.fill}>
       {view === 'hub' && hub}
       {view === 'library' && library}
       {view === 'podcasts' && podcasts}
-      {view === 'jobs' && jobBoard}
+      {jobBoard}
       {resourceSheet}
       {episodeSheet}
     </View>
@@ -579,9 +939,15 @@ function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
 function Sheet_({
   onClose,
   children,
+  scrollRef,
+  onViewportHeight,
+  onManualScroll,
 }: {
   onClose: () => void;
   children: ReactNode;
+  scrollRef?: RefObject<ScrollView | null>;
+  onViewportHeight?: (height: number) => void;
+  onManualScroll?: () => void;
 }) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
@@ -595,6 +961,9 @@ function Sheet_({
           </Pressable>
         </View>
         <ScrollView
+          ref={scrollRef}
+          onLayout={(event) => onViewportHeight?.(event.nativeEvent.layout.height)}
+          onScrollBeginDrag={onManualScroll}
           contentContainerStyle={[
             styles.sheetBodyWrap,
             { paddingBottom: Math.max(insets.bottom, 22) },
@@ -625,7 +994,17 @@ function episodeMeta(e: PodcastEpisode): string {
 const isLive = (player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisode) =>
   player.episode?.slug === e.slug && player.isPlaying;
 
+const isActive = (player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisode) =>
+  player.episode?.slug === e.slug;
+
+const isLoading = (player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisode) =>
+  isActive(player, e) && player.loading;
+
 function playLabel(player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisode): string {
+  if (!e.audioUrl) return 'Audio unavailable';
+  if (isLoading(player, e)) return 'Loading';
+  if (isActive(player, e) && player.error) return 'Try again';
+  if (isActive(player, e) && player.buffering) return 'Buffering';
   if (isLive(player, e)) return 'Pause';
   const at = player.positions[e.slug] ?? 0;
   return at > 0 ? `Resume at ${formatTime(at)}` : 'Play episode';
@@ -633,6 +1012,7 @@ function playLabel(player: ReturnType<typeof usePodcastPlayer>, e: PodcastEpisod
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  disabled: { opacity: 0.45 },
   scroll: { paddingBottom: 28 },
 
   hubCards: { paddingHorizontal: 20, paddingTop: 12, gap: 14 },
@@ -727,7 +1107,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 20,
+    borderTopWidth: 1,
   },
+  epRowFirst: { marginTop: 10 },
+  epRowLast: { borderBottomWidth: 1 },
   glyph: {
     width: 26,
     textAlign: 'center',
@@ -812,7 +1195,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  playbackError: {
+    marginTop: 10,
+    fontFamily: sans(400),
+    fontSize: 12,
+    lineHeight: 17,
+  },
   people: { flex: 1, fontFamily: sans(400), fontSize: 12 },
+  downloadActions: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featuredPlay: {
     width: 44,
     height: 44,
@@ -906,6 +1296,9 @@ const styles = StyleSheet.create({
   personBody: { flex: 1 },
   personName: { fontFamily: sans(600), fontSize: 13 },
   personRole: { fontFamily: sans(400), fontSize: 11.5 },
+  transcriptSegment: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
+  transcriptTime: { width: 42, fontFamily: sans(500), fontSize: 11, lineHeight: 20 },
+  transcriptText: { flex: 1, marginTop: 0 },
 
   sheetActions: {
     flexDirection: 'row',

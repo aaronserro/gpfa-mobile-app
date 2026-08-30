@@ -15,6 +15,10 @@ const rawWebOrigin = process.env.EXPO_PUBLIC_GPFA_WEB_ORIGIN ?? '';
 
 const rawFixturePortalData = process.env.EXPO_PUBLIC_FIXTURE_PORTAL_DATA ?? '';
 
+const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+
+const rawSupabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+
 /** Base URL with any trailing slash removed, or '' when unset. */
 export const API_BASE_URL = raw.trim().replace(/\/+$/, '');
 
@@ -23,6 +27,12 @@ export const GPFA_WEB_ORIGIN = rawWebOrigin.trim().replace(/\/+$/, '');
 
 /** Host used for member auth routes. */
 export const AUTH_BASE_URL = GPFA_WEB_ORIGIN || API_BASE_URL;
+
+/** Supabase Auth host used only for token refresh and current-session revocation. */
+export const SUPABASE_URL = rawSupabaseUrl.trim().replace(/\/+$/, '');
+
+/** Public client key sent to Supabase Auth. This is safe to embed in the app. */
+export const SUPABASE_PUBLISHABLE_KEY = rawSupabasePublishableKey.trim();
 
 /** True once a backend is configured; false means fixtures. */
 export const USING_REMOTE_API = API_BASE_URL.length > 0;
@@ -42,11 +52,10 @@ export const AI_REQUEST_TIMEOUT_MS = 60000;
  */
 export const ROUTES = {
   login: '/api/members/sign-in',
-  logout: '/auth/logout',
-  session: '/auth/session',
   notifications: '/api/members/notifications',
   notificationsRead: '/api/members/notifications/read',
   notificationsDismiss: '/api/members/notifications/dismiss',
+  homeImmediateActions: '/api/members/home/immediate-actions',
   workingGroups: '/api/members/working-groups',
   workingGroupMembership: (slug: string) => `/api/members/working-groups/${slug}/membership`,
   workingGroupCoLeads: (slug: string) => `/api/members/working-groups/${slug}/co-leads`,
@@ -61,6 +70,9 @@ export const ROUTES = {
     `/api/members/working-groups/${slug}/resource-submissions/uploads/prepare`,
   workingGroupResourceUploadFinalize: (slug: string) =>
     `/api/members/working-groups/${slug}/resource-submissions/uploads/finalize`,
+  workingGroupResourceModeration: '/api/admin/resource-submissions',
+  workingGroupResourceModerationStatus: (submissionId: string) =>
+    `/api/admin/resource-submissions/${submissionId}/status`,
   workingGroupEventRsvp: '/api/members/working-groups/events/rsvp',
   forumThreads: '/api/members/forum/threads',
   forumThread: (threadId: string) => `/api/members/forum/threads/${threadId}`,
@@ -74,6 +86,15 @@ export const ROUTES = {
   memberPoll: (id: string) => `/api/members/polls/${id}`,
   memberPollVote: '/api/members/polls/vote',
   memberUpvotes: '/api/members/upvotes',
+  memberMentions: '/api/members/mentions',
+  memberEmailPreferences: '/api/members/email-preferences',
+  memberSkills: '/api/members/skills',
+  memberHandle: '/api/members/profile/handle',
+  memberAvatar: '/api/members/avatar',
+  memberAvatarPrepare: '/api/members/avatar/prepare',
+  memberAvatarFinalize: '/api/members/avatar/finalize',
+  memberAvatarLinkedIn: '/api/members/avatar/linkedin',
+  memberChangePassword: '/api/members/change-password',
   memberSavedContent: '/api/members/saved-content',
   memberDirectory: '/api/members/directory',
   messageConversations: '/api/members/messages',
@@ -92,6 +113,9 @@ export const ROUTES = {
   groupMessageConversation: '/api/members/messages/group',
   sendMessage: '/api/members/messages/send',
   messageReactions: '/api/members/messages/reactions',
+  askConversations: '/api/members/knowledge/conversations',
+  askConversation: (conversationId: string) =>
+    `/api/members/knowledge/conversations/${conversationId}`,
   askStream: '/api/members/knowledge/messages/stream',
   me: '/api/members/profile',
   savedResources: '/me/saved',
@@ -99,13 +123,25 @@ export const ROUTES = {
   nextEvent: '/events/next',
   feed: '/posts',
   news: '/api/members/news',
+  events: '/api/members/events',
+  eventRsvp: '/api/members/events/rsvp',
+  updates: '/api/members/announcements',
+  surveyResponse: (id: string) => `/api/members/surveys/${id}/response`,
+  annualMeeting: '/api/members/annual-meeting',
+  annualMeetingRegistration: '/api/members/annual-meeting/registration',
   ask: '/ask',
   library: '/api/members/resources',
-  podcasts: '/podcasts',
+  podcasts: '/api/members/podcasts?waveform=mobile',
   jobs: '/api/members/job-postings',
   directoryOrgs: '/api/members/directory/organizations',
   directoryPeople: '/api/members/directory?limit=500',
-  podcastTranscript: (slug: string) => `/podcasts/${slug}/transcript`,
+  directoryMember: (mentionHandle: string) =>
+    `/api/members/directory/${encodeURIComponent(mentionHandle)}`,
+  directoryMemberProfile: (memberId: string) =>
+    `/api/members/directory/profiles/${encodeURIComponent(memberId)}`,
+  directoryMemberProfileActivity: (memberId: string, kind: string, page: number) =>
+    `/api/members/directory/profiles/${encodeURIComponent(memberId)}/activity?kind=${encodeURIComponent(kind)}&page=${page}`,
+  podcastTranscript: (slug: string) => `/api/members/podcasts/${slug}/transcript`,
   post: (id: string) => `/posts/${id}`,
   replies: (id: string) => `/posts/${id}/replies`,
   upvote: (id: string) => `/posts/${id}/upvote`,

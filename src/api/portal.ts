@@ -1,14 +1,31 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
 
-import { request, requestStream } from './client';
+import { ApiError, RequestCancelledError, request, requestEventStream } from './client';
+import {
+  createAskSseParser,
+  normalizeAskConversation,
+  normalizeAskMessage,
+} from './ask-stream';
 import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
+import { normalizeNotifications } from './notification-normalization';
 import type {
   AskAnswer,
+  AskConversationPage,
+  AskConversationSummary,
+  AskMessage,
+  AskStreamEvent,
   AddConversationMembersResponse,
+  AnnualMeetingPreview,
+  AnnualMeetingRegistrationInput,
+  AnnualMeetingRegistrationState,
   CalendarEvent,
   ConversationDetailResponse,
   ConversationListResponse,
+  DirectoryMemberProfile,
+  MemberProfileActivityKind,
+  MemberProfileActivityPage,
+  DirectoryMemberSummary,
   DirectoryPerson,
   DirectConversationResponse,
   FeedEntry,
@@ -27,6 +44,10 @@ import type {
   Group,
   GroupConversationResponse,
   GroupMember,
+  HomeGroupPreview,
+  HomeImmediateAction,
+  HomeImmediateActionsResponse,
+  HomeThreadPreview,
   JobListing,
   LibraryResource,
   MemberContentListResponse,
@@ -36,7 +57,13 @@ import type {
   MemberContentTargetType,
   MemberRepost,
   Member,
-  MemberNotification,
+  MemberEmailPreferenceKey,
+  MemberEmailPreferences,
+  MemberMentionActivity,
+  OwnProfile,
+  OwnProfileUpdateInput,
+  MemberUpdates,
+  MemberNotificationsResponse,
   MemberPollCreateInput,
   MemberPollCreateResponse,
   MemberPollResponse,
@@ -51,9 +78,11 @@ import type {
   MessageReactionResponse,
   MessageWindowQuery,
   MessageResponse,
+  MobileEventPreview,
   NewPostInput,
   NewsStory,
   PodcastEpisode,
+  PodcastTranscriptSegment,
   Poll,
   PollOption,
   Relevance,
@@ -79,20 +108,31 @@ import type {
   WorkingGroupFeedResponse,
   WorkingGroupResourceSubmissionInput,
   WorkingGroupResourceSubmissionResponse,
+  WorkingGroupResourceType,
+  WorkingGroupResourceModerationFilter,
+  WorkingGroupResourceModerationResponse,
+  WorkingGroupResourceModerationSubmission,
+  WorkingGroupResourceReviewInput,
+  WorkingGroupResourceReviewResponse,
   WorkingGroupResourceUploadFinalizeInput,
   WorkingGroupResourceUploadFinalizeResponse,
   WorkingGroupResourceUploadPrepareInput,
   WorkingGroupResourceUploadPrepareResponse,
   WorkingGroupTagUsageResponse,
   WorkingGroupThreadFeed,
+  WorkingGroupsData,
 } from './types';
 import type { OrgSector, WgRuleClass } from '../ds/tokens';
 import {
+  ANNUAL_MEETING,
+  ASK_CONVERSATIONS,
+  ASK_MESSAGES,
   DIRECTORY_PEOPLE,
   findAnswer,
   GROUPS,
   JOBS,
   LIBRARY,
+  MEMBER_UPDATES,
   MEMBER,
   MEMBER_ORGS,
   MESSAGE_CONVERSATIONS,
@@ -101,6 +141,8 @@ import {
   NEXT_EVENT,
   NOTIFICATIONS,
   PODCASTS,
+  PODCAST_TRANSCRIPTS,
+  MOBILE_EVENTS,
   SAVED_RESOURCES,
   SUGGESTIONS,
 } from '../data/fixtures';
@@ -126,6 +168,15 @@ const USING_PORTAL_FIXTURES = !USING_REMOTE_API || USING_FIXTURE_PORTAL_DATA;
 // exists; mixing remote identities with fixture conversations is unsafe.
 const USING_MESSAGE_FIXTURES = !USING_REMOTE_API;
 
+let fixtureAskConversations = ASK_CONVERSATIONS.map((conversation) => ({ ...conversation }));
+const fixtureAskMessages: Record<string, AskMessage[]> = Object.fromEntries(
+  Object.entries(ASK_MESSAGES).map(([id, messages]) => [
+    id,
+    messages.map((message) => ({ ...message, sources: [...message.sources] })),
+  ])
+);
+let fixtureAskSequence = 100;
+
 let fixtureMessageConversations = MESSAGE_CONVERSATIONS.map(cloneConversation);
 const fixtureMessageItems: Record<string, MessageItem[]> = Object.fromEntries(
   Object.entries(MESSAGE_ITEMS).map(([id, messages]) => [id, messages.map(cloneMessage)])
@@ -141,8 +192,8 @@ interface WorkingGroupsResponse {
   threads: WorkingGroupThreadSummary[];
   joinedSlugs: string[];
   home: {
-    groups: Array<{ slug: string; href: string; name: string; unread: number | null }>;
-    threads: WorkingGroupHomeThread[];
+    groups: HomeGroupPreview[];
+    threads: HomeThreadPreview[];
   };
 }
 
@@ -166,18 +217,6 @@ interface WorkingGroupThreadSummary {
   upvoteCount?: number;
 }
 
-interface WorkingGroupHomeThread {
-  id: string;
-  href: string;
-  title: string;
-  groupName: string;
-  authorName: string;
-  replies: number;
-  age: string;
-  unread: boolean;
-  participants: Array<{ id: string; name: string; initials: string }>;
-}
-
 interface WorkingGroupMembershipResponse {
   status: 'success';
   membership: WorkingGroupMembership | null;
@@ -188,15 +227,22 @@ interface MemberDirectoryResponse {
   members: MemberDirectoryRow[];
 }
 
+interface DirectoryMemberSummaryResponse {
+  status: 'success';
+  summary: DirectoryMemberSummary;
+}
+
 interface MemberDirectoryRow {
   id: string;
   name: string;
+  mentionHandle: string;
   role: string;
   organization: string;
   initials?: string;
   photo?: string;
   orgId?: string;
   orgSlug?: string;
+  isCurrentMember?: boolean;
 }
 
 interface DirectoryOrganizationsResponse {
@@ -217,13 +263,303 @@ interface DirectoryOrganizationRow {
 
 interface CurrentMemberResponse {
   status: 'success';
-  member: Member;
+  member: OwnProfile;
+}
+
+interface EmailPreferencesResponse {
+  status: 'success';
+  preferences: MemberEmailPreferences;
+}
+
+interface MemberMentionsResponse {
+  status: 'success';
+  items: MemberMentionActivity[];
+}
+
+interface MemberHandleResponse {
+  status: 'success';
+  mentionHandle: string;
+  href: string;
+}
+
+interface AvatarPrepareResponse {
+  storagePath: string;
+  signedUrl: string;
+}
+
+interface AvatarResponse {
+  status: 'success';
+  imageUrl: string | null;
+}
+
+interface PodcastsApiResponse {
+  status: 'success';
+  episodes: Array<Omit<PodcastEpisode, 'date' | 'mins' | 'duration' | 'durationSeconds' | 'peaks' | 'showNotes' | 'transcriptEndpoint' | 'transcriptUrl'> & {
+    date: string;
+    duration?: string;
+    durationSeconds?: number;
+    peaks?: number[][];
+    showNotes?: string;
+    transcriptEndpoint?: string;
+    transcriptUrl?: string;
+  }>;
+}
+
+interface PodcastTranscriptApiResponse {
+  revisionId: string;
+  segments: PodcastTranscriptSegment[] | null;
+}
+
+interface EventsApiResponse {
+  status: 'success';
+  events: Array<{
+    id: string;
+    contentItemId: string | null;
+    title: string;
+    startsAt: string;
+    dateLabel?: string;
+    datePrecision?: 'day' | 'datetime';
+    endsAt?: string;
+    timezone?: string;
+    location: string;
+    format: MobileEventPreview['format'];
+    type?: string;
+    status: MobileEventPreview['status'];
+    lifecycleStatus: string;
+    rsvpStatus: 'attending' | 'not_attending' | null;
+    attendeeCount: number;
+    attendees?: Array<{ name: string; org?: string }>;
+    memberJoinUrl?: string;
+    summary?: string;
+    agenda: Array<{ time: string; title: string; speakers?: string; moderator?: string }>;
+    url: string;
+  }>;
+}
+
+interface UpdatesApiResponse {
+  status: 'success';
+  announcements: Array<{
+    id: string;
+    notificationId: string;
+    title: string;
+    body: string;
+    createdAt: string;
+    readAt: string | null;
+  }>;
+  surveys: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    status: 'active' | 'closed';
+    closesAt: string;
+    hasStarted: boolean;
+    hasResponded: boolean;
+    questions: Array<{
+      id: string;
+      text: string;
+      context?: string;
+      options: Array<{ id: string; label: string; isOther: boolean }>;
+      statements: Array<{ id: string; text: string }>;
+    }>;
+    answers: MemberUpdates['surveys'][number]['answers'];
+  }>;
+}
+
+interface AnnualMeetingRegistrationContextApi {
+  draftId: string;
+  meetingTitle: string;
+  acceptsNewRegistrations: boolean;
+  allowsMemberEdits: boolean;
+  formFields: Array<{
+    id: string;
+    type: AnnualMeetingPreview['formFields'][number]['type'];
+    label: string;
+    helpText: string;
+    required: boolean;
+    options: Array<{ id: string; label: string }>;
+  }>;
+  registration: null | {
+    status: 'pending' | 'approved' | 'waitlisted' | 'declined';
+    updatedAt: string;
+    answers: AnnualMeetingPreview['answers'];
+  };
+}
+
+interface AnnualMeetingApiResponse {
+  status: 'success';
+  page: {
+    draftId: string;
+    title: string;
+    subtitle: string;
+    startDate: string | null;
+    endDate: string | null;
+    timezone: string | null;
+    summaryMarkdown: string;
+    agendaDays: Array<{
+      id: string;
+      date: string;
+      title: string;
+      sessions: Array<{
+        startTime: string;
+        endTime?: string | null;
+        title: string;
+        descriptionMarkdown: string;
+        locationLabel?: string | null;
+      }>;
+    }>;
+    locations: Array<{
+      name: string;
+      descriptionMarkdown: string;
+      addressLine1?: string | null;
+      addressLine2?: string | null;
+      city?: string | null;
+      region?: string | null;
+      postalCode?: string | null;
+      country?: string | null;
+    }>;
+  };
+  registration: AnnualMeetingRegistrationContextApi;
+}
+
+interface AnnualMeetingRegistrationResponse {
+  status: 'success';
+  context: AnnualMeetingRegistrationContextApi;
 }
 
 /** The signed-in member. Everything that shows "who am I" reads this. */
-export function getMe(): Promise<Member> {
-  if (!USING_REMOTE_API) return local(MEMBER);
+export function getMe(): Promise<OwnProfile> {
+  if (!USING_REMOTE_API) return local(fixtureOwnProfile);
   return request<CurrentMemberResponse>(ROUTES.me).then((response) => response.member);
+}
+
+let fixtureOwnProfile: OwnProfile = {
+  ...MEMBER,
+  avatarUrl: null,
+  country: 'Canada',
+  bio: 'Treasury and liquidity leader focused on institutional collaboration.',
+  skills: ['Liquidity management', 'Securities lending'],
+  mentionHandle: 'robert-goobie',
+  organizationSlug: 'hoopp',
+};
+
+let fixtureEmailPreferences: MemberEmailPreferences = {
+  workingGroupPosts: true,
+  siteEvents: true,
+  siteAnnouncements: true,
+  surveyEmails: true,
+  marketingCampaigns: false,
+};
+
+export function updateOwnProfile(input: OwnProfileUpdateInput): Promise<OwnProfile> {
+  if (!USING_REMOTE_API) {
+    fixtureOwnProfile = {
+      ...fixtureOwnProfile,
+      name: input.fullName,
+      firstName: input.fullName.trim().split(/\s+/)[0] ?? '',
+      role: input.roleTitle || undefined,
+      country: input.country,
+      bio: input.bio,
+      skills: [...input.skills],
+    };
+    return local(fixtureOwnProfile);
+  }
+  return request<CurrentMemberResponse>(ROUTES.me, { method: 'PATCH', body: input })
+    .then((response) => response.member);
+}
+
+export function getMemberEmailPreferences(): Promise<MemberEmailPreferences> {
+  if (!USING_REMOTE_API) return local({ ...fixtureEmailPreferences });
+  return request<EmailPreferencesResponse>(ROUTES.memberEmailPreferences)
+    .then((response) => response.preferences);
+}
+
+export function updateMemberEmailPreference(
+  preference: MemberEmailPreferenceKey,
+  enabled: boolean
+): Promise<MemberEmailPreferences> {
+  if (!USING_REMOTE_API) {
+    fixtureEmailPreferences = { ...fixtureEmailPreferences, [preference]: enabled };
+    return local({ ...fixtureEmailPreferences });
+  }
+  return request<EmailPreferencesResponse>(ROUTES.memberEmailPreferences, {
+    method: 'PATCH',
+    body: { preference, enabled },
+  }).then((response) => response.preferences);
+}
+
+export function getMemberMentions(): Promise<MemberMentionActivity[]> {
+  if (!USING_REMOTE_API) return local([]);
+  return request<MemberMentionsResponse>(ROUTES.memberMentions)
+    .then((response) => response.items);
+}
+
+export function updateMemberHandle(mentionHandle: string): Promise<string> {
+  if (!USING_REMOTE_API) {
+    fixtureOwnProfile = { ...fixtureOwnProfile, mentionHandle };
+    return local(mentionHandle);
+  }
+  return request<MemberHandleResponse>(ROUTES.memberHandle, {
+    method: 'PATCH',
+    body: { mentionHandle },
+  }).then((response) => response.mentionHandle);
+}
+
+export function requestPasswordChange(): Promise<void> {
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<StatusResponse>(ROUTES.memberChangePassword, { method: 'POST' })
+    .then(() => undefined);
+}
+
+export async function uploadMemberAvatar(input: {
+  uri: string;
+  byteSize: number;
+}): Promise<string> {
+  if (!USING_REMOTE_API) {
+    fixtureOwnProfile = { ...fixtureOwnProfile, avatarUrl: input.uri };
+    return input.uri;
+  }
+
+  const prepared = await request<AvatarPrepareResponse>(ROUTES.memberAvatarPrepare, {
+    method: 'POST',
+    body: { filename: 'profile-photo.jpg', byteSize: input.byteSize, contentType: 'image/jpeg' },
+  });
+  await putLocalFileToSignedUrl({
+    uri: input.uri,
+    signedUrl: prepared.signedUrl,
+    contentType: 'image/jpeg',
+  });
+  return request<AvatarResponse>(ROUTES.memberAvatarFinalize, {
+    method: 'POST',
+    body: { storagePath: prepared.storagePath, contentType: 'image/jpeg' },
+  }).then((response) => {
+    if (!response.imageUrl) throw new Error('The uploaded photo could not be loaded.');
+    return response.imageUrl;
+  });
+}
+
+export function removeMemberAvatar(): Promise<void> {
+  if (!USING_REMOTE_API) {
+    fixtureOwnProfile = { ...fixtureOwnProfile, avatarUrl: null };
+    return local(undefined);
+  }
+  return request<StatusResponse>(ROUTES.memberAvatar, { method: 'DELETE' }).then(() => undefined);
+}
+
+export function importLinkedInMemberAvatar(): Promise<string> {
+  if (!USING_REMOTE_API) return local(fixtureOwnProfile.avatarUrl ?? '');
+  return request<AvatarResponse>(ROUTES.memberAvatarLinkedIn, {
+    method: 'POST',
+    body: { includeName: false },
+  }).then((response) => {
+    if (!response.imageUrl) throw new Error('LinkedIn does not have a profile photo to import.');
+    return response.imageUrl;
+  });
+}
+
+/** The server-authored Home greeting and unfinished member actions. */
+export function getHomeImmediateActions(): Promise<HomeImmediateActionsResponse> {
+  if (!USING_REMOTE_API) return local(homeImmediateActionsFixture());
+  return request<HomeImmediateActionsResponse>(ROUTES.homeImmediateActions);
 }
 
 /**
@@ -236,8 +572,10 @@ export function getSavedResources(): Promise<LibraryResource[]> {
 }
 
 /** Notifications for the signed-in member, newest first. */
-export function getNotifications(): Promise<MemberNotification[]> {
-  if (!USING_REMOTE_API) return local(NOTIFICATIONS);
+export function getNotifications(): Promise<MemberNotificationsResponse> {
+  if (!USING_REMOTE_API) {
+    return local({ memberCreatedAt: null, notifications: NOTIFICATIONS });
+  }
   return request<unknown>(ROUTES.notifications).then(normalizeNotifications);
 }
 
@@ -265,9 +603,16 @@ export function getNextEvent(): Promise<CalendarEvent | null> {
   return request<CalendarEvent | null>(ROUTES.nextEvent);
 }
 
+export function getWorkingGroups(): Promise<WorkingGroupsData> {
+  if (!USING_REMOTE_API) return local(workingGroupsFixture());
+  return request<WorkingGroupsResponse>(ROUTES.workingGroups).then((response) => ({
+    groups: normalizeWorkingGroups(response),
+    home: response.home,
+  }));
+}
+
 export function getGroups(): Promise<Group[]> {
-  if (!USING_REMOTE_API) return workingGroupsRequireApi<Group[]>();
-  return request<WorkingGroupsResponse>(ROUTES.workingGroups).then(normalizeWorkingGroups);
+  return getWorkingGroups().then((data) => data.groups);
 }
 
 export function getWorkingGroupMembership(slug: string): Promise<WorkingGroupMembership | null> {
@@ -297,6 +642,242 @@ export function getNews(): Promise<NewsStory[]> {
   return request<unknown>(ROUTES.news).then(normalizeNewsStories);
 }
 
+export function getEvents(): Promise<MobileEventPreview[]> {
+  if (USING_PORTAL_FIXTURES) return local(MOBILE_EVENTS);
+  return request<EventsApiResponse>(ROUTES.events).then((response) =>
+    response.events.map(normalizeEvent)
+  );
+}
+
+export function setEventRsvp(
+  contentItemId: string,
+  status: 'attending' | 'not_attending'
+): Promise<void> {
+  if (USING_PORTAL_FIXTURES) return local(undefined);
+  return request<MessageResponse>(ROUTES.eventRsvp, {
+    method: 'POST',
+    body: { contentItemId, status },
+  }).then(() => undefined);
+}
+
+export function getMemberUpdates(): Promise<MemberUpdates> {
+  if (USING_PORTAL_FIXTURES) return local(MEMBER_UPDATES);
+  return request<UpdatesApiResponse>(ROUTES.updates).then(normalizeMemberUpdates);
+}
+
+export function submitSurveyResponse(
+  surveyId: string,
+  answers: MemberUpdates['surveys'][number]['answers']
+): Promise<void> {
+  if (USING_PORTAL_FIXTURES) return local(undefined);
+  return request<StatusResponse>(ROUTES.surveyResponse(surveyId), {
+    method: 'POST',
+    body: { answers },
+  }).then(() => undefined);
+}
+
+export function getAnnualMeeting(): Promise<AnnualMeetingPreview | null> {
+  if (USING_PORTAL_FIXTURES) return local(ANNUAL_MEETING);
+  return request<AnnualMeetingApiResponse>(ROUTES.annualMeeting)
+    .then(normalizeAnnualMeeting)
+    .catch((error) => {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    });
+}
+
+export function saveAnnualMeetingRegistration(
+  input: AnnualMeetingRegistrationInput
+): Promise<AnnualMeetingRegistrationState> {
+  if (USING_PORTAL_FIXTURES) {
+    return local({
+      registrationStatus: 'Registered',
+      registrationOpen: ANNUAL_MEETING.registrationOpen,
+      allowsMemberEdits: ANNUAL_MEETING.allowsMemberEdits,
+      expectedUpdatedAt: new Date().toISOString(),
+      answers: input.answers,
+    });
+  }
+  return request<AnnualMeetingRegistrationResponse>(ROUTES.annualMeetingRegistration, {
+    method: 'POST',
+    body: input,
+  }).then((response) => normalizeAnnualMeetingRegistration(response.context));
+}
+
+function normalizeEvent(event: EventsApiResponse['events'][number]): MobileEventPreview {
+  const startsAt = new Date(event.startsAt);
+  const agenda = event.agenda.map((item) => ({
+    time: item.time,
+    title: item.title,
+    detail: [item.speakers, item.moderator ? `Moderator: ${item.moderator}` : null]
+      .filter(Boolean)
+      .join(' · ') || undefined,
+  }));
+  return {
+    id: event.id,
+    contentItemId: event.contentItemId,
+    startsAt: event.startsAt,
+    ...(event.endsAt ? { endsAt: event.endsAt } : {}),
+    ...(event.timezone ? { timezone: event.timezone } : {}),
+    ...(event.datePrecision ? { datePrecision: event.datePrecision } : {}),
+    detailsUrl: absoluteResourceHref(event.url) ?? event.url,
+    month: Number.isNaN(startsAt.getTime()) ? '—' : startsAt.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+    day: Number.isNaN(startsAt.getTime()) ? '—' : startsAt.toLocaleDateString('en-US', { day: '2-digit' }),
+    title: event.title,
+    dateLabel: event.dateLabel ?? formatLongDate(event.startsAt),
+    timeLabel: formatEventTime(event.startsAt, event.endsAt),
+    location: event.location,
+    format: event.format,
+    type: event.type ?? 'Member event',
+    status: event.status,
+    rsvp: event.rsvpStatus === 'not_attending' ? 'not-attending' : event.rsvpStatus ?? 'not-responded',
+    registrationOpen: event.lifecycleStatus === 'registration_open' || event.lifecycleStatus === 'live',
+    summary: event.summary ?? '',
+    attendeeCount: event.attendeeCount,
+    attendees: event.attendees ?? [],
+    joinUrl: event.memberJoinUrl,
+    agenda,
+  };
+}
+
+function normalizeMemberUpdates(response: UpdatesApiResponse): MemberUpdates {
+  return {
+    announcements: response.announcements.map((announcement) => {
+      const body = markdownParagraphs(announcement.body);
+      return {
+        id: announcement.id,
+        notificationId: announcement.notificationId,
+        title: announcement.title,
+        summary: body[0] ?? '',
+        body,
+        dateLabel: formatShortDate(announcement.createdAt),
+        unread: announcement.readAt == null,
+      };
+    }),
+    surveys: response.surveys.map((survey) => ({
+      id: survey.id,
+      title: survey.title,
+      description: survey.description ?? '',
+      closesLabel: `CLOSES ${formatShortDate(survey.closesAt)}`,
+      status: survey.status === 'closed'
+        ? 'closed'
+        : survey.hasResponded
+          ? 'submitted'
+          : survey.hasStarted
+            ? 'in-progress'
+            : 'not-started',
+      questions: survey.questions.map((question) => ({
+        id: question.id,
+        prompt: question.text,
+        context: question.context,
+        options: question.options,
+        statements: question.statements,
+      })),
+      answers: survey.answers,
+    })),
+  };
+}
+
+function normalizeAnnualMeeting(response: AnnualMeetingApiResponse): AnnualMeetingPreview {
+  const primaryLocation = response.page.locations[0];
+  return {
+    draftId: response.page.draftId,
+    title: response.page.title,
+    subtitle: response.page.subtitle,
+    dateLabel: formatDateRange(response.page.startDate, response.page.endDate),
+    location: primaryLocation?.name ?? 'Location forthcoming',
+    timezone: response.page.timezone ?? 'Timezone forthcoming',
+    summary: plainMarkdown(response.page.summaryMarkdown),
+    ...normalizeAnnualMeetingRegistration(response.registration),
+    formFields: response.registration.formFields,
+    agenda: response.page.agendaDays.map((day, index) => ({
+      id: day.id,
+      label: day.title || `Day ${index + 1}`,
+      date: formatLongDate(day.date).toUpperCase(),
+      sessions: day.sessions.map((session) => ({
+        time: session.endTime ? `${session.startTime}–${session.endTime}` : session.startTime,
+        title: session.title,
+        detail: plainMarkdown(session.descriptionMarkdown),
+        location: session.locationLabel ?? '',
+      })),
+    })),
+    logistics: response.page.locations.map((location) => ({
+      title: location.name,
+      detail: [
+        plainMarkdown(location.descriptionMarkdown),
+        [location.addressLine1, location.addressLine2, location.city, location.region, location.postalCode, location.country]
+          .filter(Boolean)
+          .join(', '),
+      ].filter(Boolean).join('\n'),
+    })),
+  };
+}
+
+function normalizeAnnualMeetingRegistration(
+  context: AnnualMeetingRegistrationContextApi
+): AnnualMeetingRegistrationState {
+  const registration = context.registration;
+  return {
+    registrationStatus: registration?.status === 'waitlisted'
+      ? 'Waitlisted'
+      : registration
+        ? 'Registered'
+        : 'Not registered',
+    registrationOpen: registration ? context.allowsMemberEdits : context.acceptsNewRegistrations,
+    allowsMemberEdits: context.allowsMemberEdits,
+    expectedUpdatedAt: registration?.updatedAt ?? null,
+    answers: registration?.answers ?? [],
+  };
+}
+
+function markdownParagraphs(value: string): string[] {
+  return value.split(/\n\s*\n/).map(plainMarkdown).filter(Boolean);
+}
+
+function plainMarkdown(value: string): string {
+  return value
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .trim();
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'DATE TBA'
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+}
+
+function formatLongDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Date forthcoming'
+    : date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start) return 'Dates forthcoming';
+  if (!end || start === end) return formatLongDate(start);
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 'Dates forthcoming';
+  const startLabel = startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const endLabel = endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `${startLabel}–${endLabel}`;
+}
+
+function formatEventTime(start: string, end?: string): string {
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return 'Time forthcoming';
+  const startLabel = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (!end) return startLabel;
+  const endDate = new Date(end);
+  return Number.isNaN(endDate.getTime())
+    ? startLabel
+    : `${startLabel}–${endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 export function getLibrary(): Promise<ResourceHubData> {
   if (!USING_REMOTE_API) {
     return local({
@@ -316,8 +897,116 @@ export function getWorkingGroupResources(slug: string, groupId?: string): Promis
 
 /** Newest first — the screen features the first entry and never re-sorts it. */
 export function getPodcasts(): Promise<PodcastEpisode[]> {
-  if (USING_PORTAL_FIXTURES) return local(PODCASTS);
-  return request<PodcastEpisode[]>(ROUTES.podcasts);
+  if (!USING_REMOTE_API) return local(PODCASTS);
+  return request<PodcastsApiResponse>(ROUTES.podcasts).then(normalizePodcasts);
+}
+
+/** Refresh one episode before an expiring signed URL is handed to native audio. */
+export function refreshPodcastEpisode(slug: string): Promise<PodcastEpisode> {
+  return getPodcasts().then((episodes) => {
+    const episode = episodes.find((candidate) => candidate.slug === slug);
+    if (!episode) throw new Error('This episode is no longer available.');
+    return episode;
+  });
+}
+
+function normalizePodcasts(response: PodcastsApiResponse): PodcastEpisode[] {
+  return response.episodes.map((episode) => {
+    const {
+      date,
+      peaks,
+      showNotes,
+      transcriptEndpoint,
+      transcriptUrl: providedTranscriptUrl,
+      ...mobileEpisode
+    } = episode;
+    const publishedAt = new Date(date);
+    const compactPeaks = compactPodcastPeaks(peaks?.[0]);
+    const normalizedShowNotes = showNotes?.trim();
+    const normalizedTranscriptEndpoint = absoluteResourceHref(transcriptEndpoint);
+    const transcriptUrl = absoluteResourceHref(providedTranscriptUrl);
+    return {
+      ...mobileEpisode,
+      duration: mobileEpisode.duration ?? '',
+      durationSeconds: mobileEpisode.durationSeconds ?? 0,
+      date: Number.isNaN(publishedAt.getTime())
+        ? date
+        : publishedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      ...(Number.isNaN(publishedAt.getTime())
+        ? {}
+        : { mins: Math.max(0, Math.round((Date.now() - publishedAt.getTime()) / 60000)) }),
+      ...(compactPeaks ? { peaks: compactPeaks } : {}),
+      ...(normalizedShowNotes ? { showNotes: normalizedShowNotes } : {}),
+      ...(normalizedTranscriptEndpoint
+        ? { transcriptEndpoint: normalizedTranscriptEndpoint }
+        : {}),
+      ...(transcriptUrl ? { transcriptUrl } : {}),
+    };
+  });
+}
+
+/** Collapse the server's detailed signed min/max waveform into native UI bars. */
+export function compactPodcastPeaks(value: unknown, maxPoints = 48): number[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || maxPoints < 1) return undefined;
+  const amplitudes: number[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return undefined;
+    amplitudes.push(Math.min(1, Math.abs(candidate)));
+  }
+
+  const count = Math.min(maxPoints, amplitudes.length);
+  return Array.from({ length: count }, (_, index) => {
+    const start = Math.floor((index * amplitudes.length) / count);
+    const end = Math.max(start + 1, Math.floor(((index + 1) * amplitudes.length) / count));
+    return Math.max(...amplitudes.slice(start, end));
+  });
+}
+
+export function getPodcastTranscript(slug: string): Promise<PodcastTranscriptSegment[]> {
+  if (!USING_REMOTE_API) {
+    return local(
+      (PODCAST_TRANSCRIPTS[slug] ?? []).map((segment) => ({ ...segment }))
+    );
+  }
+  return request<unknown>(ROUTES.podcastTranscript(slug)).then(
+    (value) => parsePodcastTranscriptResponse(value).segments ?? []
+  );
+}
+
+function parsePodcastTranscriptResponse(value: unknown): PodcastTranscriptApiResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('The transcript response was not valid JSON data.');
+  }
+
+  const response = value as Record<string, unknown>;
+  if (typeof response.revisionId !== 'string' || !response.revisionId.trim()) {
+    throw new Error('The transcript response is missing its revision.');
+  }
+  if (response.segments === null) {
+    return { revisionId: response.revisionId, segments: null };
+  }
+  if (!Array.isArray(response.segments)) {
+    throw new Error('The transcript response is missing its segments.');
+  }
+
+  const segments = response.segments.map((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      throw new Error('The transcript response contains an invalid segment.');
+    }
+    const segment = candidate as Record<string, unknown>;
+    if (
+      typeof segment.start !== 'number' ||
+      !Number.isFinite(segment.start) ||
+      segment.start < 0 ||
+      typeof segment.text !== 'string' ||
+      !segment.text.trim()
+    ) {
+      throw new Error('The transcript response contains an invalid segment.');
+    }
+    return { start: segment.start, text: segment.text };
+  });
+
+  return { revisionId: response.revisionId, segments };
 }
 
 /** Open roles on the member job board. The screen sorts and filters them. */
@@ -348,12 +1037,212 @@ export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
       return [{
         id: member.id,
         orgId: member.orgSlug,
+        mentionHandle: member.mentionHandle,
         name: member.name,
         role: member.role,
         initials: member.initials,
         photoUrl: member.photo,
       }];
     })
+  );
+}
+
+/** Viewer-scoped details for an active directory member. */
+export function getDirectoryMemberSummary(
+  mentionHandle: string
+): Promise<DirectoryMemberSummary> {
+  if (!USING_REMOTE_API) {
+    const person = DIRECTORY_PEOPLE.find((candidate) => candidate.mentionHandle === mentionHandle);
+    if (!person) return Promise.reject(new Error('Member profile unavailable.'));
+    const organization = MEMBER_ORGS.find((candidate) => candidate.id === person.orgId);
+    return local({
+      id: person.id,
+      roleTitle: person.role || null,
+      region: organization?.country ?? null,
+      organization: organization?.name ?? null,
+      organizationSlug: organization?.id ?? null,
+      threadCount: 0,
+      replyCount: 0,
+      sharedGroupCount: 0,
+    });
+  }
+  return request<DirectoryMemberSummaryResponse>(ROUTES.directoryMember(mentionHandle)).then(
+    (response) => response.summary
+  );
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} response is invalid.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeDirectoryMemberProfile(value: unknown): DirectoryMemberProfile {
+  const response = requireRecord(value, 'Member profile');
+  const profile = requireRecord(response.profile, 'Member profile');
+  const organization = requireRecord(profile.organization, 'Member organization');
+  const requiredStrings = [
+    profile.id,
+    profile.mentionHandle,
+    profile.fullName,
+    profile.roleTitle,
+    profile.country,
+    profile.memberSince,
+    organization.id,
+    organization.name,
+    organization.abbreviation,
+    organization.slug,
+    organization.country,
+    organization.organizationType,
+  ];
+  if (
+    response.status !== 'success' ||
+    requiredStrings.some((item) => typeof item !== 'string' || !item.trim()) ||
+    (profile.avatarUrl !== null && typeof profile.avatarUrl !== 'string') ||
+    (profile.bio !== null && typeof profile.bio !== 'string') ||
+    typeof profile.isSelf !== 'boolean' ||
+    !Array.isArray(profile.skills) ||
+    !profile.skills.every((item) => typeof item === 'string') ||
+    !Array.isArray(profile.workingGroups) ||
+    (profile.events !== undefined && !Array.isArray(profile.events))
+  ) {
+    throw new Error('Member profile response is invalid.');
+  }
+  if (
+    ![organization.assetsLabel, organization.description].every(
+      (item) => item === null || typeof item === 'string'
+    ) ||
+    !profile.workingGroups.every((candidate) => {
+      const group = requireRecord(candidate, 'Member working group');
+      return (
+        [group.slug, group.name, group.description, group.leadLabel, group.role, group.joinedAt].every(
+          (item) => typeof item === 'string'
+        ) &&
+        (group.cardImageUrl === undefined || typeof group.cardImageUrl === 'string') &&
+        typeof group.memberCount === 'number' &&
+        typeof group.postCount === 'number'
+      );
+    }) ||
+    (Array.isArray(profile.events) &&
+      !profile.events.every((candidate) => {
+        const event = requireRecord(candidate, 'Member event');
+        return (
+          [event.id, event.title, event.startsAt, event.location, event.sourceLabel, event.formatLabel, event.lifecycleLabel].every(
+            (item) => typeof item === 'string'
+          ) &&
+          ['member_event', 'working_group_event'].includes(String(event.source)) &&
+          ['upcoming', 'past'].includes(String(event.timing)) &&
+          typeof event.canUpdateRsvp === 'boolean'
+        );
+      }))
+  ) {
+    throw new Error('Member profile response contains invalid nested data.');
+  }
+  return profile as unknown as DirectoryMemberProfile;
+}
+
+function normalizeMemberProfileActivity(value: unknown): MemberProfileActivityPage {
+  const response = requireRecord(value, 'Member activity');
+  if (
+    response.status !== 'success' ||
+    !['posts', 'replies', 'reposts'].includes(String(response.kind)) ||
+    !Array.isArray(response.items) ||
+    typeof response.page !== 'number' ||
+    typeof response.pageSize !== 'number' ||
+    typeof response.totalItems !== 'number' ||
+    typeof response.hasMore !== 'boolean'
+  ) {
+    throw new Error('Member activity response is invalid.');
+  }
+  for (const candidate of response.items) {
+    const item = requireRecord(candidate, 'Member activity item');
+    if (
+      typeof item.activityId !== 'string' ||
+      !['post', 'reply', 'repost'].includes(String(item.kind)) ||
+      typeof item.targetId !== 'string' ||
+      typeof item.groupSlug !== 'string' ||
+      typeof item.groupName !== 'string' ||
+      typeof item.title !== 'string' ||
+      typeof item.excerpt !== 'string' ||
+      typeof item.createdAt !== 'string'
+    ) {
+      throw new Error('Member activity response contains an invalid item.');
+    }
+  }
+  return {
+    kind: response.kind,
+    items: response.items,
+    page: response.page,
+    pageSize: response.pageSize,
+    totalItems: response.totalItems,
+    hasMore: response.hasMore,
+  } as MemberProfileActivityPage;
+}
+
+function fixtureDirectoryMemberProfile(memberId: string): DirectoryMemberProfile | null {
+  const person = DIRECTORY_PEOPLE.find((candidate) =>
+    memberId === MEMBER.id
+      ? candidate.mentionHandle === 'robert-goobie'
+      : candidate.id === memberId
+  );
+  if (!person?.mentionHandle) return null;
+  const organization = MEMBER_ORGS.find((candidate) => candidate.id === person.orgId);
+  if (!organization) return null;
+  const isSelf = person.mentionHandle === 'robert-goobie';
+  return {
+    id: memberId === MEMBER.id ? MEMBER.id : person.id,
+    mentionHandle: person.mentionHandle,
+    fullName: person.name,
+    roleTitle: person.role,
+    country: organization.country,
+    avatarUrl: person.photoUrl ?? null,
+    bio: isSelf
+      ? 'Treasury and liquidity leader focused on practical peer collaboration across global pension funds.'
+      : null,
+    memberSince: '2023-01-01T00:00:00.000Z',
+    skills: isSelf ? ['Liquidity management', 'Collateral', 'Securities finance'] : [],
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      abbreviation: organization.short,
+      slug: organization.id,
+      country: organization.country,
+      organizationType: organization.sector,
+      assetsLabel: null,
+      description: organization.blurb ?? null,
+    },
+    workingGroups: [],
+    isSelf,
+    ...(isSelf ? { events: [] } : {}),
+  };
+}
+
+/** Full, safe profile for an active directory member, addressed by member UUID. */
+export function getDirectoryMemberProfile(memberId: string): Promise<DirectoryMemberProfile> {
+  if (!USING_REMOTE_API) {
+    const profile = fixtureDirectoryMemberProfile(memberId);
+    return profile ? local(profile) : Promise.reject(new Error('Member profile unavailable.'));
+  }
+  return request<unknown>(ROUTES.directoryMemberProfile(memberId)).then(
+    normalizeDirectoryMemberProfile
+  );
+}
+
+/** Ten-item activity page for a member profile tab. */
+export function getDirectoryMemberProfileActivity(
+  memberId: string,
+  kind: MemberProfileActivityKind,
+  page = 1
+): Promise<MemberProfileActivityPage> {
+  if (!USING_REMOTE_API) {
+    if (!fixtureDirectoryMemberProfile(memberId)) {
+      return Promise.reject(new Error('Member profile unavailable.'));
+    }
+    return local({ kind, items: [], page, pageSize: 10, totalItems: 0, hasMore: false });
+  }
+  return request<unknown>(ROUTES.directoryMemberProfileActivity(memberId, kind, page)).then(
+    normalizeMemberProfileActivity
   );
 }
 
@@ -623,12 +1512,204 @@ export function getAskSuggestions(): Promise<string[]> {
   return local(SUGGESTIONS);
 }
 
-export function askGpfa(question: string, conversationId?: string): Promise<AskAnswer> {
+export function getAskConversations(): Promise<AskConversationSummary[]> {
   if (!USING_REMOTE_API) {
-    // Matches the design's 1100ms think before answering.
-    return new Promise((resolve) => setTimeout(() => resolve(findAnswer(question)), 1100));
+    return local(fixtureAskConversations.map((conversation) => ({ ...conversation })));
   }
-  return requestStream(ROUTES.askStream, { body: { conversationId, message: question } }).then(askAnswerFromStream);
+  return request<unknown>(ROUTES.askConversations).then((payload) => {
+    const conversations = recordFrom(payload).conversations;
+    if (!Array.isArray(conversations)) throw new Error('Ask GPFA conversation history is invalid.');
+    return conversations.map(normalizeAskConversation);
+  });
+}
+
+export function getAskConversation(
+  conversationId: string,
+  before?: string | null
+): Promise<AskConversationPage> {
+  if (!USING_REMOTE_API) return local(fixtureAskConversationPage(conversationId, before));
+  const path = `${ROUTES.askConversation(conversationId)}${queryString({ before: before ?? undefined })}`;
+  return request<unknown>(path).then(normalizeAskConversationPage);
+}
+
+export async function streamAskGpfa({
+  question,
+  conversationId,
+  signal,
+  onEvent,
+}: {
+  question: string;
+  conversationId?: string;
+  signal?: AbortSignal;
+  onEvent: (event: AskStreamEvent) => void;
+}): Promise<void> {
+  if (!USING_REMOTE_API) {
+    const answer = prepareFixtureAskAnswer(question, conversationId);
+    if (!answer.conversation || !answer.userMessage || !answer.assistantMessage || !answer.conversationId) {
+      throw new Error('Ask GPFA fixture persistence failed.');
+    }
+    const events: AskStreamEvent[] = [
+      { type: 'ready', conversationId: answer.conversationId, conversationTitle: answer.conversation.title, userMessage: answer.userMessage },
+      { type: 'tool_call', name: 'search_content_catalog', summary: 'Searching the GPFA content catalog' },
+      { type: 'tool_result', name: 'search_content_catalog', summary: 'Reviewed the GPFA content catalog' },
+      ...answer.text.match(/.{1,28}/gs)!.map((text) => ({ type: 'text_delta' as const, text })),
+      { type: 'done', answer: { content: answer.text, sources: answer.sources, sourceState: answer.sourceState ?? 'ready' } },
+      { type: 'persisted', conversation: answer.conversation, assistantMessage: answer.assistantMessage },
+    ];
+    for (const event of events) {
+      await abortableDelay(event.type === 'text_delta' ? 24 : 180, signal);
+      if (event.type === 'persisted') persistFixtureAskAssistant(answer);
+      onEvent(event);
+    }
+    return;
+  }
+  const parser = createAskSseParser(onEvent);
+  await requestEventStream(ROUTES.askStream, {
+    body: { conversationId, message: question },
+    signal,
+    onChunk: (chunk) => parser.push(chunk),
+  });
+  parser.finish();
+}
+
+export async function askGpfa(question: string, conversationId?: string): Promise<AskAnswer> {
+  let streamedText = '';
+  let result: AskAnswer | null = null;
+  await streamAskGpfa({
+    question,
+    conversationId,
+    onEvent(event) {
+      if (event.type === 'ready') {
+        result = { text: '', sources: [], conversationId: event.conversationId, userMessage: event.userMessage };
+      } else if (event.type === 'text_delta') {
+        streamedText += event.text;
+      } else if (event.type === 'done') {
+        result = { ...(result ?? { sources: [] }), text: event.answer.content, sources: event.answer.sources, sourceState: event.answer.sourceState };
+      } else if (event.type === 'persisted') {
+        result = {
+          ...(result ?? { text: streamedText, sources: [] }),
+          text: event.assistantMessage.text,
+          sources: event.assistantMessage.sources,
+          sourceState: event.assistantMessage.sourceState,
+          conversationId: event.conversation.id,
+          conversation: event.conversation,
+          assistantMessage: event.assistantMessage,
+        };
+      } else if (event.type === 'error') {
+        throw new Error(event.message);
+      }
+    },
+  });
+  if (!result || !(result as AskAnswer).text.trim()) throw new Error('Ask GPFA did not return an answer.');
+  return result;
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new RequestCancelledError());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new RequestCancelledError());
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function normalizeAskConversationPage(value: unknown): AskConversationPage {
+  const record = recordFrom(value);
+  if (!Array.isArray(record.messages) || typeof record.hasEarlier !== 'boolean') {
+    throw new Error('Ask GPFA conversation history is invalid.');
+  }
+  const earlierCursor = record.earlierCursor;
+  if (earlierCursor !== null && earlierCursor !== undefined && typeof earlierCursor !== 'string') {
+    throw new Error('Ask GPFA conversation cursor is invalid.');
+  }
+  if (record.hasEarlier && typeof earlierCursor !== 'string') {
+    throw new Error('Ask GPFA conversation cursor is missing.');
+  }
+  return {
+    conversation: normalizeAskConversation(record.conversation),
+    messages: record.messages.map(normalizeAskMessage),
+    hasEarlier: record.hasEarlier,
+    earlierCursor: typeof earlierCursor === 'string' ? earlierCursor : null,
+  };
+}
+
+function fixtureAskConversationPage(conversationId: string, before?: string | null): AskConversationPage {
+  const conversation = fixtureAskConversations.find((item) => item.id === conversationId);
+  const messages = fixtureAskMessages[conversationId];
+  if (!conversation || !messages) throw new Error('Conversation not found.');
+  const parsedEnd = before?.startsWith('fixture:') ? Number(before.slice('fixture:'.length)) : messages.length;
+  if (!Number.isInteger(parsedEnd) || parsedEnd < 0 || parsedEnd > messages.length) {
+    throw new Error('The message cursor is invalid.');
+  }
+  const start = Math.max(0, parsedEnd - 40);
+  return {
+    conversation: { ...conversation },
+    messages: messages.slice(start, parsedEnd).map((message) => ({
+      ...message,
+      sources: message.sources.map((source) => ({ ...source })),
+    })),
+    hasEarlier: start > 0,
+    earlierCursor: start > 0 ? `fixture:${start}` : null,
+  };
+}
+
+function prepareFixtureAskAnswer(question: string, requestedConversationId?: string): AskAnswer {
+  fixtureAskSequence += 1;
+  const sequence = fixtureAskSequence;
+  const createdAt = new Date(Date.UTC(2026, 7, 29, 12, sequence)).toISOString();
+  const answer = findAnswer(question);
+  const conversationId = requestedConversationId ?? `30000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`;
+  let conversation = fixtureAskConversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    conversation = { id: conversationId, title: question.trim().slice(0, 80), updatedAt: createdAt };
+    fixtureAskConversations = [conversation, ...fixtureAskConversations];
+    fixtureAskMessages[conversationId] = [];
+  } else {
+    conversation.updatedAt = createdAt;
+    fixtureAskConversations = [conversation, ...fixtureAskConversations.filter((item) => item.id !== conversationId)];
+  }
+  const userMessage: AskMessage = {
+    id: `40000000-0000-4000-8000-${String(sequence * 2).padStart(12, '0')}`,
+    role: 'user',
+    text: question,
+    createdAt,
+    sources: [],
+  };
+  const assistantMessage: AskMessage = {
+    id: `40000000-0000-4000-8000-${String(sequence * 2 + 1).padStart(12, '0')}`,
+    role: 'ai',
+    text: answer.text,
+    createdAt,
+    sources: answer.sources.map((source) => ({ ...source })),
+    sourceState: answer.sourceState,
+  };
+  fixtureAskMessages[conversationId].push(userMessage);
+  return {
+    text: answer.text,
+    sources: answer.sources.map((source) => ({ ...source })),
+    sourceState: answer.sourceState,
+    conversationId,
+    conversation: { ...conversation },
+    userMessage,
+    assistantMessage,
+  };
+}
+
+function persistFixtureAskAssistant(answer: AskAnswer) {
+  if (!answer.conversationId || !answer.assistantMessage) {
+    throw new Error('Ask GPFA fixture persistence failed.');
+  }
+  const messages = fixtureAskMessages[answer.conversationId];
+  if (!messages) throw new Error('Ask GPFA fixture conversation is missing.');
+  if (!messages.some((message) => message.id === answer.assistantMessage?.id)) {
+    messages.push(answer.assistantMessage);
+  }
 }
 
 function cloneMessage(message: MessageItem): MessageItem {
@@ -838,6 +1919,7 @@ export function getWorkingGroupCoLeadMembers(slug: string): Promise<GroupMember[
   if (!USING_REMOTE_API) return workingGroupsRequireApi<GroupMember[]>();
   return getWorkingGroupCoLeads(slug).then((members) =>
     members.map((member) => ({
+      id: member.id,
       name: member.name,
       role: member.role,
       org: member.organization,
@@ -981,6 +2063,114 @@ export function finalizeWorkingGroupResourceUpload(
   });
 }
 
+export function getWorkingGroupResourceModeration(
+  groupSlug: string,
+  status: WorkingGroupResourceModerationFilter = 'all'
+): Promise<WorkingGroupResourceModerationResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceModerationResponse>();
+  const query = queryString({ groupSlug, status: status === 'removed' ? 'approved' : status });
+  return request<ApiWorkingGroupResourceModerationResponse>(
+    `${ROUTES.workingGroupResourceModeration}${query}`
+  ).then((response) => {
+    const submissions = response.submissions.map(mapWorkingGroupResourceModerationSubmission);
+    return {
+      status: response.status,
+      submissions:
+        status === 'removed'
+          ? submissions.filter((submission) => submission.isRemoved)
+          : status === 'approved'
+            ? submissions.filter((submission) => !submission.isRemoved)
+            : submissions,
+    };
+  });
+}
+
+interface ApiWorkingGroupResourceModerationPerson {
+  id: string;
+  full_name: string;
+  role_title: string;
+}
+
+interface ApiWorkingGroupResourceModerationResponse {
+  status: 'success';
+  submissions: Array<{
+    id: string;
+    working_group_slug: string;
+    title: string;
+    resource_type: WorkingGroupResourceType;
+    status: WorkingGroupResourceModerationSubmission['status'];
+    is_removed: boolean;
+    submitted_at: string;
+    reviewed_at: string | null;
+    summary: string | null;
+    contributor_notes: string | null;
+    source_url: string | null;
+    tags: string[];
+    reviewer_notes: string | null;
+    submitter: ApiWorkingGroupResourceModerationPerson | null;
+    reviewer: ApiWorkingGroupResourceModerationPerson | null;
+    files: Array<{
+      id: string;
+      original_filename: string;
+      content_type: string;
+      byte_size: number;
+      download_url: string | null;
+    }>;
+  }>;
+}
+
+function mapWorkingGroupResourceModerationSubmission(
+  submission: ApiWorkingGroupResourceModerationResponse['submissions'][number]
+): WorkingGroupResourceModerationSubmission {
+  const mapPerson = (person: ApiWorkingGroupResourceModerationPerson | null) =>
+    person
+      ? { id: person.id, fullName: person.full_name, roleTitle: person.role_title }
+      : null;
+
+  return {
+    id: submission.id,
+    workingGroupSlug: submission.working_group_slug,
+    title: submission.title,
+    resourceType: submission.resource_type,
+    status: submission.status,
+    isRemoved: submission.is_removed,
+    submittedAt: submission.submitted_at,
+    reviewedAt: submission.reviewed_at,
+    summary: submission.summary,
+    contributorNotes: submission.contributor_notes,
+    sourceUrl: submission.source_url,
+    tags: submission.tags,
+    reviewerNotes: submission.reviewer_notes,
+    submitter: mapPerson(submission.submitter),
+    reviewer: mapPerson(submission.reviewer),
+    files: submission.files.map((file) => ({
+      id: file.id,
+      originalFilename: file.original_filename,
+      contentType: file.content_type,
+      byteSize: file.byte_size,
+      downloadUrl: file.download_url,
+    })),
+  };
+}
+
+export function reviewWorkingGroupResourceSubmission(
+  submissionId: string,
+  input: WorkingGroupResourceReviewInput
+): Promise<WorkingGroupResourceReviewResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<WorkingGroupResourceReviewResponse>();
+  return request<WorkingGroupResourceReviewResponse>(ROUTES.workingGroupResourceModerationStatus(submissionId), {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+export function removeWorkingGroupApprovedResource(submissionId: string): Promise<StatusResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<StatusResponse>();
+  return request<StatusResponse>(ROUTES.workingGroupResourceModerationStatus(submissionId), {
+    method: 'DELETE',
+  });
+}
+
 export function setWorkingGroupEventRsvp(input: WorkingGroupEventRsvpInput): Promise<MessageResponse | null> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<MessageResponse | null>();
   return request<MessageResponse>(ROUTES.workingGroupEventRsvp, { method: 'POST', body: input });
@@ -1109,7 +2299,13 @@ export function voteMemberPoll(input: MemberPollVoteInput): Promise<MessageRespo
 }
 
 export function getMemberUpvotes(query: MemberContentQuery = {}): Promise<MemberContentListResponse> {
-  if (!USING_REMOTE_API) return workingGroupsRequireApi<MemberContentListResponse>();
+  if (!USING_REMOTE_API) {
+    return local({
+      status: 'success',
+      items: [],
+      meta: { targetType: null, targetId: null, groupSlug: null, limit: query.limit ?? 50, offset: query.offset ?? 0, count: 0 },
+    });
+  }
   return request<MemberContentListResponse>(`${ROUTES.memberUpvotes}${queryString(query)}`);
 }
 
@@ -1241,110 +2437,8 @@ export function setRsvp(postId: string, choice: RsvpChoice, groupSlug?: string):
   }).then(() => undefined);
 }
 
-async function askAnswerFromStream(response: Response): Promise<AskAnswer> {
-  const events = parseServerSentEvents(await responseStreamText(response));
-  let streamedText = '';
-  let finalAnswer: AskAnswer | null = null;
-  let conversationId: string | undefined;
-
-  for (const event of events) {
-    const type = firstString(event.data.type, event.event);
-
-    if (type === 'ready') {
-      conversationId = firstString(event.data.conversationId) ?? conversationId;
-      continue;
-    }
-
-    if (type === 'text_delta') {
-      streamedText += firstString(event.data.text) ?? '';
-      continue;
-    }
-
-    if (type === 'done') {
-      const answer = recordFrom(event.data.answer);
-      finalAnswer = {
-        text: firstString(answer.content, answer.text) ?? streamedText,
-        sources: sourceLabels(answer.sources),
-        ...(conversationId ? { conversationId } : {}),
-      };
-      continue;
-    }
-
-    if (type === 'persisted') {
-      const conversation = recordFrom(event.data.conversation);
-      const message = recordFrom(event.data.assistantMessage);
-      conversationId = firstString(conversation.id) ?? conversationId;
-      finalAnswer = {
-        text: firstString(message.text, message.content) ?? finalAnswer?.text ?? streamedText,
-        sources: sourceLabels(message.sources),
-        ...(conversationId ? { conversationId } : {}),
-      };
-      continue;
-    }
-
-    if (type === 'error') {
-      throw new Error(firstString(event.data.message) ?? 'Ask GPFA could not answer.');
-    }
-  }
-
-  const text = finalAnswer?.text?.trim() || streamedText.trim();
-  if (!text) throw new Error('Ask GPFA did not return an answer.');
-  return { text, sources: finalAnswer?.sources ?? [], ...(conversationId ? { conversationId } : {}) };
-}
-
-async function responseStreamText(response: Response): Promise<string> {
-  const reader = response.body?.getReader?.();
-  if (!reader || typeof TextDecoder === 'undefined') return response.text();
-
-  const decoder = new TextDecoder();
-  let text = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    text += decoder.decode(value, { stream: true });
-  }
-  return text + decoder.decode();
-}
-
-function parseServerSentEvents(text: string): Array<{ event?: string; data: Record<string, unknown> }> {
-  return text
-    .split(/\n\n+/)
-    .map((chunk) => {
-      const event = firstString(
-        chunk
-          .split(/\n/)
-          .find((line) => line.startsWith('event:'))
-          ?.slice('event:'.length)
-          .trim()
-      );
-      const dataText = chunk
-        .split(/\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice('data:'.length).trimStart())
-        .join('\n');
-      const data = safeRecordJson(dataText);
-      return data ? { ...(event ? { event } : {}), data } : null;
-    })
-    .filter((event): event is { event?: string; data: Record<string, unknown> } => event !== null);
-}
-
-function safeRecordJson(text: string): Record<string, unknown> | null {
-  if (!text) return null;
-  try {
-    return recordFrom(JSON.parse(text));
-  } catch {
-    return null;
-  }
-}
-
 function recordFrom(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function sourceLabels(value: unknown): string[] {
-  return arrayOfRecords(value)
-    .map((source) => firstString(source.label, source.title))
-    .filter((label): label is string => !!label);
 }
 
 function normalizeWorkingGroups(payload: WorkingGroupsResponse): Group[] {
@@ -1378,10 +2472,14 @@ function normalizeWorkingGroups(payload: WorkingGroupsResponse): Group[] {
 
 function directoryRowToGroupMember(member: MemberDirectoryRow): GroupMember {
   return {
+    id: member.id,
     name: member.name,
     role: member.role,
     org: member.organization,
     initials: member.initials ?? initialsFromName(member.name),
+    photo: member.photo,
+    mentionHandle: member.mentionHandle,
+    isCurrentMember: member.isCurrentMember,
   };
 }
 
@@ -1443,6 +2541,7 @@ function normalizeNewsStory(row: unknown, index: number): NewsStory | null {
     topic,
     title,
     meta: [sourceName, dateLabel].filter(Boolean).join(' · ').toUpperCase(),
+    ...(dateLabel ? { publishedAt: dateLabel } : {}),
     body,
     ...(rel ? { rel } : {}),
     tag: firstString(record.tickerTag, record.ticker_tag, record.tag) ?? shortTopicTag(topic),
@@ -1756,6 +2855,8 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
 function workingGroupDetailReplyToReply(reply: WorkingGroupDetailReply): Reply {
   return {
     id: reply.id,
+    parentPostId: reply.parentPostId,
+    authorId: reply.author.id ?? undefined,
     a: reply.author.name,
     org: reply.author.organization,
     time: relativeTime(reply.createdAt),
@@ -1868,7 +2969,7 @@ function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
 
 function mergeGroupThreads(
   row: WorkingGroupRow,
-  homeThreads: WorkingGroupHomeThread[],
+  homeThreads: HomeThreadPreview[],
   summaries: WorkingGroupThreadSummary[]
 ): Thread[] {
   const groupHomeThreads = homeThreads.filter((thread) => slugify(thread.groupName) === slugify(row.name));
@@ -1894,6 +2995,97 @@ function mergeGroupThreads(
   });
 
   return mappedHomeThreads;
+}
+
+function homeImmediateActionsFixture(): HomeImmediateActionsResponse {
+  const now = new Date();
+  const hour = now.getHours();
+  const period = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const actions: HomeImmediateAction[] = [];
+  const survey = MEMBER_UPDATES.surveys.find(
+    (item) => item.status !== 'submitted' && item.status !== 'closed'
+  );
+  if (ANNUAL_MEETING.registrationOpen && ANNUAL_MEETING.registrationStatus === 'Not registered') {
+    actions.push({
+      id: 'annual-meeting-registration',
+      kind: 'annual-meeting',
+      title: `Register for ${ANNUAL_MEETING.title}`,
+      description: `${ANNUAL_MEETING.dateLabel} · ${ANNUAL_MEETING.location}`,
+      href: '/members/annual-meeting#register',
+      actionLabel: 'Register now',
+    });
+  }
+  if (survey) {
+    actions.push({
+      id: survey.id,
+      kind: 'survey',
+      title: survey.title,
+      description: survey.description || survey.closesLabel,
+      href: `/members/surveys/${survey.id}`,
+      actionLabel: 'Answer survey',
+    });
+  }
+  const announcement = MEMBER_UPDATES.announcements.find((item) => item.unread);
+  if (announcement) {
+    actions.push({
+      id: announcement.id,
+      kind: 'announcement',
+      title: announcement.title,
+      description: announcement.summary,
+      href: `/members/notifications/${announcement.notificationId}`,
+      actionLabel: 'Read it',
+      notificationId: announcement.notificationId,
+    });
+  }
+  return {
+    status: 'success',
+    masthead: {
+      title: `Good ${period},`,
+      italic: `${MEMBER.firstName}.`,
+      edition: new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }).format(now),
+    },
+    actions: actions.slice(0, 3),
+  };
+}
+
+function workingGroupsFixture(): WorkingGroupsData {
+  const joined = GROUPS.filter((group) => group.joined);
+  return {
+    groups: GROUPS,
+    home: {
+      groups: joined.map((group) => ({
+        slug: group.slug ?? group.id,
+        href: `/members/groups/${group.slug ?? group.id}`,
+        name: group.n,
+        unread: group.unread || null,
+      })),
+      threads: joined
+        .flatMap((group) =>
+          group.threads.map((thread) => ({
+            id: thread.id,
+            href: `/members/groups/${group.slug ?? group.id}/${thread.id}`,
+            title: thread.title,
+            groupName: group.n,
+            authorName: thread.author,
+            replies: thread.replies.length,
+            age: thread.time,
+            unread: group.unread > 0,
+            participants: [
+              {
+                id: thread.author,
+                name: thread.author,
+                initials: thread.initials ?? initialsFromName(thread.author),
+              },
+            ],
+          }))
+        )
+        .slice(0, 4),
+    },
+  };
 }
 
 function groupRuleClass(row: WorkingGroupRow, index: number): WgRuleClass {
@@ -2047,56 +3239,6 @@ function shortGroupName(name: string): string {
 
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
-function normalizeNotifications(payload: unknown): MemberNotification[] {
-  const rows = Array.isArray(payload)
-    ? payload
-    : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).notifications)
-      ? ((payload as Record<string, unknown>).notifications as unknown[])
-      : [];
-
-  return rows.map(normalizeNotification).filter((n): n is MemberNotification => n !== null);
-}
-
-function normalizeNotification(row: unknown, index: number): MemberNotification | null {
-  if (typeof row === 'string') return { id: `notification-${index}`, title: row, read: false };
-  if (!row || typeof row !== 'object') return null;
-
-  const record = row as Record<string, unknown>;
-  const title = firstString(record.title, record.subject, record.message, record.text);
-  if (!title) return null;
-
-  const kind = firstString(record.kind, record.type);
-  const body = firstString(record.body, record.description, record.detail);
-  const time = firstString(record.time, record.created_at, record.createdAt, record.date);
-  const href = firstString(record.navigation_href, record.href, record.url, record.link);
-  const targetType = firstString(record.target_type, record.targetType);
-  const targetId = firstString(record.target_id, record.targetId);
-  const contentType = firstString(record.content_type, record.contentType);
-  const contentId = firstString(record.content_id, record.contentId);
-  const contentDeletedAt = nullableString(record.content_deleted_at, record.contentDeletedAt);
-  const read =
-    typeof record.read === 'boolean'
-      ? record.read
-      : typeof record.isRead === 'boolean'
-        ? record.isRead
-        : typeof record.readAt === 'string';
-
-  return {
-    id: firstString(record.id, record._id, record.uuid) ?? `notification-${index}`,
-    ...(kind ? { kind } : {}),
-    title,
-    ...(body ? { body } : {}),
-    ...(time ? { time } : {}),
-    read,
-    ...(href ? { href } : {}),
-    ...(targetType ? { targetType } : {}),
-    ...(targetId ? { targetId } : {}),
-    ...(contentType ? { contentType } : {}),
-    ...(contentId ? { contentId } : {}),
-    ...(contentDeletedAt !== undefined ? { contentDeletedAt } : {}),
-  };
 }
 
 function firstString(...values: unknown[]): string | undefined {

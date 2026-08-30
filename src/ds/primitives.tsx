@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
@@ -170,7 +170,7 @@ export function ScreenHeader({
 }) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
-  const { initials, notificationUnreadCount, openNotifications, openProfile } = useMember();
+  const { initials, photoUrl, notificationUnreadCount, openNotifications, openProfile } = useMember();
   const badgeLabel = notificationUnreadCount > 9 ? '9+' : String(notificationUnreadCount);
 
   return (
@@ -222,10 +222,10 @@ export function ScreenHeader({
                 hitSlop={6}
                 style={({ pressed }) => (pressed ? { opacity: 0.7 } : null)}
               >
-                <Avatar initials={initials} size={32} onAnchor />
+                <Avatar initials={initials} photoUrl={photoUrl} size={32} onAnchor />
               </Pressable>
             ) : (
-              <Avatar initials={initials} size={32} onAnchor />
+              <Avatar initials={initials} photoUrl={photoUrl} size={32} onAnchor />
             ))}
         </View>
 
@@ -482,10 +482,14 @@ export function OrgMark({
 }
 
 /** .gpfa-input. `onAnchor` applies the sign-in overrides (translucent fill, light text). */
-export function Input({ onAnchor = false, style, ...props }: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { onAnchor = false, style, ...props },
+  ref
+) {
   const { t } = useTheme();
   return (
     <TextInput
+      ref={ref}
       placeholderTextColor={onAnchor ? alpha(t.inkInverse, 0.55) : t.mutedForeground}
       style={[
         {
@@ -503,7 +507,7 @@ export function Input({ onAnchor = false, style, ...props }: InputProps) {
       {...props}
     />
   );
-}
+});
 
 /** .relevance-dot — high carries a 3px translucent ring. */
 export function RelevanceDot({ level, style }: { level: Relevance; style?: StyleProp<ViewStyle> }) {

@@ -23,7 +23,7 @@ export interface MemberSheetProps {
   onClose: () => void;
   /** Every row opens the profile; the design routes all three there. */
   onOpenProfile: () => void;
-  /** Dev-only testing escape hatch: clears the stored auth token. */
+  /** Production session action, confirmation is owned by the app shell. */
   onSignOut?: () => void;
 }
 
@@ -87,7 +87,7 @@ export default function MemberSheet({
         <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
 
         <View style={styles.head}>
-          <Avatar initials={member.initials ?? initialsOf(member.name)} size={44} />
+          <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={44} />
           <View style={styles.flex}>
             <Text numberOfLines={1} style={[styles.name, { color: t.inkStrong }]}>
               {member.name}
@@ -124,7 +124,7 @@ export default function MemberSheet({
             onPress={onOpenProfile}
             divided
           />
-          {__DEV__ && !!onSignOut && (
+          {!!onSignOut && (
             <Row icon={ArrowSquareOut} label="Sign out" onPress={onSignOut} divided />
           )}
         </View>

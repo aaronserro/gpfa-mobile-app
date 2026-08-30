@@ -54,8 +54,12 @@ export interface DirectoryScreenProps {
    * in. Read once — remount the screen (a new `key`) to ask for a different one.
    */
   initialOrgId?: string | null;
+  /** Starts on Messages when navigation has already resolved a conversation. */
+  initialTab?: DirectoryTab;
   /** Opens a role on the job board. Absent leaves a profile's job rows inert. */
   onOpenJob?: (job: JobListing) => void;
+  /** Opens the selected member's full profile. */
+  onOpenMemberProfile: (memberId: string) => void;
   conversations: ConversationSummary[];
   activeConversation: ConversationDetail | null;
   draftRecipient: MessagingParticipant | null;
@@ -89,7 +93,9 @@ export default function DirectoryScreen({
   people,
   jobs,
   initialOrgId = null,
+  initialTab = 'directory',
   onOpenJob,
+  onOpenMemberProfile,
   conversations,
   activeConversation,
   draftRecipient,
@@ -119,7 +125,7 @@ export default function DirectoryScreen({
 
   const [query, setQuery] = useState('');
   const [orgId, setOrgId] = useState<string | null>(initialOrgId);
-  const [section, setSection] = useState<DirectoryTab>('directory');
+  const [section, setSection] = useState<DirectoryTab>(initialTab);
 
   const q = query.trim().toLowerCase();
   const openOrg = orgId ? orgs.find((o) => o.id === orgId) ?? null : null;
@@ -170,6 +176,7 @@ export default function DirectoryScreen({
         jobs={jobsForOrg(jobs, openOrg)}
         onBack={() => setOrgId(null)}
         onOpenJob={onOpenJob}
+        onOpenPerson={onOpenMemberProfile}
         onMessagePerson={openMessagesFor}
       />
     );
@@ -302,7 +309,7 @@ export default function DirectoryScreen({
               },
             ]}
           >
-            <Pressable onPress={() => setOrgId(p.orgId)} style={styles.personMain} accessibilityRole="button">
+            <Pressable onPress={() => onOpenMemberProfile(p.id)} style={styles.personMain} accessibilityRole="button">
               <View style={styles.rowMain}>
                 <Text style={[styles.rowName, { color: t.inkStrong }]}>{p.name}</Text>
                 <Text numberOfLines={1} style={[styles.rowSub, { color: t.inkMuted }]}>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Groups tab, level two: one working group, across Activity, About, Resources,
@@ -20,15 +20,33 @@ import {
   type Icon,
 } from '../../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
+import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
+import FeedFilterDropdown from './FeedFilterDropdown';
+import ResourceModerationPanel from './ResourceModerationPanel';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
+import {
+  DEFAULT_WORKING_GROUP_FEED_CONTROLS,
+  hasActiveWorkingGroupFeedControls,
+} from '../../lib/workingGroupFeedControls';
 import { AnchorAvatar, RoleBadge, TagChip, TYPE_ICON, ROW_ICON } from './parts';
-import type { Group, LibraryResource, PostType, Thread } from '../../api/types';
+import type {
+  Group,
+  LibraryResource,
+  PostType,
+  Thread,
+  WorkingGroupFeedControls,
+  WorkingGroupResourceModerationSubmission,
+  WorkingGroupResourceReviewInput,
+} from '../../api/types';
 
 export type GroupTab = 'posts' | 'about' | 'resources' | 'members' | 'moderation';
 
 export type PostFilterId = 'all' | PostType;
+type FeedFilterAxis = 'type' | 'status' | 'sort';
+
+type ModerationThreadStatus = 'open' | 'answered' | 'closed';
 
 export const POST_FILTERS: { id: PostFilterId; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -38,14 +56,25 @@ export const POST_FILTERS: { id: PostFilterId; label: string }[] = [
   { id: 'event', label: 'Events' },
 ];
 
+const STATUS_FILTERS: Array<{ id: WorkingGroupFeedControls['status']; label: string }> = [
+  { id: 'any', label: 'Any status' },
+  { id: 'open', label: 'Open' },
+  { id: 'closed', label: 'Closed' },
+];
+
+const SORT_FILTERS: Array<{ id: WorkingGroupFeedControls['sort']; label: string }> = [
+  { id: 'newest', label: 'Newest' },
+  { id: 'oldest', label: 'Oldest' },
+  { id: 'recently_active', label: 'Recently active' },
+  { id: 'most_upvoted', label: 'Most upvoted' },
+];
+
 export interface GroupViewProps {
   group: Group;
   /** The group's posts, already filtered and newest-first. */
   posts: Thread[];
   /** The group's unfiltered posts, used by About and Moderation. */
   allPosts?: Thread[];
-  /** Counts per type, for the About tab's Activity panel. */
-  typeCounts: Record<PostType, number>;
   coLeads?: Group['members'];
   members?: Group['members'];
   resources?: LibraryResource[];
@@ -53,14 +82,32 @@ export interface GroupViewProps {
   loadingMore?: boolean;
   error?: Error | null;
   hasMore?: boolean;
+  totalMatching?: number;
   onLoadMore?: () => void;
   tab: GroupTab;
   onTab: (tab: GroupTab) => void;
-  filter: PostFilterId;
-  onFilter: (filter: PostFilterId) => void;
+  feedControls: WorkingGroupFeedControls;
+  onApplyFeedControls: (controls: WorkingGroupFeedControls) => void;
+  mutationNotice: MutationNoticeValue | null;
+  onDismissMutationNotice: () => void;
+  pendingMutations: Record<string, boolean | undefined>;
   subscribed: boolean;
   onToggleSubscribe: () => void;
   canModerate?: boolean;
+  moderationSubmissions?: WorkingGroupResourceModerationSubmission[];
+  moderationLoading?: boolean;
+  moderationError?: Error | null;
+  moderationPendingSubmissionId?: string | null;
+  onRefreshModeration?: () => void;
+  onReviewResource?: (
+    submissionId: string,
+    input: WorkingGroupResourceReviewInput
+  ) => Promise<boolean>;
+  onRemoveResource?: (submissionId: string) => Promise<boolean>;
+  onChangePostStatus?: (
+    threadId: string,
+    status: 'open' | 'answered' | 'closed'
+  ) => void;
   /** Reply count per post id, counting anything added this session. */
   replyCounts: Record<string, number>;
   upvoted: Record<string, boolean | undefined>;
@@ -80,7 +127,6 @@ export default function GroupView({
   group,
   posts,
   allPosts = posts,
-  typeCounts,
   coLeads: routeCoLeads = [],
   members: routeMembers = [],
   resources = [],
@@ -88,14 +134,26 @@ export default function GroupView({
   loadingMore = false,
   error = null,
   hasMore = false,
+  totalMatching = 0,
   onLoadMore,
   tab,
   onTab,
-  filter,
-  onFilter,
+  feedControls,
+  onApplyFeedControls,
+  mutationNotice,
+  onDismissMutationNotice,
+  pendingMutations,
   subscribed,
   onToggleSubscribe,
   canModerate = false,
+  moderationSubmissions = [],
+  moderationLoading = false,
+  moderationError = null,
+  moderationPendingSubmissionId = null,
+  onRefreshModeration,
+  onReviewResource,
+  onRemoveResource,
+  onChangePostStatus,
   replyCounts,
   upvoted,
   onToggleUpvote,
@@ -110,13 +168,23 @@ export default function GroupView({
 }: GroupViewProps) {
   const { t } = useTheme();
   const [memberQuery, setMemberQuery] = useState('');
+  const [feedQuery, setFeedQuery] = useState(feedControls.query);
+  const [openFeedFilter, setOpenFeedFilter] = useState<FeedFilterAxis | null>(null);
+
+  useEffect(() => {
+    setFeedQuery(feedControls.query);
+    setOpenFeedFilter(null);
+  }, [feedControls.query, group.id]);
 
   const coLeads = routeCoLeads.length ? routeCoLeads : group.members.filter((m) => m.isLead);
   const members = mergeGroupMembers(routeMembers.length ? routeMembers : group.members, coLeads);
   const memberCount = members.length || group.memberCount || group.members.length;
   const visibleMembers = filterGroupMembers(members, memberQuery);
   const groupResources = resources;
-  const moderationPosts = allPosts.filter((post) => (post.lifecycle ?? 'open') === 'open');
+  const moderationPosts = allPosts.filter((post) => post.type !== 'poll');
+  const openModerationThreadCount = moderationPosts.filter(
+    (post) => moderationThreadStatus(post) === 'open'
+  ).length;
   const topics: string[] = [];
   for (const p of allPosts) for (const tag of p.tags ?? []) if (!topics.includes(tag)) topics.push(tag);
   const groupTabs: [GroupTab, string][] = [
@@ -136,8 +204,9 @@ export default function GroupView({
         actions={
           <Pressable
             onPress={onToggleSubscribe}
+            disabled={!!pendingMutations[`subscription:${group.id}`]}
             accessibilityRole="button"
-            accessibilityState={{ selected: subscribed }}
+            accessibilityState={{ selected: subscribed, disabled: !!pendingMutations[`subscription:${group.id}`] }}
             style={[
               subscribed ? styles.subBtnOn : styles.subBtnOff,
               subscribed
@@ -190,34 +259,72 @@ export default function GroupView({
                 if (distanceFromBottom < 220) onLoadMore();
               }}
             >
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRow}
-              >
-                {POST_FILTERS.map(({ id, label }) => {
-                  const on = id === filter;
-                  return (
+              <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
+              <View style={styles.feedControls}>
+                <View style={[styles.feedSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+                  <MagnifyingGlass size={15} color={t.inkMuted} />
+                  <TextInput
+                    value={feedQuery}
+                    onChangeText={setFeedQuery}
+                    onSubmitEditing={() => onApplyFeedControls({ ...feedControls, query: feedQuery.trim() })}
+                    placeholder="Search activity"
+                    placeholderTextColor={t.inkFaint}
+                    style={[styles.feedSearchInput, { color: t.inkStrong }]}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                  />
+                  <Pressable
+                    onPress={() => onApplyFeedControls({ ...feedControls, query: feedQuery.trim() })}
+                    accessibilityRole="button"
+                    style={[styles.applySearch, { backgroundColor: t.surfaceAnchor }]}
+                  >
+                    <Text style={styles.applySearchText}>Search</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.filterRow}>
+                  <FeedFilterDropdown
+                    label="Type"
+                    value={feedControls.type}
+                    options={POST_FILTERS}
+                    open={openFeedFilter === 'type'}
+                    onOpenChange={(open) => setOpenFeedFilter(open ? 'type' : null)}
+                    onChange={(type) => onApplyFeedControls({ ...feedControls, type })}
+                  />
+                  <FeedFilterDropdown
+                    label="Status"
+                    value={feedControls.status}
+                    options={STATUS_FILTERS}
+                    open={openFeedFilter === 'status'}
+                    onOpenChange={(open) => setOpenFeedFilter(open ? 'status' : null)}
+                    onChange={(status) => onApplyFeedControls({ ...feedControls, status })}
+                  />
+                  <FeedFilterDropdown
+                    label="Sort"
+                    value={feedControls.sort}
+                    options={SORT_FILTERS}
+                    open={openFeedFilter === 'sort'}
+                    onOpenChange={(open) => setOpenFeedFilter(open ? 'sort' : null)}
+                    onChange={(sort) => onApplyFeedControls({ ...feedControls, sort })}
+                  />
+                </View>
+
+                <View style={styles.resultsRow}>
+                  <Text style={[styles.resultsText, { color: t.inkMuted }]}>{totalMatching} {totalMatching === 1 ? 'result' : 'results'}</Text>
+                  {hasActiveWorkingGroupFeedControls(feedControls) && (
                     <Pressable
-                      key={id}
-                      onPress={() => onFilter(id)}
-                      style={[
-                        styles.filterChip,
-                        {
-                          borderColor: on ? t.surfaceAnchor : t.ruleHairline,
-                          backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
-                        },
-                      ]}
+                      onPress={() => {
+                        setFeedQuery('');
+                        onApplyFeedControls(DEFAULT_WORKING_GROUP_FEED_CONTROLS);
+                      }}
+                      accessibilityRole="button"
                     >
-                      <Text
-                        style={[styles.filterChipText, { color: on ? t.inkInverse : t.inkMuted }]}
-                      >
-                        {label}
-                      </Text>
+                      <Text style={[styles.clearText, { color: t.surfaceAnchor }]}>Clear filters</Text>
                     </Pressable>
-                  );
-                })}
-              </ScrollView>
+                  )}
+                </View>
+              </View>
 
               {loading ? (
                 <View
@@ -248,7 +355,7 @@ export default function GroupView({
                 >
                   <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Nothing to show</Text>
                   <Text style={[styles.emptyBody, { color: t.inkMuted }]}>
-                    No active posts match this filter.
+                    No posts match the applied feed controls.
                   </Text>
                 </View>
               ) : (
@@ -259,8 +366,10 @@ export default function GroupView({
                       post={p}
                       replyCount={replyCounts[p.id] ?? p.replies.length}
                       upvoted={!!upvoted[p.id]}
+                      upvotePending={!!pendingMutations[`upvote:${p.id}`]}
                       onToggleUpvote={() => onToggleUpvote(p.id)}
                       reposted={reposted[p.id] ?? p.hasReposted ?? false}
+                      repostPending={!!pendingMutations[`repost:${p.id}`]}
                       repostCount={optimisticRepostCount(p, reposted[p.id])}
                       onToggleRepost={() => onToggleRepost(p.id)}
                       showTags={showTags}
@@ -321,14 +430,6 @@ export default function GroupView({
                 <Text style={[styles.aboutBio, { color: t.inkMuted }]}>{group.meta}</Text>
               </View>
             )}
-
-            <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-              <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Activity</Text>
-              <InfoRow Icon={ChatCircle} label="Threads" value={typeCounts.discussion} />
-              <InfoRow Icon={TYPE_ICON.announcement} label="Announcements" value={typeCounts.announcement} />
-              <InfoRow Icon={TYPE_ICON.event} label="Events" value={typeCounts.event} />
-              <InfoRow Icon={TYPE_ICON.poll} label="Polls" value={typeCounts.poll} />
-            </View>
 
             {coLeads.length > 0 && (
               <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
@@ -403,9 +504,21 @@ export default function GroupView({
 
         {tab === 'moderation' && canModerate && (
           <ModerationPanel
+            key={group.id}
             posts={moderationPosts}
-            openThreadCount={moderationPosts.length}
+            openThreadCount={openModerationThreadCount}
             onOpenPost={onOpenPost}
+            onChangePostStatus={onChangePostStatus}
+            pendingMutations={pendingMutations}
+            mutationNotice={mutationNotice}
+            onDismissMutationNotice={onDismissMutationNotice}
+            submissions={moderationSubmissions}
+            resourceLoading={moderationLoading}
+            resourceError={moderationError}
+            pendingSubmissionId={moderationPendingSubmissionId}
+            onRefreshResources={onRefreshModeration ?? (() => {})}
+            onReviewResource={onReviewResource ?? (async () => false)}
+            onRemoveResource={onRemoveResource ?? (async () => false)}
           />
         )}
 
@@ -638,55 +751,210 @@ function ModerationPanel({
   posts,
   openThreadCount,
   onOpenPost,
+  onChangePostStatus,
+  pendingMutations,
+  mutationNotice,
+  onDismissMutationNotice,
+  submissions,
+  resourceLoading,
+  resourceError,
+  pendingSubmissionId,
+  onRefreshResources,
+  onReviewResource,
+  onRemoveResource,
 }: {
   posts: Thread[];
   openThreadCount: number;
   onOpenPost: (postId: string) => void;
+  onChangePostStatus?: (
+    threadId: string,
+    status: 'open' | 'answered' | 'closed'
+  ) => void;
+  pendingMutations: Record<string, boolean | undefined>;
+  mutationNotice: MutationNoticeValue | null;
+  onDismissMutationNotice: () => void;
+  submissions: WorkingGroupResourceModerationSubmission[];
+  resourceLoading: boolean;
+  resourceError: Error | null;
+  pendingSubmissionId: string | null;
+  onRefreshResources: () => void;
+  onReviewResource: (
+    submissionId: string,
+    input: WorkingGroupResourceReviewInput
+  ) => Promise<boolean>;
+  onRemoveResource: (submissionId: string) => Promise<boolean>;
 }) {
   const { t } = useTheme();
-  return (
-    <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
-      <View style={styles.resourceHeaderRow}>
-        <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Moderation queue</Text>
-        <View style={[styles.countPill, { backgroundColor: t.surfaceSoft }]}>
-          <Text style={[styles.countPillText, { color: t.inkMuted }]}>{openThreadCount}</Text>
-        </View>
-      </View>
+  const [threadStatusFilter, setThreadStatusFilter] = useState<ModerationThreadStatus>('open');
+  const threadCounts = {
+    open: openThreadCount,
+    answered: posts.filter((post) => moderationThreadStatus(post) === 'answered').length,
+    closed: posts.filter((post) => moderationThreadStatus(post) === 'closed').length,
+  };
+  const filteredPosts = posts.filter(
+    (post) => moderationThreadStatus(post) === threadStatusFilter
+  );
+  const emptyStatusLabel = threadStatusFilter === 'answered' ? 'answered' : threadStatusFilter;
 
-      {posts.length === 0 ? (
-        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
-          <FileText size={22} color={t.inkMuted} />
-          <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Nothing needs review</Text>
-          <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Open group posts that need co-lead attention will appear here.</Text>
+  return (
+    <View style={styles.fill}>
+      <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
+      <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+        <ResourceModerationPanel
+          submissions={submissions}
+          loading={resourceLoading}
+          error={resourceError}
+          pendingSubmissionId={pendingSubmissionId}
+          onRefresh={onRefreshResources}
+          onReview={onReviewResource}
+          onRemove={onRemoveResource}
+        />
+
+        <View style={styles.resourceHeaderRow}>
+          <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Thread moderation</Text>
+          <View style={[styles.countPill, { backgroundColor: t.surfaceSoft }]}>
+            <Text style={[styles.countPillText, { color: t.inkMuted }]}>{filteredPosts.length}</Text>
+          </View>
         </View>
-      ) : (
-        <View style={styles.resourceList}>
-          {posts.map((post) => {
-            const type = post.type ?? 'discussion';
-            const TypeIcon = TYPE_ICON[type];
+
+        <View style={styles.threadStatusFilters}>
+          {(['open', 'answered', 'closed'] as const).map((status) => {
+            const selected = threadStatusFilter === status;
+            const label = status[0].toUpperCase() + status.slice(1);
             return (
               <Pressable
-                key={post.id}
-                onPress={() => onOpenPost(post.id)}
+                key={status}
+                onPress={() => setThreadStatusFilter(status)}
                 accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.moderationCard,
-                  { borderColor: t.ruleHairline, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
+                accessibilityState={{ selected }}
+                style={[
+                  styles.threadStatusFilter,
+                  {
+                    borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                    backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
+                  },
                 ]}
               >
-                <View style={styles.cardType}>
-                  <TypeIcon size={14} color={t.inkMuted} />
-                  <Text style={[styles.cardTypeText, { color: t.inkMuted }]}>{type}</Text>
-                </View>
-                <Text style={[styles.resourceTitle, { color: t.inkStrong }]}>{post.title}</Text>
-                <Text numberOfLines={2} style={[styles.resourceSummary, { color: t.inkMuted }]}>{post.body}</Text>
-                <Text style={[styles.resourceMeta, { color: t.inkFaint }]}>{post.author} · {post.time}</Text>
+                <Text
+                  style={[
+                    styles.threadStatusFilterText,
+                    { color: selected ? '#fff' : t.inkMuted },
+                  ]}
+                >
+                  {label} · {threadCounts[status]}
+                </Text>
               </Pressable>
             );
           })}
         </View>
-      )}
-    </ScrollView>
+
+        {filteredPosts.length === 0 ? (
+          <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+            <FileText size={22} color={t.inkMuted} />
+            <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No {emptyStatusLabel} threads</Text>
+            <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Threads with this status will appear here.</Text>
+          </View>
+        ) : (
+          <View style={styles.resourceList}>
+            {filteredPosts.map((post) => {
+              const type = post.type ?? 'discussion';
+              const TypeIcon = TYPE_ICON[type];
+              const status = moderationThreadStatus(post);
+              const statusPending = !!pendingMutations[`thread:status:${post.id}`];
+              return (
+                <View
+                  key={post.id}
+                  style={[
+                    styles.moderationCard,
+                    { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => onOpenPost(post.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${post.title}`}
+                    style={({ pressed }) => [
+                      styles.moderationCardContent,
+                      { backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent' },
+                    ]}
+                  >
+                    <View style={styles.cardType}>
+                      <TypeIcon size={14} color={t.inkMuted} />
+                      <Text style={[styles.cardTypeText, { color: t.inkMuted }]}>{type}</Text>
+                      <Text style={[styles.cardTypeText, { color: t.inkFaint }]}>· {status}</Text>
+                    </View>
+                    <Text style={[styles.resourceTitle, { color: t.inkStrong }]}>{post.title}</Text>
+                    <Text numberOfLines={2} style={[styles.resourceSummary, { color: t.inkMuted }]}>{post.body}</Text>
+                    <Text style={[styles.resourceMeta, { color: t.inkFaint }]}>{post.author} · {post.time}</Text>
+                  </Pressable>
+                  {!!onChangePostStatus && (
+                    <View style={[styles.moderationActions, { borderTopColor: t.ruleHairline }]}>
+                      {status !== 'open' && (
+                        <Pressable
+                          onPress={() => onChangePostStatus(post.id, 'open')}
+                          disabled={statusPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reopen ${post.title}`}
+                          accessibilityState={{ disabled: statusPending }}
+                          style={({ pressed }) => [
+                            styles.moderationAction,
+                            {
+                              borderColor: t.ruleHairline,
+                              backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
+                              opacity: statusPending ? 0.55 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.moderationActionText, { color: t.brandLeaf }]}>Reopen Thread</Text>
+                        </Pressable>
+                      )}
+                      {type === 'discussion' && status !== 'answered' && (
+                        <Pressable
+                          onPress={() => onChangePostStatus(post.id, 'answered')}
+                          disabled={statusPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Mark ${post.title} answered`}
+                          accessibilityState={{ disabled: statusPending }}
+                          style={({ pressed }) => [
+                            styles.moderationAction,
+                            {
+                              borderColor: t.ruleHairline,
+                              backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
+                              opacity: statusPending ? 0.55 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.moderationActionText, { color: t.brandLeaf }]}>Mark Answered</Text>
+                        </Pressable>
+                      )}
+                      {status !== 'closed' && (
+                        <Pressable
+                          onPress={() => onChangePostStatus(post.id, 'closed')}
+                          disabled={statusPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Close ${post.title}`}
+                          accessibilityState={{ disabled: statusPending }}
+                          style={({ pressed }) => [
+                            styles.moderationAction,
+                            {
+                              borderColor: t.ruleHairline,
+                              backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
+                              opacity: statusPending ? 0.55 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.moderationActionText, { color: t.inkMuted }]}>Close Thread</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -696,8 +964,10 @@ function PostCard({
   post,
   replyCount,
   upvoted,
+  upvotePending,
   onToggleUpvote,
   reposted,
+  repostPending,
   repostCount,
   onToggleRepost,
   showTags,
@@ -706,8 +976,10 @@ function PostCard({
   post: Thread;
   replyCount: number;
   upvoted: boolean;
+  upvotePending: boolean;
   onToggleUpvote: () => void;
   reposted: boolean;
+  repostPending: boolean;
   repostCount: number;
   onToggleRepost: () => void;
   showTags: boolean;
@@ -774,9 +1046,11 @@ function PostCard({
       <View style={styles.cardActions}>
         <Pressable
           onPress={onToggleUpvote}
+          disabled={upvotePending}
           accessibilityRole="button"
           accessibilityLabel="Upvote post"
-          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+          accessibilityState={{ disabled: upvotePending }}
+          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
         >
           <ArrowFatUp
             size={13}
@@ -800,10 +1074,11 @@ function PostCard({
 
         <Pressable
           onPress={onToggleRepost}
+          disabled={repostPending}
           accessibilityRole="button"
           accessibilityLabel={`${reposted ? 'Remove repost' : 'Repost'} (${repostCount} ${repostCount === 1 ? 'repost' : 'reposts'})`}
-          accessibilityState={{ selected: reposted }}
-          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+          accessibilityState={{ selected: reposted, disabled: repostPending }}
+          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper, opacity: repostPending ? 0.55 : 1 }]}
         >
           <Repeat
             size={13}
@@ -858,26 +1133,29 @@ const styles = StyleSheet.create({
   tabLabel: { fontFamily: sans(600), fontSize: 12.5 },
 
   list: { paddingBottom: 96 },
+  feedControls: { paddingTop: 12, gap: 8 },
+  feedSearch: {
+    minHeight: 42,
+    marginHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  feedSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 13.5, paddingVertical: 8 },
+  applySearch: { minHeight: 34, justifyContent: 'center', borderRadius: 6, paddingHorizontal: 11 },
+  applySearchText: { color: '#fff', fontFamily: sans(600), fontSize: 11.5 },
   filterRow: {
     flexDirection: 'row',
     gap: 6,
-    paddingTop: 12,
-    paddingBottom: 4,
     paddingHorizontal: 16,
   },
-  filterChip: {
-    height: 28,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderRadius: 32,
-  },
-  filterChipText: {
-    fontFamily: mono(400),
-    fontSize: 9.5,
-    letterSpacing: 0.66,
-    textTransform: 'uppercase',
-  },
+  resultsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+  resultsText: { fontFamily: sans(500), fontSize: 11.5 },
+  clearText: { fontFamily: sans(600), fontSize: 11.5 },
 
   cards: { gap: 12, paddingTop: 12, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 8, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
@@ -1021,7 +1299,32 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   submitResourceText: { fontFamily: sans(600), fontSize: 13 },
-  moderationCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 8 },
+  moderationCard: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  threadStatusFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  threadStatusFilter: {
+    minHeight: 36,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+  },
+  threadStatusFilterText: { fontFamily: sans(600), fontSize: 11.5 },
+  moderationCardContent: { padding: 13, gap: 8 },
+  moderationActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    borderTopWidth: 1,
+    padding: 10,
+  },
+  moderationAction: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  moderationActionText: { fontFamily: sans(600), fontSize: 12 },
 
   members: { paddingTop: 14, paddingBottom: 40 },
   memberSearch: {
@@ -1076,6 +1379,12 @@ function filterGroupMembers(members: Group['members'], query: string): Group['me
       .toLowerCase()
       .includes(normalizedQuery)
   );
+}
+
+function moderationThreadStatus(thread: Thread): ModerationThreadStatus {
+  if (thread.lifecycle === 'resolved') return 'answered';
+  if (thread.lifecycle === 'closed') return 'closed';
+  return 'open';
 }
 
 function uniqueTags(resources: LibraryResource[]): string[] {

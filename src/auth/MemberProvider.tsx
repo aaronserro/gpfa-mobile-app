@@ -17,6 +17,7 @@ interface MemberValue {
   member: Member | null;
   /** Avatar fallback — the member's own `initials`, or derived from the name. */
   initials: string;
+  photoUrl?: string;
   /** Unread member notifications, shown as the header bell badge. */
   notificationUnreadCount: number;
   /** Opens the notifications sheet from the header bell. */
@@ -55,6 +56,7 @@ export function MemberProvider({
       // A member resolves before any header renders, but DataGate's fallback
       // has an empty name — an empty string draws a blank avatar, not "??".
       initials: member?.name ? member.initials ?? initialsOf(member.name) : '',
+      photoUrl: member?.avatarUrl ?? undefined,
       notificationUnreadCount,
       openNotifications: onOpenNotifications,
       openProfile: onOpenProfile,

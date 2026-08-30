@@ -1,40 +1,29 @@
 import { useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ArrowRight, CalendarDots, CheckCircle, FileText, MapPin } from '../ds/icons';
+import { ArrowRight, CalendarDots, CheckCircle, MapPin } from '../ds/icons';
 import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
-
-export interface AnnualMeetingPreview {
-  title: string;
-  subtitle: string;
-  dateLabel: string;
-  location: string;
-  timezone: string;
-  summary: string;
-  registrationStatus: 'Registered' | 'Not registered' | 'Waitlisted';
-  registrationOpen: boolean;
-  agenda: {
-    id: string;
-    label: string;
-    date: string;
-    sessions: { time: string; title: string; detail: string; location: string }[];
-  }[];
-  logistics: { title: string; detail: string }[];
-}
+import type {
+  AnnualMeetingAnswerValue,
+  AnnualMeetingPreview,
+  AnnualMeetingRegistrationInput,
+} from '../api/types';
 
 export default function AnnualMeetingScreen({
   meeting,
   onBack,
+  onSubmitRegistration,
 }: {
   meeting: AnnualMeetingPreview;
   onBack: () => void;
+  onSubmitRegistration: (input: AnnualMeetingRegistrationInput) => Promise<void>;
 }) {
   const { t } = useTheme();
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [expandedDay, setExpandedDay] = useState(meeting.agenda[0]?.id ?? '');
-  const [registered, setRegistered] = useState(meeting.registrationStatus === 'Registered');
+  const registered = meeting.registrationStatus !== 'Not registered';
 
   if (registrationOpen) {
     return (
@@ -42,8 +31,8 @@ export default function AnnualMeetingScreen({
         meeting={meeting}
         registered={registered}
         onBack={() => setRegistrationOpen(false)}
-        onSubmit={() => {
-          setRegistered(true);
+        onSubmit={async (input) => {
+          await onSubmitRegistration(input);
           setRegistrationOpen(false);
         }}
       />
@@ -70,10 +59,11 @@ export default function AnnualMeetingScreen({
           </View>
           <View style={styles.heroActions}>
             <Pressable
+              disabled={!meeting.registrationOpen}
               onPress={() => setRegistrationOpen(true)}
               style={[styles.heroPrimary, { backgroundColor: t.brandGreenOnDark }]}
             >
-              <Text style={styles.heroPrimaryText}>{registered ? 'View registration' : 'Register now'}</Text>
+              <Text style={styles.heroPrimaryText}>{registered ? 'View registration' : meeting.registrationOpen ? 'Register now' : 'Registration closed'}</Text>
               <ArrowRight size={15} color="#07171b" />
             </Pressable>
             <Badge variant="tag-green" size={9.5}>{registered ? 'Registered' : 'Registration open'}</Badge>
@@ -135,17 +125,6 @@ export default function AnnualMeetingScreen({
             ))}
           </View>
 
-          <SectionHeading label="Meeting materials" />
-          <Pressable style={[styles.document, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-            <View style={[styles.documentIcon, { backgroundColor: t.surfaceSoft }]}>
-              <FileText size={21} color={t.brandGreen} />
-            </View>
-            <View style={styles.flex}>
-              <Text style={[styles.documentTitle, { color: t.inkStrong }]}>2026 member agenda</Text>
-              <Text style={[styles.documentMeta, { color: t.inkMuted }]}>PDF · Updated August 20</Text>
-            </View>
-            <ArrowRight size={16} color={t.brandGreen} />
-          </Pressable>
         </View>
       </ScrollView>
     </View>
@@ -161,13 +140,17 @@ function RegistrationForm({
   meeting: AnnualMeetingPreview;
   registered: boolean;
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: (input: AnnualMeetingRegistrationInput) => Promise<void>;
 }) {
   const { t } = useTheme();
-  const [attendance, setAttendance] = useState(registered ? 'In person' : '');
-  const [arrival, setArrival] = useState('');
-  const [dietary, setDietary] = useState('');
-  const dirty = !!attendance || !!arrival || !!dietary;
+  const [answers, setAnswers] = useState<Record<string, AnnualMeetingAnswerValue>>(() =>
+    Object.fromEntries(meeting.answers.map((answer) => [answer.fieldId, answer.value]))
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const dirty = meeting.formFields.some((field) => answers[field.id] !== undefined);
+  const complete = meeting.formFields.every((field) =>
+    !field.required || hasAnnualMeetingAnswer(answers[field.id])
+  );
 
   const leave = () => {
     if (!dirty) return onBack();
@@ -185,24 +168,53 @@ function RegistrationForm({
         <Text style={[styles.formTitle, { color: t.inkStrong }]}>{meeting.title}</Text>
         <Text style={[styles.formIntro, { color: t.inkMuted }]}>Your name, work email and organization come from your GPFA member profile.</Text>
 
-        <FormQuestion label="How will you attend?" required>
-          <ChoiceGroup value={attendance} options={['In person', 'Virtual']} onChange={setAttendance} />
-        </FormQuestion>
-
-        <FormQuestion label="When do you expect to arrive?" required>
-          <ChoiceGroup value={arrival} options={['September 16', 'September 17', 'Not sure yet']} onChange={setArrival} />
-        </FormQuestion>
-
-        <FormQuestion label="Dietary or accessibility requirements">
-          <TextInput
-            value={dietary}
-            onChangeText={setDietary}
-            multiline
-            placeholder="Optional"
-            placeholderTextColor={t.inkFaint}
-            style={[styles.textArea, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
-          />
-        </FormQuestion>
+        {meeting.formFields.map((field) => {
+          if (field.type === 'information') {
+            return (
+              <View key={field.id} style={[styles.receiptNote, { backgroundColor: t.surfaceSoft }]}>
+                <Text style={[styles.receiptCopy, { color: t.inkBody }]}>{field.label}{field.helpText ? `\n${field.helpText}` : ''}</Text>
+              </View>
+            );
+          }
+          const value = answers[field.id];
+          return (
+            <FormQuestion key={field.id} label={field.label} required={field.required}>
+              {!!field.helpText && <Text style={[styles.formHelp, { color: t.inkMuted }]}>{field.helpText}</Text>}
+              {field.type === 'short_text' || field.type === 'long_text' ? (
+                <TextInput
+                  value={typeof value === 'string' ? value : ''}
+                  onChangeText={(next) => setAnswers((current) => ({ ...current, [field.id]: next }))}
+                  multiline={field.type === 'long_text'}
+                  placeholder="Enter your response"
+                  placeholderTextColor={t.inkFaint}
+                  style={[
+                    styles.textArea,
+                    field.type === 'short_text' && styles.textInput,
+                    { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
+                  ]}
+                />
+              ) : field.type === 'multiple_choice' ? (
+                <ChoiceGroup
+                  multiple
+                  value={Array.isArray(value) ? value : []}
+                  options={field.options.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={(next) => setAnswers((current) => ({ ...current, [field.id]: next }))}
+                />
+              ) : (
+                <ChoiceGroup
+                  value={typeof value === 'boolean' ? (value ? 'Yes' : 'No') : typeof value === 'string' ? value : ''}
+                  options={field.type === 'yes_no'
+                    ? [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }]
+                    : field.options.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={(next) => setAnswers((current) => ({
+                    ...current,
+                    [field.id]: field.type === 'yes_no' ? next === 'Yes' : next,
+                  }))}
+                />
+              )}
+            </FormQuestion>
+          );
+        })}
 
         <View style={[styles.receiptNote, { backgroundColor: t.surfaceSoft }]}>
           <CheckCircle size={18} color={t.brandGreen} />
@@ -216,12 +228,27 @@ function RegistrationForm({
           <Text style={[styles.formFooterMeta, { color: t.inkMuted }]}>{meeting.dateLabel}</Text>
         </View>
         <Pressable
-          disabled={!attendance || !arrival}
-          onPress={onSubmit}
-          style={[styles.submitButton, { backgroundColor: attendance && arrival ? t.surfaceAnchor : t.surfaceSoft }]}
+          disabled={!complete || submitting || (!meeting.registrationOpen && !meeting.allowsMemberEdits)}
+          onPress={async () => {
+            setSubmitting(true);
+            try {
+              await onSubmit({
+                draftId: meeting.draftId,
+                expectedUpdatedAt: meeting.expectedUpdatedAt,
+                answers: meeting.formFields
+                  .filter((field) => field.type !== 'information' && answers[field.id] !== undefined)
+                  .map((field) => ({ fieldId: field.id, value: answers[field.id] })),
+              });
+            } catch (error) {
+              Alert.alert('Registration not saved', error instanceof Error ? error.message : 'Please try again.');
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          style={[styles.submitButton, { backgroundColor: complete ? t.surfaceAnchor : t.surfaceSoft }]}
         >
-          <Text style={[styles.submitLabel, { color: attendance && arrival ? t.inkInverse : t.inkFaint }]}>
-            {registered ? 'Update response' : 'Submit registration'}
+          <Text style={[styles.submitLabel, { color: complete ? t.inkInverse : t.inkFaint }]}>
+            {submitting ? 'Saving…' : registered ? 'Update response' : 'Submit registration'}
           </Text>
         </Pressable>
       </View>
@@ -239,27 +266,46 @@ function FormQuestion({ label, required = false, children }: { label: string; re
   );
 }
 
-function ChoiceGroup({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+function ChoiceGroup({
+  value,
+  options,
+  onChange,
+  multiple = false,
+}: {
+  value: string | string[];
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string | string[]) => void;
+  multiple?: boolean;
+}) {
   const { t } = useTheme();
   return (
     <View style={styles.choiceList}>
       {options.map((option) => {
-        const selected = option === value;
+        const selected = Array.isArray(value) ? value.includes(option.value) : option.value === value;
         return (
           <Pressable
-            key={option}
-            onPress={() => onChange(option)}
+            key={option.value}
+            onPress={() => {
+              if (!multiple || !Array.isArray(value)) return onChange(option.value);
+              onChange(selected ? value.filter((item) => item !== option.value) : [...value, option.value]);
+            }}
             style={[styles.choice, { backgroundColor: selected ? t.brandGreenSoft : t.surfacePaper, borderColor: selected ? t.brandGreen : t.ruleHairline }]}
           >
             <View style={[styles.radio, { borderColor: selected ? t.brandGreen : t.ruleStrong }]}>
               {selected && <View style={[styles.radioFill, { backgroundColor: t.brandGreen }]} />}
             </View>
-            <Text style={[styles.choiceLabel, { color: t.inkStrong }]}>{option}</Text>
+            <Text style={[styles.choiceLabel, { color: t.inkStrong }]}>{option.label}</Text>
           </Pressable>
         );
       })}
     </View>
   );
+}
+
+function hasAnnualMeetingAnswer(value: AnnualMeetingAnswerValue | undefined) {
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function QuickFact({ label, value, divided = false }: { label: string; value: string; divided?: boolean }) {
@@ -317,21 +363,19 @@ const styles = StyleSheet.create({
   logisticsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14 },
   logisticsTitle: { fontFamily: sans(600), fontSize: 13.5 },
   logisticsDetail: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
-  document: { minHeight: 68, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13 },
-  documentIcon: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  documentTitle: { fontFamily: sans(600), fontSize: 13.5 },
-  documentMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5 },
   formScroll: { padding: 20, paddingBottom: 120 },
   formTitle: { marginTop: 8, fontFamily: sans(600), fontSize: 23, lineHeight: 28, letterSpacing: trackDisplay(23) },
   formIntro: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
   formQuestion: { marginTop: 26 },
   formLabel: { marginBottom: 10, fontFamily: sans(600), fontSize: 14 },
+  formHelp: { marginBottom: 8, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
   choiceList: { gap: 8 },
   choice: { minHeight: 50, borderWidth: 1, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13 },
   radio: { width: 20, height: 20, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   radioFill: { width: 10, height: 10, borderRadius: 5 },
   choiceLabel: { fontFamily: sans(500), fontSize: 13 },
   textArea: { minHeight: 100, borderWidth: 1, borderRadius: 8, padding: 12, textAlignVertical: 'top', fontFamily: sans(400), fontSize: 13 },
+  textInput: { minHeight: 48 },
   receiptNote: { marginTop: 24, borderRadius: 8, flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 13 },
   receiptCopy: { flex: 1, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
   formFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 12 },

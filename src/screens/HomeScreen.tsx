@@ -1,356 +1,441 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, CalendarDots, CheckCircle, Megaphone } from '../ds/icons';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import type {
+  HomeImmediateAction,
+  HomeImmediateActionsResponse,
+  HomeThreadPreview,
+  LibraryResource,
+  MobileEventPreview,
+  NewsStory,
+  PodcastEpisode,
+  ResourceHubData,
+  WorkingGroupsData,
+} from '../api/types';
+import {
+  ArrowRight,
+  At,
+  BookOpen,
+  CalendarDots,
+  ChatCircle,
+  ChatCircleDots,
+  CheckCircle,
+  FileText,
+  Megaphone,
+  Play,
+} from '../ds/icons';
 import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, sans, trackDisplay, wgRule } from '../ds/tokens';
-import type { Group, Member, NewsStory } from '../api/types';
-import type { EventRsvpState, MobileEventPreview } from './EventsScreen';
+import { alpha, sans, trackDisplay } from '../ds/tokens';
+import { remainingLabel, usePodcastPlayer } from '../components/podcast/PlayerProvider';
 
-export interface HomeActionPreview {
-  id: string;
-  kind: 'annual-meeting' | 'survey' | 'announcement';
-  title: string;
-  description: string;
-  actionLabel: string;
-}
-
-export interface HomeAnnualMeetingPreview {
-  title: string;
-  dateLabel: string;
-  location: string;
-  status: string;
+export interface HomeSectionState<T> {
+  data: T | undefined;
+  loading: boolean;
+  error: Error | undefined;
+  onRetry: () => void;
 }
 
 export default function HomeScreen({
-  member,
-  actions,
-  annualMeeting,
+  immediateActions,
   events,
-  groups,
+  workingGroups,
   news,
+  library,
+  podcasts,
+  refreshing,
+  onRefresh,
   onOpenAction,
-  onOpenAnnualMeeting,
   onOpenEvent,
   onGoEvents,
-  onGoNews,
   onGoGroups,
   onPickGroup,
+  onOpenThread,
+  onGoNews,
   onOpenNewsStory,
-  showBadges,
+  onGoLibrary,
+  onOpenResource,
+  onGoPodcasts,
+  onOpenPodcast,
 }: {
-  member: Member;
-  actions: HomeActionPreview[];
-  annualMeeting: HomeAnnualMeetingPreview | null;
-  events: MobileEventPreview[];
-  groups: Group[];
-  /** Resource-backed News Radar stories shown on the dashboard. */
-  news: NewsStory[];
-  onOpenAction: (action: HomeActionPreview) => void;
-  onOpenAnnualMeeting: () => void;
+  immediateActions: HomeSectionState<HomeImmediateActionsResponse>;
+  events: HomeSectionState<MobileEventPreview[]>;
+  workingGroups: HomeSectionState<WorkingGroupsData>;
+  news: HomeSectionState<NewsStory[]>;
+  library: HomeSectionState<ResourceHubData>;
+  podcasts: HomeSectionState<PodcastEpisode[]>;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onOpenAction: (action: HomeImmediateAction) => void;
   onOpenEvent: (eventId: string) => void;
   onGoEvents: () => void;
-  onGoNews: () => void;
   onGoGroups: () => void;
-  onPickGroup: (groupId: string) => void;
+  onPickGroup: (slug: string) => void;
+  onOpenThread: (thread: HomeThreadPreview) => void;
+  onGoNews: () => void;
   onOpenNewsStory: (story: NewsStory) => void;
-  showBadges: boolean;
+  onGoLibrary: () => void;
+  onOpenResource: (resource: LibraryResource) => void;
+  onGoPodcasts: () => void;
+  onOpenPodcast: (episode: PodcastEpisode) => void;
 }) {
   const { t } = useTheme();
+  const player = usePodcastPlayer();
+  const masthead = immediateActions.data?.masthead;
+  const upcomingEvents = events.data?.filter((event) => event.status === 'upcoming').slice(0, 2) ?? [];
+  const radarStories = news.data?.filter((story) => story.kind === 'radar').slice(0, 3) ?? [];
+  const documents = library.data?.resources.filter((resource) => resource.type !== 'Podcast').slice(0, 3) ?? [];
+  const episodes = podcasts.data?.slice(0, 3) ?? [];
 
   return (
     <View style={styles.fill}>
-      <ScreenHeader title="Good morning, " accent={`${member.firstName}.`} />
+      <ScreenHeader title={masthead?.title ?? 'Home'} accent={masthead?.italic} />
 
-      <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {!!actions.length && (
-          <View style={styles.firstSection}>
-            <SectionHead label="For you" meta={`${actions.length} TO DO`} />
-            <View style={[styles.actionCard, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-              {actions.slice(0, 3).map((action, index) => (
-                <Pressable
-                  key={action.id}
-                  onPress={() => onOpenAction(action)}
-                  style={({ pressed }) => [
-                    styles.actionRow,
-                    index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                    pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
-                  ]}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: action.kind === 'survey' ? t.brandAmberSoft : t.brandGreenSoft }]}>
-                    {action.kind === 'announcement' ? (
-                      <Megaphone size={18} color={t.brandBlue} />
-                    ) : action.kind === 'survey' ? (
-                      <CheckCircle size={18} color={t.brandAmber} />
-                    ) : (
-                      <CalendarDots size={18} color={t.brandGreen} />
-                    )}
-                  </View>
-                  <View style={styles.flex}>
-                    <Text style={[styles.actionTitle, { color: t.inkStrong }]} numberOfLines={2}>{action.title}</Text>
-                    <Text style={[styles.actionDescription, { color: t.inkMuted }]} numberOfLines={1}>{action.description}</Text>
-                  </View>
-                  <Text style={[styles.actionLabel, { color: t.brandGreen }]}>{action.actionLabel}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={t.brandGreen}
+            colors={[t.brandGreen]}
+          />
         )}
-
-        {!!annualMeeting && (
-          <View style={styles.section}>
-            <SectionHead label="Annual Meeting" />
-            <Pressable
-              onPress={onOpenAnnualMeeting}
-              style={({ pressed }) => [
-                styles.meetingCard,
-                { backgroundColor: pressed ? t.surfaceAnchorSoft : t.surfaceAnchor },
-              ]}
-            >
-              <MastheadMeta size={9.5} color={t.brandGreenOnDark}>{annualMeeting.status.toUpperCase()}</MastheadMeta>
-              <Text style={styles.meetingTitle}>{annualMeeting.title}</Text>
-              <Text style={[styles.meetingMeta, { color: alpha(t.inkInverse, 0.76) }]}>{annualMeeting.dateLabel} · {annualMeeting.location}</Text>
-              <View style={styles.meetingAction}>
-                <Text style={[styles.meetingActionText, { color: t.brandGreenOnDark }]}>View meeting</Text>
-                <ArrowRight size={15} color={t.brandGreenOnDark} />
+      >
+        <HomeBand state={immediateActions} rows={1}>
+          {(home) => home.actions.length > 0 ? (
+            <HomeSection title="What You Missed">
+              <View style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                {home.actions.slice(0, 3).map((action, index) => (
+                  <ActionRow key={action.id} action={action} divided={index > 0} onPress={() => onOpenAction(action)} />
+                ))}
               </View>
-            </Pressable>
-          </View>
-        )}
+            </HomeSection>
+          ) : null}
+        </HomeBand>
 
-        {!!events.length && (
-          <View style={styles.section}>
-            <SectionHead label="Upcoming events" action="All events" onAction={onGoEvents} />
-            <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-              {events.slice(0, 2).map((event, index) => (
-                <Pressable
-                  key={event.id}
-                  onPress={() => onOpenEvent(event.id)}
-                  style={({ pressed }) => [
-                    styles.eventRow,
-                    index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                    pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
-                  ]}
-                >
-                  <View style={[styles.dateChip, { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft }]}>
-                    <Text style={[styles.dateMonth, { color: t.inkMuted }]}>{event.month}</Text>
-                    <Text style={[styles.dateNum, { color: t.inkStrong }]}>{event.day}</Text>
-                  </View>
-                  <View style={styles.flex}>
-                    <Text style={[styles.eventTitle, { color: t.inkStrong }]} numberOfLines={2}>{event.title}</Text>
-                    <Text style={[styles.eventMeta, { color: t.inkMuted }]} numberOfLines={1}>{event.location} · {event.format}</Text>
-                    <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
-                      {eventRsvpLabel(event.rsvp)}
-                    </Badge>
-                  </View>
-                  <ArrowRight size={16} color={t.brandGreen} />
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {!!groups.length && (
-          <View style={styles.section}>
-            <SectionHead label="My groups" action="All groups" onAction={onGoGroups} />
-            <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-              {groups.map((g, i) => (
-                <Pressable
-                  key={g.id}
-                  onPress={() => onPickGroup(g.id)}
-                  style={({ pressed }) => [
-                    styles.groupRow,
-                    { borderLeftColor: wgRule(t, g.cls) },
-                    i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                    pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
-                  ]}
-                >
-                  <View style={styles.flex}>
-                    <Text style={[styles.groupName, { color: t.inkStrong }]}>{g.n}</Text>
-                    <Text style={[styles.groupMeta, { color: t.inkMuted }]} numberOfLines={1}>{g.threads[0]?.title ?? 'No posts yet'}</Text>
-                  </View>
-                  {showBadges && g.unread > 0 && <Badge variant="secondary">{g.unread}</Badge>}
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {!!news.length && (
-          <View style={styles.section}>
-            <SectionHead label="News Radar" action="All coverage" onAction={onGoNews} />
-            <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-              {news.slice(0, 3).map((story, index) => (
-                <Pressable
-                  key={story.id}
-                  onPress={() => onOpenNewsStory(story)}
-                  style={({ pressed }) => [
-                    styles.radarRow,
-                    index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                    pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
-                  ]}
-                >
-                  <View style={styles.flex}>
-                    <View style={styles.radarMetaRow}>
-                      <Text style={[styles.radarTopic, { color: t.brandAmber }]} numberOfLines={1}>{story.tag ?? story.topic}</Text>
-                      <MastheadMeta size={10}>{story.meta}</MastheadMeta>
+        <HomeBand state={events} rows={2}>
+          {() => upcomingEvents.length > 0 ? (
+            <HomeSection title="Upcoming" action="All events" onAction={onGoEvents}>
+              <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                {upcomingEvents.map((event, index) => (
+                  <Pressable
+                    key={event.id}
+                    onPress={() => onOpenEvent(event.id)}
+                    style={({ pressed }) => [
+                      styles.eventRow,
+                      index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                      pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
+                    ]}
+                  >
+                    <View style={styles.dateChip}>
+                      <Text style={[styles.dateMonth, { color: t.inkMuted }]}>{event.month}</Text>
+                      <Text style={[styles.dateNumber, { color: t.brandRed }]}>{event.day}</Text>
                     </View>
-                    <Text style={[styles.radarTitle, { color: t.inkStrong }]} numberOfLines={2}>{story.title}</Text>
-                  </View>
-                  <ArrowRight size={16} color={t.brandGreen} />
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
+                    <View style={styles.flex}>
+                      <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{event.title}</Text>
+                      <Text style={[styles.rowMeta, { color: t.inkMuted }]}>
+                        {[event.dateLabel, event.timeLabel, event.location, event.format].filter(Boolean).join(' · ')}
+                      </Text>
+                      <View style={styles.eventActions}>
+                        <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
+                          {event.rsvp === 'attending' ? "You’re going" : 'Not responded'}
+                        </Badge>
+                        <Text style={[styles.detailLink, { color: t.inkStrong }]}>Details</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </HomeSection>
+          ) : null}
+        </HomeBand>
+
+        <HomeBand state={workingGroups} rows={4}>
+          {(data) => data.home.groups.length > 0 || data.home.threads.length > 0 ? (
+            <HomeSection title="Your Groups" action="Browse all groups" onAction={onGoGroups}>
+              {data.home.groups.length > 0 ? (
+                <View style={styles.groupChips}>
+                  {data.home.groups.map((group) => (
+                    <Pressable
+                      key={group.slug}
+                      onPress={() => onPickGroup(group.slug)}
+                      style={({ pressed }) => [
+                        styles.groupChip,
+                        { borderColor: t.ruleHairline, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper },
+                      ]}
+                    >
+                      <Text style={[styles.groupChipText, { color: t.inkStrong }]}>{group.name}</Text>
+                      {!!group.unread && <Badge variant="secondary">{group.unread}</Badge>}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {data.home.threads.length > 0 ? (
+                <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                  {data.home.threads.slice(0, 4).map((thread, index) => (
+                    <Pressable
+                      key={thread.id}
+                      onPress={() => onOpenThread(thread)}
+                      style={({ pressed }) => [
+                        styles.threadRow,
+                        index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                        pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
+                      ]}
+                    >
+                      {thread.unread ? <ChatCircleDots size={18} color={t.brandRed} /> : <ChatCircle size={18} color={t.inkMuted} />}
+                      <View style={styles.flex}>
+                        <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{thread.title}</Text>
+                        <Text style={[styles.rowMeta, { color: t.inkMuted }]}>
+                          {thread.groupName} · {thread.authorName} · {thread.replies} replies · {thread.age}
+                        </Text>
+                      </View>
+                      <ArrowRight size={15} color={t.brandGreen} />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </HomeSection>
+          ) : null}
+        </HomeBand>
+
+        <HomeBand state={news} rows={3}>
+          {() => radarStories.length > 0 ? (
+            <HomeSection title="Industry News" action="Open news" onAction={onGoNews}>
+              <DigestRows
+                rows={radarStories.map((story) => ({
+                  id: story.id,
+                  title: story.title,
+                  meta: `${story.topic} · ${story.publishedAt ?? story.meta}`,
+                  icon: <FileText size={18} color={t.brandAmber} />,
+                  onPress: () => onOpenNewsStory(story),
+                }))}
+              />
+            </HomeSection>
+          ) : null}
+        </HomeBand>
+
+        <HomeBand state={library} rows={3}>
+          {() => documents.length > 0 ? (
+            <HomeSection title="Library" action="Open library" onAction={onGoLibrary}>
+              <DigestRows
+                rows={documents.map((resource) => ({
+                  id: resource.id,
+                  title: resource.title,
+                  meta: [resource.type, resource.authors, resource.pages ? `${resource.pages} pp` : null].filter(Boolean).join(' · '),
+                  icon: <BookOpen size={18} color={t.brandGreen} />,
+                  onPress: () => onOpenResource(resource),
+                }))}
+              />
+            </HomeSection>
+          ) : null}
+        </HomeBand>
+
+        <HomeBand state={podcasts} rows={3}>
+          {() => episodes.length > 0 ? (
+            <HomeSection title="Podcast" action="View episodes" onAction={onGoPodcasts}>
+              <DigestRows
+                rows={episodes.map((episode) => ({
+                  id: episode.slug,
+                  title: episode.title,
+                  meta: [episode.duration, remainingLabel(episode, player.positions)].filter(Boolean).join(' · '),
+                  icon: <Play size={18} color={t.brandGreen} />,
+                  onPress: () => onOpenPodcast(episode),
+                }))}
+              />
+            </HomeSection>
+          ) : null}
+        </HomeBand>
       </ScrollView>
     </View>
   );
 }
 
-function SectionHead({
-  label,
-  meta,
-  action,
-  onAction,
+function HomeBand<T>({
+  state,
+  rows,
+  children,
 }: {
-  label: string;
-  meta?: string;
-  action?: string;
-  onAction?: () => void;
+  state: HomeSectionState<T>;
+  rows: number;
+  children: (data: T) => React.ReactNode;
 }) {
+  if (state.loading && state.data === undefined) return <BandSkeleton rows={rows} />;
+  if (state.error && state.data === undefined) return <BandError error={state.error} onRetry={state.onRetry} />;
+  return state.data === undefined ? null : <>{children(state.data)}</>;
+}
+
+function BandSkeleton({ rows }: { rows: number }) {
   const { t } = useTheme();
   return (
-    <View style={styles.sectionHead}>
-      <Text style={[styles.h3, { color: t.inkStrong }]}>{label}</Text>
-      {!!meta && <MastheadMeta size={9.5}>{meta}</MastheadMeta>}
-      {!!action && !!onAction && (
-        <Pressable onPress={onAction} hitSlop={8} style={styles.sectionAction}>
-          <Text style={[styles.sectionActionText, { color: t.brandGreen }]}>{action}</Text>
-          <ArrowRight size={13} color={t.brandGreen} />
-        </Pressable>
-      )}
+    <View style={[styles.loadingBand, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+      <ActivityIndicator color={t.brandGreen} />
+      <MastheadMeta size={9.5}>LOADING</MastheadMeta>
+      <View style={styles.loadingRows}>
+        {Array.from({ length: rows }, (_, index) => (
+          <View key={index} style={[styles.loadingRow, { backgroundColor: t.surfaceSoft }]} />
+        ))}
+      </View>
     </View>
   );
 }
 
-function eventRsvpLabel(state: EventRsvpState) {
-  if (state === 'attending') return 'Attending';
-  if (state === 'not-attending') return 'Not attending';
-  return 'Not responded';
+function BandError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const { t } = useTheme();
+  return (
+    <View style={[styles.errorBand, { borderColor: t.brandRed, backgroundColor: t.surfacePaper }]}>
+      <Text style={[styles.errorTitle, { color: t.inkStrong }]}>This section could not be loaded</Text>
+      <Text style={[styles.errorMessage, { color: t.inkMuted }]} numberOfLines={2}>{error.message}</Text>
+      <Pressable onPress={onRetry} style={[styles.retry, { borderColor: t.ruleHairline }]}>
+        <Text style={[styles.retryText, { color: t.brandGreen }]}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function HomeSection({
+  title,
+  action,
+  onAction,
+  children,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+  children: React.ReactNode;
+}) {
+  const { t } = useTheme();
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHead}>
+        <Text style={[styles.sectionTitle, { color: t.inkStrong }]}>{title}</Text>
+        {action && onAction ? (
+          <Pressable onPress={onAction} hitSlop={8} style={styles.sectionAction}>
+            <Text style={[styles.sectionActionText, { color: t.brandGreen }]}>{action}</Text>
+            <ArrowRight size={13} color={t.brandGreen} />
+          </Pressable>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function ActionRow({
+  action,
+  divided,
+  onPress,
+}: {
+  action: HomeImmediateAction;
+  divided: boolean;
+  onPress: () => void;
+}) {
+  const { t } = useTheme();
+  const icon = action.kind === 'announcement'
+    ? <Megaphone size={18} color={t.brandRed} />
+    : action.kind === 'survey'
+      ? <CheckCircle size={18} color={t.brandRed} />
+      : action.kind === 'mention'
+        ? <At size={18} color={t.brandRed} />
+        : <CalendarDots size={18} color={t.brandRed} />;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionRow,
+        divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+        pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
+      ]}
+    >
+      {icon}
+      <View style={styles.flex}>
+        <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{action.title}</Text>
+        <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{action.description}</Text>
+      </View>
+      <Text style={[styles.actionLabel, { color: t.brandGreen }]}>{action.actionLabel}</Text>
+    </Pressable>
+  );
+}
+
+function DigestRows({
+  rows,
+}: {
+  rows: Array<{ id: string; title: string; meta: string; icon: React.ReactNode; onPress: () => void }>;
+}) {
+  const { t } = useTheme();
+  return (
+    <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+      {rows.map((row, index) => (
+        <Pressable
+          key={row.id}
+          onPress={row.onPress}
+          style={({ pressed }) => [
+            styles.digestRow,
+            index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+            pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
+          ]}
+        >
+          {row.icon}
+          <View style={styles.flex}>
+            <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{row.title}</Text>
+            {!!row.meta && <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{row.meta}</Text>}
+          </View>
+          <ArrowRight size={15} color={t.brandGreen} />
+        </Pressable>
+      ))}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  scroll: { paddingBottom: 32 },
-  firstSection: { paddingTop: 22 },
+  scroll: { paddingBottom: 36 },
   section: { paddingTop: 24 },
   sectionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    minHeight: 44,
     paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  sectionAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    minHeight: 30,
-  },
-  sectionActionText: {
-    fontFamily: sans(500),
-    fontSize: 12.5,
-  },
-  h3: {
-    fontFamily: sans(600),
-    fontSize: 16,
-    letterSpacing: trackDisplay(16),
-  },
-  band: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
-  actionCard: { marginHorizontal: 20, borderWidth: 1, borderRadius: 9, overflow: 'hidden' },
-  actionRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 11 },
-  actionIcon: { width: 38, height: 38, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  actionTitle: { fontFamily: sans(600), fontSize: 13, lineHeight: 18 },
-  actionDescription: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
-  actionLabel: { fontFamily: sans(600), fontSize: 11.5 },
-  meetingCard: { marginHorizontal: 20, borderRadius: 10, padding: 18 },
-  meetingTitle: { marginTop: 7, fontFamily: sans(600), fontSize: 20, lineHeight: 24, letterSpacing: trackDisplay(20), color: '#fff' },
-  meetingMeta: { marginTop: 6, fontFamily: sans(400), fontSize: 12.5 },
-  meetingAction: { marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  meetingActionText: { fontFamily: sans(600), fontSize: 12.5 },
-  eventRow: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 13 },
-  radarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  radarMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 3,
-  },
-  radarTopic: {
-    maxWidth: 124,
-    fontFamily: sans(600),
-    fontSize: 10.5,
-  },
-  radarTitle: {
-    fontFamily: sans(500),
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  groupRow: {
+    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    minHeight: 56,
-    paddingVertical: 12,
-    paddingRight: 20,
-    paddingLeft: 17,
-    borderLeftWidth: 3,
   },
-  groupName: {
-    fontFamily: sans(600),
-    fontSize: 14,
-  },
-  groupMeta: {
-    marginTop: 2,
-    fontFamily: sans(400),
-    fontSize: 12,
-  },
-  dateChip: {
-    width: 52,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 7,
-    alignItems: 'center',
-  },
-  dateMonth: {
-    fontFamily: sans(500),
-    fontSize: 11,
-  },
-  dateNum: {
-    fontFamily: sans(600),
-    fontSize: 22,
-    lineHeight: 24,
-    letterSpacing: trackDisplay(22),
-  },
-  eventTitle: {
-    fontFamily: sans(600),
-    fontSize: 13.5,
-    lineHeight: 18,
-  },
-  eventMeta: {
-    marginTop: 2,
-    fontFamily: sans(400),
-    fontSize: 12,
-  },
+  sectionTitle: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
+  sectionAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  sectionActionText: { fontFamily: sans(500), fontSize: 12.5 },
+  card: { marginHorizontal: 20, borderWidth: 1, borderRadius: 9, overflow: 'hidden' },
+  band: { borderTopWidth: 1, borderBottomWidth: 1 },
+  actionRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  actionLabel: { maxWidth: 92, fontFamily: sans(600), fontSize: 11.5, textAlign: 'right' },
+  eventRow: { minHeight: 112, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  dateChip: { width: 48, alignItems: 'center', paddingTop: 2 },
+  dateMonth: { fontFamily: sans(500), fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
+  dateNumber: { marginTop: 2, fontFamily: sans(600), fontSize: 25, lineHeight: 27, letterSpacing: trackDisplay(25) },
+  eventActions: { marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  detailLink: { fontFamily: sans(500), fontSize: 11.5, textDecorationLine: 'underline' },
+  groupChips: { paddingHorizontal: 20, paddingBottom: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  groupChip: { minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  groupChipText: { fontFamily: sans(500), fontSize: 11.5 },
+  threadRow: { minHeight: 72, paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  digestRow: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  rowTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
+  rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5, lineHeight: 16 },
+  loadingBand: { marginTop: 24, marginHorizontal: 20, padding: 16, borderWidth: 1, borderRadius: 9, gap: 10 },
+  loadingRows: { gap: 7 },
+  loadingRow: { height: 10, borderRadius: 4 },
+  errorBand: { marginTop: 24, marginHorizontal: 20, padding: 16, borderWidth: 1, borderRadius: 9 },
+  errorTitle: { fontFamily: sans(600), fontSize: 13.5 },
+  errorMessage: { marginTop: 4, fontFamily: sans(400), fontSize: 11.5, lineHeight: 16 },
+  retry: { alignSelf: 'flex-start', minHeight: 44, marginTop: 8, paddingHorizontal: 12, borderWidth: 1, borderRadius: 7, justifyContent: 'center' },
+  retryText: { fontFamily: sans(600), fontSize: 12 },
 });

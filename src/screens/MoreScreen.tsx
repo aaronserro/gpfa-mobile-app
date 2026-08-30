@@ -27,7 +27,7 @@ export default function MoreScreen({
   onOpenEvents,
   onOpenResources,
   onOpenJobBoard,
-  onOpenProfile,
+  onOpenAccount,
 }: {
   member: Member;
   annualMeetingEnabled: boolean;
@@ -41,7 +41,7 @@ export default function MoreScreen({
   onOpenEvents: () => void;
   onOpenResources: () => void;
   onOpenJobBoard: () => void;
-  onOpenProfile: () => void;
+  onOpenAccount: () => void;
 }) {
   const { t } = useTheme();
 
@@ -105,13 +105,13 @@ export default function MoreScreen({
 
         <SectionLabel label="Account" />
         <Pressable
-          onPress={onOpenProfile}
+          onPress={onOpenAccount}
           style={({ pressed }) => [
             styles.profileCard,
             { backgroundColor: pressed ? alpha(t.surfaceSoft, 0.5) : t.surfacePaper, borderColor: t.ruleHairline },
           ]}
         >
-          <Avatar initials={member.initials ?? initialsOf(member.name)} size={44} />
+          <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={44} />
           <View style={styles.flex}>
             <Text style={[styles.profileName, { color: t.inkStrong }]}>{member.name}</Text>
             <Text style={[styles.profileMeta, { color: t.inkMuted }]} numberOfLines={1}>

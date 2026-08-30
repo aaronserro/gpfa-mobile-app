@@ -7,7 +7,10 @@
  */
 import type {
   AskAnswer,
+  AskConversationSummary,
+  AskMessage,
   Answer,
+  AnnualMeetingPreview,
   CalendarEvent,
   DirectoryPerson,
   Group,
@@ -16,11 +19,187 @@ import type {
   Member,
   ConversationSummary,
   MemberNotification,
+  MemberUpdates,
   MemberOrg,
   MessageItem,
   NewsStory,
   PodcastEpisode,
+  PodcastTranscriptSegment,
+  MobileEventPreview,
 } from '../api/types';
+
+export const MOBILE_EVENTS: MobileEventPreview[] = [
+  {
+    id: 'policy-roundtable',
+    contentItemId: '11111111-1111-4111-8111-111111111111',
+    startsAt: '2026-09-04T13:00:00Z',
+    endsAt: '2026-09-04T14:30:00Z',
+    timezone: 'America/New_York',
+    datePrecision: 'datetime',
+    detailsUrl: 'https://gpfa.org/members/events?event=policy-roundtable',
+    month: 'SEP',
+    day: '04',
+    title: 'Global policy and regulatory roundtable',
+    dateLabel: 'Thursday, September 4, 2026',
+    timeLabel: '9:00–10:30 AM ET',
+    location: 'GPFA Member Forum',
+    format: 'Virtual',
+    type: 'Policy briefing',
+    status: 'upcoming',
+    rsvp: 'attending',
+    registrationOpen: true,
+    summary: 'A member-only briefing on the policy developments shaping private funds across the United States, Europe and Asia.',
+    attendeeCount: 46,
+    attendees: [
+      { name: 'Amara Okafor', org: 'Northbridge' },
+      { name: 'Daniel Weber', org: 'GPFA' },
+      { name: 'Mei Lin', org: 'Harbour Capital' },
+    ],
+    joinUrl: 'https://example.com/member-event',
+    agenda: [
+      { time: '9:00 AM', title: 'Market and policy briefing', detail: 'A cross-jurisdiction scan from the GPFA policy team.' },
+      { time: '9:35 AM', title: 'Member roundtable', detail: 'Peer discussion and practical questions.' },
+    ],
+  },
+  {
+    id: 'operations-benchmarking',
+    contentItemId: '22222222-2222-4222-8222-222222222222',
+    startsAt: '2026-09-11T15:00:00Z',
+    endsAt: '2026-09-11T16:00:00Z',
+    timezone: 'America/New_York',
+    datePrecision: 'datetime',
+    detailsUrl: 'https://gpfa.org/members/events?event=operations-benchmarking',
+    month: 'SEP',
+    day: '11',
+    title: 'Operating model benchmarking exchange',
+    dateLabel: 'Thursday, September 11, 2026',
+    timeLabel: '11:00 AM–12:00 PM ET',
+    location: 'Microsoft Teams',
+    format: 'Virtual',
+    type: 'Peer exchange',
+    status: 'upcoming',
+    rsvp: 'not-responded',
+    registrationOpen: true,
+    summary: 'Compare operating-model priorities with peers and identify the measures members want reflected in the next benchmark.',
+    attendeeCount: 28,
+    attendees: [],
+    agenda: [{ time: '11:00 AM', title: 'Benchmark preview' }],
+  },
+  {
+    id: 'annual-policy-retreat',
+    contentItemId: '33333333-3333-4333-8333-333333333333',
+    startsAt: '2026-08-20',
+    endsAt: '2026-08-21',
+    datePrecision: 'day',
+    detailsUrl: 'https://gpfa.org/members/events?event=annual-policy-retreat',
+    month: 'AUG',
+    day: '20',
+    title: 'Annual policy retreat',
+    dateLabel: 'August 20–21, 2026',
+    timeLabel: 'All day',
+    location: 'London, United Kingdom',
+    format: 'In person',
+    type: 'Member meeting',
+    status: 'past',
+    rsvp: 'attending',
+    registrationOpen: false,
+    summary: 'A two-day member retreat focused on the coming policy agenda.',
+    attendeeCount: 2,
+    attendees: [
+      { name: 'Amara Okafor', org: 'Northbridge' },
+      { name: 'Daniel Weber', org: 'GPFA' },
+    ],
+    agenda: [],
+  },
+];
+
+export const MEMBER_UPDATES: MemberUpdates = {
+  announcements: [
+    {
+      id: 'member-platform-update',
+      notificationId: 'fixture-platform-update',
+      title: 'A clearer way to find member activity',
+      summary: 'Events, surveys and essential announcements now have dedicated places in the mobile experience.',
+      dateLabel: 'AUG 26',
+      unread: true,
+      important: true,
+      body: ['The mobile portal is being reorganized around the work members return to most often.'],
+    },
+  ],
+  surveys: [
+    {
+      id: '33333333-3333-4333-8333-333333333333',
+      title: '2027 operating priorities pulse',
+      description: 'Help shape the research and peer exchanges GPFA develops for the coming year.',
+      closesLabel: 'CLOSES SEP 12',
+      status: 'not-started',
+      answers: [],
+      questions: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          prompt: 'Operating priorities',
+          options: [
+            { id: '55555555-5555-4555-8555-555555555551', label: 'High priority', isOther: false },
+            { id: '55555555-5555-4555-8555-555555555552', label: 'Medium priority', isOther: false },
+            { id: '55555555-5555-4555-8555-555555555553', label: 'Low priority', isOther: false },
+          ],
+          statements: [
+            { id: '66666666-6666-4666-8666-666666666661', text: 'Technology modernization' },
+            { id: '66666666-6666-4666-8666-666666666662', text: 'Regulatory readiness' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+export const ANNUAL_MEETING: AnnualMeetingPreview = {
+  draftId: '77777777-7777-4777-8777-777777777777',
+  title: '2026 GPFA Annual Meeting',
+  subtitle: 'Perspective, practice and connection across the global private funds community.',
+  dateLabel: 'September 17–18, 2026',
+  location: 'The Langham, London',
+  timezone: 'British Summer Time',
+  summary: 'Two focused days for GPFA members to compare priorities, test practical ideas and build relationships.',
+  registrationStatus: 'Not registered',
+  registrationOpen: true,
+  allowsMemberEdits: true,
+  expectedUpdatedAt: null,
+  answers: [],
+  formFields: [
+    {
+      id: '88888888-8888-4888-8888-888888888881',
+      type: 'single_choice',
+      label: 'How will you attend?',
+      helpText: '',
+      required: true,
+      options: [
+        { id: 'in-person', label: 'In person' },
+        { id: 'virtual', label: 'Virtual' },
+      ],
+    },
+    {
+      id: '88888888-8888-4888-8888-888888888882',
+      type: 'long_text',
+      label: 'Dietary or accessibility requirements',
+      helpText: 'Optional',
+      required: false,
+      options: [],
+    },
+  ],
+  agenda: [
+    {
+      id: 'day-one',
+      label: 'Day one',
+      date: 'THURSDAY · SEPTEMBER 17',
+      sessions: [
+        { time: '5:30 PM', title: 'Welcome and opening perspective', detail: 'A concise outlook for private funds leaders.', location: 'Grand Ballroom' },
+        { time: '6:30 PM', title: 'Member reception', detail: 'Connection across the GPFA community.', location: 'Palm Court' },
+      ],
+    },
+  ],
+  logistics: [{ title: 'The Langham, London', detail: '1C Portland Place, Regent Street, London W1B 1JA.' }],
+};
 
 export const GROUPS: Group[] = [
   {
@@ -57,7 +236,7 @@ export const GROUPS: Group[] = [
         file: 'Indemnification-Matrix-v3.xlsx',
         fileMeta: 'XLSX · 214 KB · UPLOADED TODAY',
         replies: [
-          { a: 'Marcus Chen', org: 'CPP Investments', time: '1h ago', initials: 'MC', mention: '@Marcus Chen', up: 4, text: 'row 14 — our program moved to a split structure in June, so the v2 entry is stale. I will send corrected figures directly.' },
+          { id: 'cl1-r1', a: 'Marcus Chen', org: 'CPP Investments', time: '1h ago', initials: 'MC', up: 4, text: '@marcus-chen row 14 — our program moved to a split structure in June, so the v2 entry is stale. I will send corrected figures directly.' },
           { a: 'Priya Nair', org: 'GIC', time: '48m ago', initials: 'PN', up: 2, text: 'The haircut bands are much easier to compare now. Suggest we freeze the taxonomy after this round so the roundtable pre-read is stable.' },
           { a: 'Jonas Weber', org: 'Allianz IM', time: '20m ago', initials: 'JW', up: 1, text: 'Can we add a column flagging which programs changed indemnification terms after the Basel recalibration draft? That is the question our board keeps asking.' },
         ],
@@ -85,8 +264,8 @@ export const GROUPS: Group[] = [
           ],
         },
         replies: [
-          { a: 'Sofia Lindqvist', org: 'AP4', time: '3h ago', initials: 'SL', up: 3, text: 'Voted T+0. If the pilot cannot prove same-day we will not get internal sign-off to scale it.' },
-          { a: 'Elena Rossi', org: 'APG', time: '2h ago', initials: 'ER', mention: '@Marcus Chen', up: 2, text: 'the currency split matters for us — EUR legs settle differently under our custody setup. Happy to write up the edge cases.' },
+          { id: 'cl2-r1', a: 'Sofia Lindqvist', org: 'AP4', time: '3h ago', initials: 'SL', up: 3, text: 'Voted T+0. If the pilot cannot prove same-day we will not get internal sign-off to scale it.' },
+          { id: 'cl2-r2', a: 'Elena Rossi', org: 'APG', time: '2h ago', initials: 'ER', up: 2, text: '@marcus-chen the currency split matters for us — EUR legs settle differently under our custody setup. Happy to write up the edge cases.' },
         ],
       },
       {
@@ -170,8 +349,8 @@ export const GROUPS: Group[] = [
         mins: 300,
         body: 'Consolidating the jurisdiction carve-out language members have negotiated into the 2018 annex. Netherlands and Singapore versions are in. If your counsel has agreed language for other jurisdictions, post it here and we will fold it into the library template.',
         replies: [
-          { a: 'Elena Rossi', org: 'APG', time: '3h ago', initials: 'ER', text: 'Dutch language attached to the library entry — note it predates the 2025 securities law amendment, flagging for review.' },
-          { a: 'David Park', org: 'NPS', time: '1h ago', initials: 'DP', mention: '@Amara Okafor', text: 'Korean carve-out is with our external counsel now, expect to share next week.' },
+          { id: 'ld1-r1', a: 'Elena Rossi', org: 'APG', time: '3h ago', initials: 'ER', text: 'Dutch language attached to the library entry — note it predates the 2025 securities law amendment, flagging for review.' },
+          { id: 'ld1-r2', a: 'David Park', org: 'NPS', time: '1h ago', initials: 'DP', text: '@amara-okafor Korean carve-out is with our external counsel now, expect to share next week.' },
         ],
       },
       {
@@ -232,8 +411,8 @@ export const GROUPS: Group[] = [
         mins: 4320,
         body: 'We have a proof of concept moving collateral records to a shared ledger with one custodian. Before we commit to a production pilot: has any member run this in production, and what broke first?',
         replies: [
-          { a: 'Priya Nair', org: 'GIC', time: '2d ago', initials: 'PN', text: 'Production since March, limited to one counterparty pair. What broke first was reconciliation with the custodian legacy feed, not the ledger itself.' },
-          { a: 'Sofia Lindqvist', org: 'AP4', time: '2d ago', initials: 'SL', mention: '@Priya Nair', text: 'would love a 30-minute walkthrough of that reconciliation fix at the next call.' },
+          { id: 'te2-r1', a: 'Priya Nair', org: 'GIC', time: '2d ago', initials: 'PN', text: 'Production since March, limited to one counterparty pair. What broke first was reconciliation with the custodian legacy feed, not the ledger itself.' },
+          { id: 'te2-r2', parentPostId: 'te2-r1', a: 'Sofia Lindqvist', org: 'AP4', time: '2d ago', initials: 'SL', text: '@priya-nair would love a 30-minute walkthrough of that reconciliation fix at the next call.' },
         ],
       },
     ],
@@ -405,23 +584,39 @@ export const ANSWERS: Answer[] = [
   {
     k: ['indemn'],
     text: 'Across responding members, agent-provided indemnification remains the default: 28 of 41 organizations in the 2026 practices survey retain it for securities lending, 9 run split structures, and 4 lend unindemnified in at least one program. The live question is pricing — three working groups currently have threads on how Basel recalibration shifts indemnification capital costs, and the draft comparison matrix in Collateral & Liquidity normalizes terms across 24 member programs.',
-    sources: ['Indemnification comparison matrix v3 — Collateral & Liquidity', '2026 Member Practices Survey — Library', 'Basel endgame thread — Legal & Documentation'],
+    sourceState: 'ready',
+    sources: [
+      { rank: 1, type: 'resource', label: 'Member library', title: 'Indemnification comparison matrix v3', href: '/members/library/indemnification-comparison-matrix-v3', excerpt: 'Terms compared across member lending programs.', updatedAt: '2026-08-12T12:00:00.000Z' },
+      { rank: 2, type: 'public_content', label: 'Survey', title: '2026 Member Practices Survey', href: '/members/surveys?survey=member-practices-2026', excerpt: null, updatedAt: null },
+      { rank: 3, type: 'discussion', label: 'Working group', title: 'Basel recalibration and indemnification costs', href: '/members/groups/legal-documentation?thread=basel-endgame', excerpt: null, updatedAt: null },
+    ],
   },
   {
     k: ['collateral', 'summar', 'week'],
     text: 'Collateral & Liquidity had 12 new posts this week across three threads: draft v3 of the indemnification comparison matrix opened for comment (closes Friday), the Q4 tri-party pilot settlement-window poll is running until Monday with T+0 currently leading, and a discussion on cash vs non-cash collateral mix where members report non-cash shares of 60–70%.',
-    sources: ['Indemnification comparison matrix v3 — thread', 'Q4 tri-party pilot poll — thread', 'Cash vs non-cash mix — thread'],
+    sourceState: 'partial',
+    sources: [
+      { rank: 1, type: 'discussion', label: 'Working group', title: 'Indemnification comparison matrix v3', href: '/members/groups/collateral-liquidity?thread=indemnification-matrix-v3', excerpt: null, updatedAt: null },
+      { rank: 2, type: 'discussion', label: 'Working group', title: 'Q4 tri-party pilot poll', href: '/members/groups/collateral-liquidity?thread=tri-party-pilot', excerpt: null, updatedAt: null },
+    ],
   },
   {
     k: ['roundtable', 'event', 'meeting'],
     text: 'Two events are open for registration: the GPFA Annual Meeting 2026 in Toronto on September 17–18 (you are registered), and a members-only roundtable on agency-lending indemnification under Basel recalibration on October 8, held virtually. The roundtable pre-read will be the finalized comparison matrix from Collateral & Liquidity.',
-    sources: ['Events calendar — Member portal', 'October roundtable announcement'],
+    sourceState: 'ready',
+    sources: [
+      { rank: 1, type: 'event', label: 'Events', title: 'Global policy and regulatory roundtable', href: '/members/events?event=policy-roundtable', excerpt: null, updatedAt: '2026-08-25T12:00:00.000Z' },
+      { rank: 2, type: 'public_content', label: 'Annual meeting', title: 'GPFA Annual Meeting 2026', href: '/members/annual-meeting', excerpt: null, updatedAt: null },
+    ],
   },
 ];
 
 export const FALLBACK_ANSWER: Omit<Answer, 'k'> = {
   text: 'I could not find a direct match in the member library for that. The closest material is in the working-group threads — try narrowing to a topic like indemnification, collateral mix, or the tri-party pilot, or post the question to the relevant working group.',
-  sources: ['Member library — search index'],
+  sourceState: 'ready',
+  sources: [
+    { rank: 1, type: 'resource', label: 'Member library', title: 'Search the member library', href: '/members/library', excerpt: null, updatedAt: null },
+  ],
 };
 
 /**
@@ -511,6 +706,50 @@ export const SUGGESTIONS: string[] = [
   "Summarize this week's Collateral & Liquidity activity",
   'When is the next members-only roundtable?',
 ];
+
+export const ASK_CONVERSATIONS: AskConversationSummary[] = [
+  {
+    id: '10000000-0000-4000-8000-000000000001',
+    title: 'Agency-lending indemnification structures across member programs',
+    updatedAt: '2026-08-28T15:30:00.000Z',
+  },
+  {
+    id: '10000000-0000-4000-8000-000000000002',
+    title: 'Upcoming member roundtables',
+    updatedAt: '2026-08-25T14:00:00.000Z',
+  },
+];
+
+export const ASK_MESSAGES: Record<string, AskMessage[]> = {
+  '10000000-0000-4000-8000-000000000001': Array.from({ length: 44 }, (_, index) => ({
+    id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    role: index % 2 === 0 ? 'user' as const : 'ai' as const,
+    text:
+      index % 2 === 0
+        ? `Follow-up question ${index / 2 + 1} about indemnification structures.`
+        : `Member discussion summary ${Math.ceil(index / 2)} comparing program terms and risk allocation.`,
+    createdAt: new Date(Date.UTC(2026, 7, 27, 12, index)).toISOString(),
+    sources: index % 2 === 0 ? [] : [{ rank: 1, type: 'discussion' as const, label: 'Working group', title: 'Collateral & Liquidity Working Group', href: '/members/groups/collateral-liquidity', excerpt: null, updatedAt: null }],
+    sourceState: index % 2 === 0 ? undefined : 'ready' as const,
+  })),
+  '10000000-0000-4000-8000-000000000002': [
+    {
+      id: '20000000-0000-4000-8000-000000000101',
+      role: 'user',
+      text: 'When is the next members-only roundtable?',
+      createdAt: '2026-08-25T13:59:00.000Z',
+      sources: [],
+    },
+    {
+      id: '20000000-0000-4000-8000-000000000102',
+      role: 'ai',
+      text: 'The next member roundtable is listed in the events calendar.',
+      createdAt: '2026-08-25T14:00:00.000Z',
+      sources: [{ rank: 1, type: 'event', label: 'Events', title: 'GPFA Events', href: '/members/events?event=policy-roundtable', excerpt: null, updatedAt: null }],
+      sourceState: 'ready',
+    },
+  ],
+};
 
 /** Local stand-in for the Ask GPFA endpoint: naive keyword match over ANSWERS. */
 export const findAnswer = (q: string): AskAnswer => {
@@ -1046,9 +1285,23 @@ export const PODCASTS: PodcastEpisode[] = [
     hasTranscript: true,
     summary:
       'Two heads of securities finance on what agent lenders are proposing, what their boards asked first, and where the comparison matrix changed their negotiating position.',
+    showNotes:
+      '## What we covered\n\nElena Rossi and Amara Okafor compare the revised indemnification terms being presented to asset owners.\n\n- The questions boards raised first\n- Where capital treatment changes the economics\n- How members are using the comparison matrix',
+    transcriptEndpoint: '/api/members/podcasts/indemnification-after-basel/transcript',
+    transcriptUrl: '/api/members/podcasts/indemnification-after-basel/transcript?download=1',
     people: [
-      { name: 'Elena Rossi', role: 'Head of Securities Finance, APG', initials: 'ER' },
-      { name: 'Amara Okafor', role: 'Director, Capital Markets, OTPP', initials: 'AO' },
+      {
+        name: 'Elena Rossi',
+        role: 'Head of Securities Finance, APG',
+        initials: 'ER',
+        memberHref: '/members/directory/apg/elena-rossi',
+      },
+      {
+        name: 'Amara Okafor',
+        role: 'Director, Capital Markets, OTPP',
+        initials: 'AO',
+        memberHref: '/members/directory/otpp/amara-okafor',
+      },
     ],
   },
   {
@@ -1103,6 +1356,66 @@ export const PODCASTS: PodcastEpisode[] = [
     people: [{ name: 'David Park', role: 'Head of Private Markets, NPS', initials: 'DP' }],
   },
 ];
+
+/** Synthetic transcript excerpts used only when the app runs without an API. */
+export const PODCAST_TRANSCRIPTS: Record<string, PodcastTranscriptSegment[]> = {
+  'indemnification-after-basel': [
+    {
+      start: 0,
+      text: 'Welcome to the GPFA podcast. Today we are discussing indemnification after the Basel recalibration.',
+    },
+    {
+      start: 42,
+      text: 'The first board question was whether the proposed terms changed the economics or only the documentation.',
+    },
+    {
+      start: 96,
+      text: 'The comparison matrix helped separate capital-driven changes from ordinary commercial negotiation.',
+    },
+  ],
+  'cash-versus-non-cash': [
+    {
+      start: 0,
+      text: 'This episode looks at how members adjusted their collateral schedules as non-cash usage increased.',
+    },
+    {
+      start: 51,
+      text: 'Most participants changed eligibility and concentration limits before revisiting reinvestment policy.',
+    },
+    {
+      start: 118,
+      text: 'The practical challenge was comparing programmes that classify collateral in different ways.',
+    },
+  ],
+  'tri-party-pilot-custodian-side': [
+    {
+      start: 0,
+      text: 'We are reviewing the tri-party pilot from the custodian side and the lessons from production.',
+    },
+    {
+      start: 64,
+      text: 'The shared ledger behaved as expected, but reconciliation with the legacy feed created the first break.',
+    },
+    {
+      start: 143,
+      text: 'The next phase focuses on exception ownership and a clearer handoff between operating teams.',
+    },
+  ],
+  'private-credit-disclosure': [
+    {
+      start: 0,
+      text: 'Today we compare the private-credit disclosures asset owners receive from their managers.',
+    },
+    {
+      start: 47,
+      text: 'Quarterly leverage figures were common, but the underlying definitions differed materially.',
+    },
+    {
+      start: 109,
+      text: 'Members found that negotiated definitions and supporting schedules mattered more than reporting frequency alone.',
+    },
+  ],
+};
 
 /**
  * The member directory, alphabetical by `name` — the index groups consecutive
@@ -1360,18 +1673,18 @@ export const MEMBER_ORGS: MemberOrg[] = [
  * index's people search sorts by name instead.
  */
 export const DIRECTORY_PEOPLE: DirectoryPerson[] = [
-  { id: 'p-rob-goobie', orgId: 'hoopp', name: 'Robert Goobie', role: 'Assistant VP, Treasury & Liquidity' },
-  { id: 'p-chris-benish', orgId: 'hoopp', name: 'Chris Benish', role: 'Managing Director, Liquidity' },
-  { id: 'p-amy-borgquist', orgId: 'hoopp', name: 'Amy Borgquist', role: 'Senior Analyst, Collateral' },
-  { id: 'p-jerry-may', orgId: 'hoopp', name: 'Jerry May', role: 'Head of Securities Lending' },
-  { id: 'p-dana-whitfield', orgId: 'hoopp', name: 'Dana Whitfield', role: 'Counsel, Trading Documentation' },
-  { id: 'p-amara-okafor', orgId: 'otpp', name: 'Amara Okafor', role: 'Senior Counsel, Securities Finance' },
-  { id: 'p-david-park', orgId: 'nps', name: 'David Park', role: 'Head of Collateral Management' },
-  { id: 'p-elena-rossi', orgId: 'apg', name: 'Elena Rossi', role: 'Portfolio Manager, Securities Lending' },
-  { id: 'p-jonas-weber', orgId: 'allianz', name: 'Jonas Weber', role: 'Director, Collateral Trading' },
-  { id: 'p-marcus-chen', orgId: 'cpp', name: 'Marcus Chen', role: 'Managing Director, Financing' },
-  { id: 'p-priya-nair', orgId: 'gic', name: 'Priya Nair', role: 'Head of Securities Finance' },
-  { id: 'p-sofia-lindqvist', orgId: 'ap4', name: 'Sofia Lindqvist', role: 'Head of Trading' },
+  { id: 'p-rob-goobie', orgId: 'hoopp', mentionHandle: 'robert-goobie', name: 'Robert Goobie', role: 'Assistant VP, Treasury & Liquidity' },
+  { id: 'p-chris-benish', orgId: 'hoopp', mentionHandle: 'chris-benish', name: 'Chris Benish', role: 'Managing Director, Liquidity' },
+  { id: 'p-amy-borgquist', orgId: 'hoopp', mentionHandle: 'amy-borgquist', name: 'Amy Borgquist', role: 'Senior Analyst, Collateral' },
+  { id: 'p-jerry-may', orgId: 'hoopp', mentionHandle: 'jerry-may', name: 'Jerry May', role: 'Head of Securities Lending' },
+  { id: 'p-dana-whitfield', orgId: 'hoopp', mentionHandle: 'dana-whitfield', name: 'Dana Whitfield', role: 'Counsel, Trading Documentation' },
+  { id: 'p-amara-okafor', orgId: 'otpp', mentionHandle: 'amara-okafor', name: 'Amara Okafor', role: 'Senior Counsel, Securities Finance' },
+  { id: 'p-david-park', orgId: 'nps', mentionHandle: 'david-park', name: 'David Park', role: 'Head of Collateral Management' },
+  { id: 'p-elena-rossi', orgId: 'apg', mentionHandle: 'elena-rossi', name: 'Elena Rossi', role: 'Portfolio Manager, Securities Lending' },
+  { id: 'p-jonas-weber', orgId: 'allianz', mentionHandle: 'jonas-weber', name: 'Jonas Weber', role: 'Director, Collateral Trading' },
+  { id: 'p-marcus-chen', orgId: 'cpp', mentionHandle: 'marcus-chen', name: 'Marcus Chen', role: 'Managing Director, Financing' },
+  { id: 'p-priya-nair', orgId: 'gic', mentionHandle: 'priya-nair', name: 'Priya Nair', role: 'Head of Securities Finance' },
+  { id: 'p-sofia-lindqvist', orgId: 'ap4', mentionHandle: 'sofia-lindqvist', name: 'Sofia Lindqvist', role: 'Head of Trading' },
 ];
 
 const ELENA_MESSAGES: MessageItem[] = [

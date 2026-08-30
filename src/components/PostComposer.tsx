@@ -13,8 +13,9 @@ import { CalendarDots, ChartBar, ChatCircle, Megaphone, X, type Icon } from '../
 import { Input } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
-import type { ForumUploadFile, Group, NewPostInput, PostType } from '../api/types';
+import type { ForumUploadFile, Group, GroupMember, NewPostInput, PostType } from '../api/types';
 import ForumFilePicker from './groups/ForumFilePicker';
+import { MentionInput } from './groups/MentionInput';
 
 const TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
@@ -39,12 +40,16 @@ export default function PostComposer({
   groups,
   initialGroupId,
   tagSuggestions = [],
+  mentionMembersByGroup,
+  onSelectGroup,
   onClose,
   onCreate,
 }: {
   groups: Group[];
   initialGroupId: string;
   tagSuggestions?: string[];
+  mentionMembersByGroup: Record<string, GroupMember[] | undefined>;
+  onSelectGroup?: (groupId: string) => void;
   onClose: () => void;
   onCreate: (draft: NewPostInput) => void;
 }) {
@@ -122,7 +127,10 @@ export default function PostComposer({
                 return (
                   <Pressable
                     key={g.id}
-                    onPress={() => setGroupId(g.id)}
+                    onPress={() => {
+                      setGroupId(g.id);
+                      onSelectGroup?.(g.id);
+                    }}
                     style={[
                       styles.chip,
                       {
@@ -200,13 +208,14 @@ export default function PostComposer({
             />
 
             <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Body</Text>
-            <Input
+            <MentionInput
               value={body}
               onChangeText={setBody}
+              members={mentionMembersByGroup[groupId] ?? []}
               placeholder="Share the question, constraint, or decision point."
               multiline
               textAlignVertical="top"
-              style={[styles.field, styles.textarea]}
+              inputStyle={[styles.field, styles.textarea]}
             />
 
             {type === 'poll' && (

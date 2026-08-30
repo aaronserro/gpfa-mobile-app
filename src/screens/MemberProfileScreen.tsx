@@ -56,7 +56,7 @@ export default function MemberProfileScreen({
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title={member.name} onBack={onBack} backLabel="Back">
         <View style={styles.identity}>
-          <Avatar initials={member.initials ?? initialsOf(member.name)} size={48} />
+          <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={48} />
           <View style={styles.flex}>
             {!!member.role && (
               <Text style={[styles.role, { color: t.inkBody }]}>{member.role}</Text>
