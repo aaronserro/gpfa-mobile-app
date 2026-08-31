@@ -251,7 +251,10 @@ export function createAskSseParser(onEvent: (event: AskStreamEvent) => void): As
     finish() {
       buffer += decoder.decode();
       drain();
-      if (buffer.trim()) dispatchFrame(buffer);
+      // A frame is only complete after its blank-line delimiter. Native
+      // transports can close between bytes, so parsing a trailing fragment
+      // would turn a recoverable dropped final event into a malformed-stream
+      // failure after the answer is already visible.
       buffer = '';
     },
   };

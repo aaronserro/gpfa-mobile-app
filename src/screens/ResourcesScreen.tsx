@@ -23,8 +23,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ArrowRight,
+  ArrowSquareOut,
   Article,
   DownloadSimple,
+  FileText,
   MagnifyingGlass,
   Pause,
   Play,
@@ -45,6 +47,15 @@ import {
 import JobBoard, { filterJobs, type JobFilterId } from '../components/jobs/JobBoard';
 import JobPosting from '../components/jobs/JobPosting';
 import { initials } from '../lib/format';
+import {
+  ALL_RESOURCE_TYPES,
+  filterLibraryResources,
+  formatBytes,
+  relatedResources,
+  resourceFileFacts,
+  resourceTypeCounts,
+  type ResourceTypeFilter,
+} from '../lib/library-resources';
 import type {
   JobListing,
   LibraryResource,
@@ -197,6 +208,10 @@ export interface ResourcesScreenProps {
   initialJobId?: string | null;
   /** Called when the member taps Open on a resource. */
   onOpenResource?: (resource: LibraryResource) => void;
+  /** Downloads a file resource and presents the native save/share sheet. */
+  onSaveResource?: (resource: LibraryResource) => Promise<void>;
+  /** Opens an external-link resource through the operating system. */
+  onOpenExternalResource?: (resource: LibraryResource) => Promise<void>;
   /** Called when the member asks for an episode transcript. */
   onOpenTranscript?: (episode: PodcastEpisode) => Promise<PodcastTranscriptSegment[]>;
   /** Opens a linked podcast guest in the native member directory. */
@@ -225,6 +240,8 @@ export default function ResourcesScreen({
   initialEpisodeSlug = null,
   initialJobId = null,
   onOpenResource,
+  onSaveResource,
+  onOpenExternalResource,
   onOpenTranscript,
   onOpenPodcastPerson,
   onOpenShowNotesLink,
@@ -239,6 +256,7 @@ export default function ResourcesScreen({
 
   const [view, setView] = useState<View_>(initialView);
   const [query, setQuery] = useState('');
+  const [resourceType, setResourceType] = useState<ResourceTypeFilter>(ALL_RESOURCE_TYPES);
   const [sortId, setSortId] = useState<SortId>('newest');
   const [sheet, setSheet] = useState<Sheet>(
     initialEpisodeSlug ? { kind: 'episode', slug: initialEpisodeSlug } : null
@@ -251,6 +269,8 @@ export default function ResourcesScreen({
   } | null>(null);
   const [downloadKind, setDownloadKind] = useState<'audio' | 'transcript' | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [resourceActionPending, setResourceActionPending] = useState(false);
+  const [resourceActionError, setResourceActionError] = useState<string | null>(null);
   const [sheetViewportHeight, setSheetViewportHeight] = useState(0);
   const [manualScrollVersion, setManualScrollVersion] = useState(0);
   const episodeSheetScrollRef = useRef<ScrollView>(null);
@@ -288,14 +308,13 @@ export default function ResourcesScreen({
   const dir = sortId === 'newest' ? 1 : -1;
 
   const q = query.trim().toLowerCase();
+  const typeCounts = useMemo(() => resourceTypeCounts(resources), [resources]);
+  const resourceTypes = useMemo(() => [...typeCounts.keys()], [typeCounts]);
   const filtered = useMemo(() => {
-    const rows = resources.filter((r) => {
-      if (!q) return true;
-      return [r.title, r.summary, r.type, r.authors, ...r.tags].join(' ').toLowerCase().includes(q);
-    });
+    const rows = filterLibraryResources(resources, query, resourceType);
     // `mins` is the publication age, so ascending is newest first.
     return [...rows].sort((a, b) => ((a.mins ?? 0) - (b.mins ?? 0)) * dir);
-  }, [dir, q, resources]);
+  }, [dir, query, resourceType, resources]);
 
   // Featured stays the newest episode whichever way the list is sorted, as on
   // the web portal, so "New" never moves.
@@ -383,8 +402,30 @@ export default function ResourcesScreen({
     sheet?.kind === 'resource' ? resources.find((r) => r.id === sheet.id) ?? null : null;
   const sheetEpisode =
     sheet?.kind === 'episode' ? episodes.find((e) => e.slug === sheet.slug) ?? null : null;
+  const sheetRelatedResources = useMemo(
+    () => (sheetResource ? relatedResources(resources, sheetResource) : []),
+    [resources, sheetResource]
+  );
+  const runResourceAction = async (
+    action: ((resource: LibraryResource) => Promise<void>) | undefined,
+    resource: LibraryResource
+  ) => {
+    if (!action) return;
+    setResourceActionPending(true);
+    setResourceActionError(null);
+    try {
+      await action(resource);
+    } catch (cause) {
+      setResourceActionError(
+        cause instanceof Error ? cause.message : 'The resource action could not be completed.'
+      );
+    } finally {
+      setResourceActionPending(false);
+    }
+  };
   const closeSheet = () => {
     setDownloadError(null);
+    setResourceActionError(null);
     if (
       sheet?.kind === 'episode' &&
       navigationRequest?.origin === 'return' &&
@@ -491,9 +532,45 @@ export default function ResourcesScreen({
             clearButtonMode="while-editing"
           />
         </View>
+        <ScrollView
+          horizontal
+          contentContainerStyle={styles.typeFilters}
+          showsHorizontalScrollIndicator={false}
+          accessibilityRole="radiogroup"
+        >
+          {[ALL_RESOURCE_TYPES, ...resourceTypes].map((type) => {
+            const selected = resourceType === type;
+            const label = type === ALL_RESOURCE_TYPES ? 'All types' : type;
+            const count = type === ALL_RESOURCE_TYPES ? resources.length : (typeCounts.get(type) ?? 0);
+            return (
+              <Pressable
+                key={type}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                onPress={() => setResourceType(type)}
+                style={[
+                  styles.typeFilter,
+                  {
+                    borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                    backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterText,
+                    { color: selected ? t.inkInverse : t.inkMuted },
+                  ]}
+                >
+                  {label} · {count}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
         <View style={styles.controlRow}>
           <MastheadMeta size={10.5}>
-            {q
+            {q || resourceType !== ALL_RESOURCE_TYPES
               ? `${filtered.length} OF ${resources.length} RESOURCES`
               : `${resources.length} RESOURCES`}
           </MastheadMeta>
@@ -539,11 +616,20 @@ export default function ResourcesScreen({
         {filtered.length === 0 && (
           <View style={styles.empty}>
             <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>
-              No resources match this search
+              No resources match these filters
             </Text>
             <Text style={[styles.emptyBody, { color: t.inkMuted }]}>
-              Clear the search to show all {resources.length} resources.
+              Clear the search and type filter to show all {resources.length} resources.
             </Text>
+            <Pressable
+              onPress={() => {
+                setQuery('');
+                setResourceType(ALL_RESOURCE_TYPES);
+              }}
+              style={[styles.clearFilters, { borderColor: t.ruleHairline }]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Clear filters</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -623,7 +709,7 @@ export default function ResourcesScreen({
 
   /* ── sheets ───────────────────────────────────────────────────────────── */
   const resourceSheet = !!sheetResource && (
-    <Sheet_ onClose={() => setSheet(null)}>
+    <Sheet_ onClose={closeSheet}>
       {(() => {
         const skin = resourceTypeStyle(t, sheetResource.type);
         return (
@@ -645,6 +731,71 @@ export default function ResourcesScreen({
             </MastheadMeta>
             <Text style={[styles.sheetBody, { color: t.inkBody }]}>{sheetResource.summary}</Text>
 
+            {sheetResource.artifact.kind === 'file' ? (
+              <View
+                style={[
+                  styles.artifactCard,
+                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                ]}
+              >
+                <FileText size={24} color={t.brandGreen} />
+                <View style={styles.artifactBody}>
+                  <Text style={[styles.artifactTitle, { color: t.inkStrong }]}>
+                    {resourceFileFacts(sheetResource) ?? 'File'}
+                  </Text>
+                  <Text style={[styles.artifactDescription, { color: t.inkMuted }]}>
+                    {sheetResource.artifact.previewable
+                      ? 'Preview this file in the app or save a copy to your device.'
+                      : 'This file type cannot be previewed in the app. Save it to open it with another app.'}
+                  </Text>
+                </View>
+              </View>
+            ) : sheetResource.artifact.kind === 'external' ? (
+              <View
+                style={[
+                  styles.artifactCard,
+                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                ]}
+              >
+                <ArrowSquareOut size={24} color={t.brandGreen} />
+                <View style={styles.artifactBody}>
+                  <Text style={[styles.artifactTitle, { color: t.inkStrong }]}>External resource</Text>
+                  <Text style={[styles.artifactDescription, { color: t.inkMuted }]} numberOfLines={2}>
+                    {resourceExternalHost(sheetResource.artifact.href)}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.artifactCard,
+                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                ]}
+              >
+                <FileText size={24} color={t.inkFaint} />
+                <View style={styles.artifactBody}>
+                  <Text style={[styles.artifactTitle, { color: t.inkStrong }]}>File unavailable</Text>
+                  <Text style={[styles.artifactDescription, { color: t.inkMuted }]}>
+                    This library entry does not currently include a file or external link.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {sheetResource.artifact.kind === 'file' ? (
+              <View style={[styles.factList, { borderColor: t.ruleHairline }]}>
+                {sheetResource.artifact.contentType ? (
+                  <ResourceFact label="Content type" value={sheetResource.artifact.contentType} />
+                ) : null}
+                {formatBytes(sheetResource.artifact.byteSize) ? (
+                  <ResourceFact label="Size" value={formatBytes(sheetResource.artifact.byteSize) ?? ''} />
+                ) : null}
+                {sheetResource.artifact.fileName ? (
+                  <ResourceFact label="File name" value={sheetResource.artifact.fileName} />
+                ) : null}
+              </View>
+            ) : null}
+
             {!!sheetResource.tags.length && (
               <View style={styles.tags}>
                 {sheetResource.tags.map((tag) => (
@@ -656,17 +807,104 @@ export default function ResourcesScreen({
             )}
 
             <View style={styles.sheetActions}>
-              <Pressable
-                onPress={() => onOpenResource?.(sheetResource)}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
-                ]}
-              >
-                <Text style={styles.primaryBtnText}>Open</Text>
-                <ArrowRight size={15} color="#fff" />
-              </Pressable>
+              {sheetResource.artifact.kind === 'file' && sheetResource.artifact.previewable ? (
+                <Pressable
+                  onPress={() => onOpenResource?.(sheetResource)}
+                  disabled={resourceActionPending}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+                    resourceActionPending && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>Preview</Text>
+                  <ArrowRight size={15} color="#fff" />
+                </Pressable>
+              ) : null}
+              {sheetResource.artifact.kind === 'file' ? (
+                <Pressable
+                  onPress={() => void runResourceAction(onSaveResource, sheetResource)}
+                  disabled={resourceActionPending || !onSaveResource}
+                  style={[
+                    sheetResource.artifact.previewable ? styles.secondaryBtn : styles.primaryBtn,
+                    sheetResource.artifact.previewable
+                      ? { borderColor: t.ruleHairline }
+                      : { backgroundColor: t.surfaceAnchor },
+                    (resourceActionPending || !onSaveResource) && styles.disabled,
+                  ]}
+                >
+                  {resourceActionPending ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={sheetResource.artifact.previewable ? t.brandGreen : '#fff'}
+                    />
+                  ) : (
+                    <DownloadSimple
+                      size={15}
+                      color={sheetResource.artifact.previewable ? t.brandGreen : '#fff'}
+                    />
+                  )}
+                  <Text
+                    style={
+                      sheetResource.artifact.previewable
+                        ? [styles.secondaryBtnText, { color: t.brandGreen }]
+                        : styles.primaryBtnText
+                    }
+                  >
+                    {resourceActionPending ? 'Preparing…' : 'Save to device'}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {sheetResource.artifact.kind === 'external' ? (
+                <Pressable
+                  onPress={() => void runResourceAction(onOpenExternalResource, sheetResource)}
+                  disabled={resourceActionPending || !onOpenExternalResource}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
+                    (resourceActionPending || !onOpenExternalResource) && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>Open externally</Text>
+                  <ArrowSquareOut size={15} color="#fff" />
+                </Pressable>
+              ) : null}
             </View>
+            {resourceActionError ? (
+              <Text style={[styles.playbackError, { color: t.brandRed }]}>{resourceActionError}</Text>
+            ) : null}
+
+            {sheetRelatedResources.length ? (
+              <View style={[styles.relatedBlock, { borderTopColor: t.ruleHairline }]}>
+                <Text style={[styles.relatedHeading, { color: t.inkStrong }]}>More in the library</Text>
+                <View style={[styles.relatedList, { borderColor: t.ruleHairline }]}>
+                  {sheetRelatedResources.map((resource, index) => (
+                    <Pressable
+                      key={resource.id}
+                      onPress={() => {
+                        setResourceActionError(null);
+                        setSheet({ kind: 'resource', id: resource.id });
+                      }}
+                      style={({ pressed }) => [
+                        styles.relatedRow,
+                        index > 0 && { borderTopColor: t.ruleHairline, borderTopWidth: 1 },
+                        pressed && { backgroundColor: t.surfaceSoft },
+                      ]}
+                    >
+                      <View style={styles.relatedBody}>
+                        <Text style={[styles.relatedTitle, { color: t.inkStrong }]} numberOfLines={2}>
+                          {resource.title}
+                        </Text>
+                        <MastheadMeta size={10}>
+                          {[resource.type, resourceFileFacts(resource)].filter(Boolean).join(' · ')}
+                        </MastheadMeta>
+                      </View>
+                      <ArrowRight size={15} color={t.ruleStrong} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </>
         );
       })()}
@@ -936,6 +1174,26 @@ function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
   return <ScreenHeader title={title} onBack={onBack} backLabel="Back to resources" />;
 }
 
+function ResourceFact({ label, value }: { label: string; value: string }) {
+  const { t } = useTheme();
+  return (
+    <View style={styles.factRow}>
+      <Text style={[styles.factLabel, { color: t.inkMuted }]}>{label}</Text>
+      <Text style={[styles.factValue, { color: t.inkStrong }]} selectable>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function resourceExternalHost(href: string): string {
+  try {
+    return new URL(href).hostname.replace(/^www\./i, '');
+  } catch {
+    return href;
+  }
+}
+
 function Sheet_({
   onClose,
   children,
@@ -1063,6 +1321,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   controls: { paddingHorizontal: 20, paddingTop: 12, gap: 10 },
+  typeFilters: { gap: 7, paddingRight: 4 },
+  typeFilter: {
+    minHeight: 34,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+  },
+  typeFilterText: { fontFamily: sans(500), fontSize: 11.5 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1153,6 +1420,14 @@ const styles = StyleSheet.create({
     fontFamily: sans(400),
     fontSize: 12.5,
     textAlign: 'center',
+  },
+  clearFilters: {
+    minHeight: 44,
+    marginTop: 14,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 16,
   },
 
   featuredWrap: { paddingHorizontal: 20, paddingTop: 14 },
@@ -1276,6 +1551,22 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     lineHeight: 22,
   },
+  artifactCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+  },
+  artifactBody: { flex: 1, minWidth: 0 },
+  artifactTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
+  artifactDescription: { marginTop: 4, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  factList: { marginTop: 12, borderTopWidth: 1 },
+  factRow: { flexDirection: 'row', gap: 16, paddingTop: 10 },
+  factLabel: { width: 86, fontFamily: sans(500), fontSize: 11.5 },
+  factValue: { flex: 1, fontFamily: mono(400), fontSize: 11, lineHeight: 16, textAlign: 'right' },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1330,4 +1621,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   secondaryBtnText: { fontFamily: sans(400), fontSize: 13 },
+  relatedBlock: { marginTop: 22, paddingTop: 18, borderTopWidth: 1 },
+  relatedHeading: { fontFamily: sans(600), fontSize: 15, lineHeight: 20 },
+  relatedList: { marginTop: 10, borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  relatedRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  relatedBody: { flex: 1, minWidth: 0 },
+  relatedTitle: { fontFamily: sans(500), fontSize: 12.5, lineHeight: 17, marginBottom: 4 },
 });

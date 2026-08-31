@@ -22,9 +22,11 @@ function initialsOf(name: string): string {
 export function EventAttendees({
   count,
   attendees,
+  onOpenMemberProfile,
 }: {
   count: number;
   attendees: MobileEventAttendee[];
+  onOpenMemberProfile: (memberId: string) => void;
 }) {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
@@ -61,15 +63,22 @@ export function EventAttendees({
       >
         <View style={styles.stack}>
           {attendees.slice(0, STACK_LIMIT).map((attendee, index) => (
-            <Avatar
+            <Pressable
               key={`${attendee.name}-${index}`}
-              initials={initialsOf(attendee.name)}
-              size={30}
+              onPress={attendee.id ? () => onOpenMemberProfile(attendee.id!) : undefined}
+              disabled={!attendee.id}
+              accessibilityRole={attendee.id ? 'button' : undefined}
+              accessibilityLabel={attendee.id ? `Open ${attendee.name}'s profile` : undefined}
               style={[
                 index > 0 && styles.overlap,
-                { borderColor: t.surfacePaper },
               ]}
-            />
+            >
+              <Avatar
+                initials={initialsOf(attendee.name)}
+                size={30}
+                style={{ borderColor: t.surfacePaper }}
+              />
+            </Pressable>
           ))}
         </View>
         <Text style={[styles.count, { color: t.inkStrong }]} numberOfLines={1}>
@@ -86,8 +95,12 @@ export function EventAttendees({
       {open && (
         <View style={[styles.roster, { borderTopColor: t.ruleHairline }]}>
           {attendees.map((attendee, index) => (
-            <View
+            <Pressable
               key={`${attendee.name}-${index}`}
+              onPress={attendee.id ? () => onOpenMemberProfile(attendee.id!) : undefined}
+              disabled={!attendee.id}
+              accessibilityRole={attendee.id ? 'button' : undefined}
+              accessibilityLabel={attendee.id ? `Open ${attendee.name}'s profile` : undefined}
               style={[
                 styles.rosterRow,
                 index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
@@ -101,7 +114,7 @@ export function EventAttendees({
                   {attendee.org}
                 </Text>
               )}
-            </View>
+            </Pressable>
           ))}
           {unnamed > 0 && (
             <Text style={[styles.more, { color: t.inkMuted }]}>+{unnamed} more</Text>

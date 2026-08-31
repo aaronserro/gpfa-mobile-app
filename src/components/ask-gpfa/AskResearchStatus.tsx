@@ -39,16 +39,18 @@ export default function AskResearchStatus({
     if (stream.status === 'complete') setOpen(false);
   }, [stream.status]);
 
+  const activeTrace = [...stream.trace].reverse().find((row) => row.status === 'pending');
+
   const statusLabel =
     stream.status === 'complete'
       ? 'Research completed'
       : stream.status === 'stopped'
         ? 'Research stopped'
         : stream.status === 'failed'
-          ? 'Research interrupted'
+          ? 'Research could not finish'
           : stream.status === 'saving'
-            ? 'Saving answer…'
-            : PHASE_LABELS[stream.phase];
+            ? 'Finalizing answer…'
+            : activeTrace?.summary ?? PHASE_LABELS[stream.phase];
 
   return (
     <View style={styles.root}>
@@ -62,8 +64,10 @@ export default function AskResearchStatus({
       >
         {live ? (
           <ActivityIndicator size="small" color={t.brandGreen} />
+        ) : stream.status === 'complete' ? (
+          <CheckCircle size={16} color={t.brandGreen} />
         ) : (
-          <CheckCircle size={16} color={stream.status === 'complete' ? t.brandGreen : t.inkMuted} />
+          <View style={[styles.statusDot, { backgroundColor: t.inkFaint }]} />
         )}
         <Text style={[styles.statusText, { color: t.inkMuted }]}>{statusLabel}</Text>
         {elapsed > 0 && <Text style={[styles.elapsed, { color: t.inkFaint }]}>{elapsed}s</Text>}
@@ -84,6 +88,9 @@ export default function AskResearchStatus({
           ))}
         </View>
       )}
+      {stream.saveWarning && (
+        <Text style={[styles.warning, { color: t.inkMuted }]}>{stream.saveWarning}</Text>
+      )}
     </View>
   );
 }
@@ -96,4 +103,6 @@ const styles = StyleSheet.create({
   trace: { marginLeft: 7, paddingLeft: 13, borderLeftWidth: 1, gap: 6 },
   traceRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 },
   traceText: { flex: 1, fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
+  statusDot: { width: 8, height: 8, marginHorizontal: 4, borderRadius: 4 },
+  warning: { marginTop: 6, fontFamily: sans(400), fontSize: 11, lineHeight: 16 },
 });

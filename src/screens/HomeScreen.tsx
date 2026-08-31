@@ -53,6 +53,7 @@ export default function HomeScreen({
   refreshing,
   onRefresh,
   onOpenAction,
+  onOpenMemberProfile,
   onOpenEvent,
   onGoEvents,
   onGoGroups,
@@ -74,6 +75,7 @@ export default function HomeScreen({
   refreshing: boolean;
   onRefresh: () => void;
   onOpenAction: (action: HomeImmediateAction) => void;
+  onOpenMemberProfile: (memberId: string) => void;
   onOpenEvent: (eventId: string) => void;
   onGoEvents: () => void;
   onGoGroups: () => void;
@@ -83,6 +85,8 @@ export default function HomeScreen({
   onOpenNewsStory: (story: NewsStory) => void;
   onGoLibrary: () => void;
   onOpenResource: (resource: LibraryResource) => void;
+  onSaveResource?: (resource: LibraryResource) => Promise<void>;
+  onOpenExternalResource?: (resource: LibraryResource) => void;
   onGoPodcasts: () => void;
   onOpenPodcast: (episode: PodcastEpisode) => void;
 }) {
@@ -195,9 +199,23 @@ export default function HomeScreen({
                       {thread.unread ? <ChatCircleDots size={18} color={t.brandRed} /> : <ChatCircle size={18} color={t.inkMuted} />}
                       <View style={styles.flex}>
                         <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{thread.title}</Text>
-                        <Text style={[styles.rowMeta, { color: t.inkMuted }]}>
-                          {thread.groupName} · {thread.authorName} · {thread.replies} replies · {thread.age}
-                        </Text>
+                        <View style={styles.threadMetaRow}>
+                          <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{thread.groupName} · </Text>
+                          {thread.authorId ? (
+                            <Pressable
+                              onPress={() => onOpenMemberProfile(thread.authorId!)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${thread.authorName}'s profile`}
+                            >
+                              <Text style={[styles.rowMeta, styles.authorLink, { color: t.brandGreen }]}>
+                                {thread.authorName}
+                              </Text>
+                            </Pressable>
+                          ) : (
+                            <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{thread.authorName}</Text>
+                          )}
+                          <Text style={[styles.rowMeta, { color: t.inkMuted }]}> · {thread.replies} replies · {thread.age}</Text>
+                        </View>
                       </View>
                       <ArrowRight size={15} color={t.brandGreen} />
                     </Pressable>
@@ -430,6 +448,8 @@ const styles = StyleSheet.create({
   digestRow: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
   rowTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
   rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5, lineHeight: 16 },
+  threadMetaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline' },
+  authorLink: { fontFamily: sans(600) },
   loadingBand: { marginTop: 24, marginHorizontal: 20, padding: 16, borderWidth: 1, borderRadius: 9, gap: 10 },
   loadingRows: { gap: 7 },
   loadingRow: { height: 10, borderRadius: 4 },

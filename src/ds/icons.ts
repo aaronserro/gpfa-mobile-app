@@ -15,6 +15,7 @@ export { ArrowBendUpLeftIcon as ArrowBendUpLeft } from 'phosphor-react-native/li
 export { ArrowClockwiseIcon as ArrowClockwise } from 'phosphor-react-native/lib/commonjs/icons/ArrowClockwise';
 export { ArrowCounterClockwiseIcon as ArrowCounterClockwise } from 'phosphor-react-native/lib/commonjs/icons/ArrowCounterClockwise';
 export { ArrowFatUpIcon as ArrowFatUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowFatUp';
+export { ArrowLeftIcon as ArrowLeft } from 'phosphor-react-native/lib/commonjs/icons/ArrowLeft';
 export { ArrowRightIcon as ArrowRight } from 'phosphor-react-native/lib/commonjs/icons/ArrowRight';
 export { ArrowSquareOutIcon as ArrowSquareOut } from 'phosphor-react-native/lib/commonjs/icons/ArrowSquareOut';
 export { ArrowUpIcon as ArrowUp } from 'phosphor-react-native/lib/commonjs/icons/ArrowUp';
@@ -57,6 +58,7 @@ export { PencilSimpleIcon as PencilSimple } from 'phosphor-react-native/lib/comm
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
 export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/Repeat';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
+export { SparkleIcon as Sparkle } from 'phosphor-react-native/lib/commonjs/icons/Sparkle';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';
 export { TrashIcon as Trash } from 'phosphor-react-native/lib/commonjs/icons/Trash';

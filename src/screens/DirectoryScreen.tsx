@@ -240,6 +240,7 @@ export default function DirectoryScreen({
       {section === 'messages' ? (
         <MessagesInbox
           member={member}
+          onOpenMemberProfile={onOpenMemberProfile}
           people={people}
           orgs={orgs}
           conversations={conversations}

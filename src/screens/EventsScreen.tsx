@@ -15,6 +15,7 @@ type EventViewMode = 'list' | 'calendar';
 export default function EventsScreen({
   events,
   initialEventId = null,
+  onOpenMemberProfile,
   onBack,
   onRsvp,
   onAddToCalendar,
@@ -22,6 +23,7 @@ export default function EventsScreen({
 }: {
   events: MobileEventPreview[];
   initialEventId?: string | null;
+  onOpenMemberProfile: (memberId: string) => void;
   onBack?: () => void;
   onRsvp: (eventId: string, state: EventRsvpState) => void | Promise<void>;
   onAddToCalendar: (event: MobileEventPreview) => void | Promise<void>;
@@ -45,6 +47,7 @@ export default function EventsScreen({
     return (
       <EventDetail
         event={selected}
+        onOpenMemberProfile={onOpenMemberProfile}
         onBack={() => setSelectedId(null)}
         onRsvp={(state) => onRsvp(selected.id, state)}
         onAddToCalendar={() => onAddToCalendar(selected)}
@@ -164,12 +167,14 @@ export default function EventsScreen({
 
 function EventDetail({
   event,
+  onOpenMemberProfile,
   onBack,
   onRsvp,
   onAddToCalendar,
   onDownloadIcs,
 }: {
   event: MobileEventPreview;
+  onOpenMemberProfile: (memberId: string) => void;
   onBack: () => void;
   onRsvp: (state: EventRsvpState) => void;
   onAddToCalendar: () => void | Promise<void>;
@@ -197,7 +202,11 @@ function EventDetail({
 
         <SectionHeading label="Attendance" />
         <View style={[styles.attendeeCard, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-          <EventAttendees count={event.attendeeCount} attendees={event.attendees} />
+          <EventAttendees
+            count={event.attendeeCount}
+            attendees={event.attendees}
+            onOpenMemberProfile={onOpenMemberProfile}
+          />
         </View>
 
         <SectionHeading label="Agenda" />

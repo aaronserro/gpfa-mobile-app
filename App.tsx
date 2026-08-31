@@ -37,7 +37,8 @@ import HomeScreen from './src/screens/HomeScreen';
 import DirectoryMemberProfileScreen from './src/screens/DirectoryMemberProfileScreen';
 import MentionHistoryScreen from './src/screens/MentionHistoryScreen';
 import MoreScreen from './src/screens/MoreScreen';
-import NewsScreen from './src/screens/NewsScreen';
+import NewsFeedScreen from './src/screens/NewsFeedScreen';
+import NewsStoryScreen from './src/screens/NewsStoryScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
 import SecuritySettingsScreen from './src/screens/SecuritySettingsScreen';
 import UpvoteHistoryScreen from './src/screens/UpvoteHistoryScreen';
@@ -128,6 +129,7 @@ import { ApiError, RequestCancelledError } from './src/api/client';
 import { GPFA_WEB_ORIGIN } from './src/api/config';
 import { getAccessToken } from './src/api/tokens';
 import { sharePodcastDownload } from './src/api/podcast-download';
+import { shareResourceDownload } from './src/api/resource-download';
 import { addEventToDeviceCalendar, shareEventIcs } from './src/lib/event-device-actions';
 import { memberDirectoryDestination } from './src/lib/member-directory-route';
 import { notificationDestination } from './src/lib/notification-navigation';
@@ -140,6 +142,7 @@ import {
 import { subscribeToNotificationInserts } from './src/api/notifications-realtime';
 import { normalizeNotification } from './src/api/notification-normalization';
 import { DEFAULT_WORKING_GROUP_FEED_CONTROLS } from './src/lib/workingGroupFeedControls';
+import { useNewsFeed } from './src/hooks/useNewsFeed';
 import type {
   AskConversationSummary,
   AskDisplayMessage,
@@ -171,9 +174,12 @@ import type {
   MessageReaction,
   MessagingParticipant,
   NewPostInput,
+  NewsFeedItem,
   NewsStory,
+  RelatedNewsThread,
   PodcastEpisode,
   PodcastPerson,
+  PollAnswer,
   Reply,
   RsvpChoice,
   Thread,
@@ -190,6 +196,8 @@ import { openForumAttachment as openForumAttachmentFile } from './src/lib/forumA
 import { mergeAskMessages } from './src/lib/ask-gpfa-core';
 import { loadActiveAskConversation, saveActiveAskConversation } from './src/lib/ask-gpfa-session';
 import { askSourceDestination, trustedAskSourceUrl } from './src/lib/ask-source-navigation';
+import { externalResourceUrl } from './src/lib/library-resources';
+import type { TagSuggestion } from './src/lib/tags';
 import {
   advanceAskResearchPhase,
   askDurationSeconds,
@@ -213,7 +221,7 @@ interface GroupDetailState {
   members: GroupMember[];
   resources: LibraryResource[];
   membershipRole: 'member' | 'co_lead' | null;
-  tagSuggestions: string[];
+  tagSuggestions: TagSuggestion[];
   loading: boolean;
   loadingMore: boolean;
   error: Error | null;
@@ -282,6 +290,7 @@ function Portal() {
   // The Resources hub links to it too. Tracked separately so the caret goes
   // back to whichever hub opened it.
   const [resourcesNewsOpen, setResourcesNewsOpen] = useState(false);
+  const [newsReaderOrigin, setNewsReaderOrigin] = useState<'home' | 'resources' | 'list'>('list');
   // The Groups tab is a directory; this is the group whose page is open.
   const [groupId, setGroupId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -297,7 +306,7 @@ function Portal() {
   const [summarizing, setSummarizing] = useState<Record<string, boolean | undefined>>({});
   // Replies the member posts are kept outside the static data, keyed by thread.
   const [extraReplies, setExtraReplies] = useState<Record<string, Reply[] | undefined>>({});
-  const [votes, setVotes] = useState<Record<string, number | undefined>>({});
+  const [pollAnswerDrafts, setPollAnswerDrafts] = useState<Record<string, PollAnswer[] | undefined>>({});
   const [upvoted, setUpvoted] = useState<Record<string, boolean | undefined>>({});
   const [reposted, setReposted] = useState<Record<string, boolean | undefined>>({});
   // Overrides on each group's own `joined`; absent means unchanged this session.
@@ -404,6 +413,7 @@ function Portal() {
     () => (isSignedIn ? getNews() : Promise.resolve([])),
     [isSignedIn]
   );
+  const newsFeed = useNewsFeed(isSignedIn);
   const podcastQuery = useQuery(
     () => (isSignedIn ? getPodcasts() : Promise.resolve([])),
     [isSignedIn]
@@ -590,11 +600,45 @@ function Portal() {
   }, [moreView, tab]);
 
   const openResource = useCallback((resource: LibraryResource) => {
-    if (!resource.href) return;
+    if (resource.artifact.kind === 'external') {
+      const href = externalResourceUrl(resource);
+      if (href) {
+        void Linking.openURL(href).catch((cause) => {
+          Alert.alert(
+            'Could not open resource',
+            cause instanceof Error ? cause.message : 'The external link could not be opened.'
+          );
+        });
+      }
+      return;
+    }
+    if (resource.artifact.kind !== 'file') return;
+
+    if (!resource.artifact.previewable) {
+      void getAccessToken()
+        .then((accessToken) => shareResourceDownload(resource, accessToken))
+        .catch((cause) => {
+          Alert.alert(
+            'Could not save resource',
+            cause instanceof Error ? cause.message : 'The file could not be saved.'
+          );
+        });
+      return;
+    }
 
     void getAccessToken().then((accessToken) => {
       setResourceViewer({ resource, accessToken });
     });
+  }, []);
+
+  const saveResource = useCallback(async (resource: LibraryResource) => {
+    await shareResourceDownload(resource, await getAccessToken());
+  }, []);
+
+  const openExternalResource = useCallback(async (resource: LibraryResource) => {
+    const href = externalResourceUrl(resource);
+    if (!href) throw new Error('This resource does not include a safe external link.');
+    await Linking.openURL(href);
   }, []);
 
   const openForumAttachment = useCallback((attachment: ForumAttachment) => {
@@ -773,6 +817,7 @@ function Portal() {
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
     let readyConversationId: string | null = null;
     let answerDone = false;
+    let completedAnswerText = '';
     let persisted = false;
 
     const updateTransient = (update: (message: AskDisplayMessage) => AskDisplayMessage) => {
@@ -789,9 +834,45 @@ function Portal() {
     };
     const queueText = (text: string) => {
       pendingText += text;
-      if (!flushTimer) flushTimer = setTimeout(flushText, 32);
+      // Match the calmer cadence used by the web client and avoid re-rendering
+      // Markdown for every network-sized token fragment.
+      if (!flushTimer) flushTimer = setTimeout(flushText, 75);
     };
     askFlushText.current = flushText;
+
+    const keepCompletedAnswer = (saveWarning?: string) => {
+      updateTransient((message) => message.stream ? {
+        ...message,
+        stream: {
+          ...message.stream,
+          status: 'complete',
+          trace: finalizeAskTrace(message.stream.trace),
+          durationSeconds: message.stream.durationSeconds ?? askDurationSeconds(startedAt),
+          ...(saveWarning ? { saveWarning } : {}),
+        },
+      } : message);
+    };
+
+    const reconcileCompletedAnswer = async () => {
+      if (!readyConversationId) return false;
+      try {
+        const page = await getAskConversation(readyConversationId);
+        if (askRequestGeneration.current !== generation) return true;
+        const savedAnswer = page.messages.some((message) =>
+          message.role === 'ai'
+          && message.text === completedAnswerText
+          && Date.parse(message.createdAt) >= startedAt - 1000
+        );
+        if (!savedAnswer) return false;
+        setAskMessages(page.messages);
+        setAskHasEarlier(page.hasEarlier);
+        setAskEarlierCursor(page.earlierCursor);
+        setAskConversations((current) => [page.conversation, ...current.filter((item) => item.id !== page.conversation.id)]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     const handleEvent = (event: AskStreamEvent) => {
       if (askRequestGeneration.current !== generation) return;
@@ -838,6 +919,7 @@ function Portal() {
       }
       if (event.type === 'done') {
         answerDone = true;
+        completedAnswerText = event.answer.content;
         flushText();
         updateTransient((message) => message.stream ? {
           ...message,
@@ -882,24 +964,33 @@ function Portal() {
         signal: controller.signal,
         onEvent: handleEvent,
       });
-      if (!persisted) throw new Error('Ask GPFA did not confirm that the answer was saved.');
+      if (!persisted) {
+        if (!answerDone) throw new Error('Ask GPFA did not return a completed answer.');
+        const reconciled = await reconcileCompletedAnswer();
+        if (!reconciled) {
+          keepCompletedAnswer('This answer is available here, but it may not appear in conversation history.');
+        }
+      }
     } catch (cause) {
       if (askRequestGeneration.current !== generation) return;
       flushText();
       if (cause instanceof RequestCancelledError) return;
-      if (__DEV__) console.warn('[ask] Ask GPFA request failed', cause);
-      if (answerDone && readyConversationId) {
-        try {
-          const page = await getAskConversation(readyConversationId);
-          if (askRequestGeneration.current !== generation) return;
-          setAskMessages(page.messages);
-          setAskHasEarlier(page.hasEarlier);
-          setAskEarlierCursor(page.earlierCursor);
-          setAskConversations((current) => [page.conversation, ...current.filter((item) => item.id !== page.conversation.id)]);
-          return;
-        } catch {
-          // Keep the completed text visible if reconciliation also fails.
+      if (__DEV__) {
+        console.warn('[ask] Ask GPFA request failed', {
+          cause,
+          answerDone,
+          persisted,
+          durationMs: Date.now() - startedAt,
+        });
+      }
+      if (answerDone) {
+        const reconciled = await reconcileCompletedAnswer();
+        if (!reconciled) {
+          // Generation succeeded. A timeout, disconnect, or persistence error
+          // after `done` must not relabel the finished research as interrupted.
+          keepCompletedAnswer('This answer is available here, but it may not appear in conversation history.');
         }
+        return;
       }
       updateTransient((message) => message.stream ? {
         ...message,
@@ -1301,8 +1392,9 @@ function Portal() {
   }, [performSignOut, signingOut]);
 
   const openStory = useCallback((story: NewsStory) => {
-    if (story.url) void Linking.openURL(story.url);
-  }, []);
+    setNewsReaderOrigin('home');
+    void newsFeed.openById(story.id);
+  }, [newsFeed]);
 
   const groups = useMemo(() => groupsQuery.data?.groups ?? [], [groupsQuery.data]);
   const myGroups = useMemo(
@@ -1310,7 +1402,6 @@ function Portal() {
     [groups, subscribed]
   );
   const posts = useMemo(() => feedQuery.data ?? [], [feedQuery.data]);
-  const dashboardNews = newsQuery.data ?? [];
   const previewEvents = useMemo(
     () => (eventsQuery.data ?? []).map((event) => ({ ...event, rsvp: previewRsvps[event.id] ?? event.rsvp })),
     [eventsQuery.data, previewRsvps]
@@ -1488,7 +1579,7 @@ function Portal() {
         getWorkingGroupCoLeadMembers(slug),
         getWorkingGroupDirectoryMembers(slug),
         getWorkingGroupResources(slug, id),
-        getWorkingGroupTagUsage(slug, { limit: 24 }).then((res) => res.tags.map((tag) => tag.label)),
+        getWorkingGroupTagUsage(slug, { limit: 24 }).then((res) => res.tags),
       ])
         .then(([coLeads, members, resources, tagSuggestions]) => {
           setGroupDetails((prev) => {
@@ -1513,6 +1604,20 @@ function Portal() {
             console.warn(`[working-groups] ${failed.length} metadata request(s) failed for ${slug}.`);
           }
         });
+    },
+    [groups]
+  );
+
+  const searchWorkingGroupTags = useCallback(
+    async (id: string, query: string): Promise<TagSuggestion[]> => {
+      const group = groups.find((candidate) => candidate.id === id);
+      if (!group) return [];
+
+      const response = await getWorkingGroupTagUsage(group.slug ?? group.id, {
+        query,
+        limit: 6,
+      });
+      return response.tags;
     },
     [groups]
   );
@@ -1653,7 +1758,7 @@ function Portal() {
     setNewPosts((prev) =>
       prev.map((candidate) => (candidate.post.id === id ? { ...candidate, post: hydrated.post } : candidate))
     );
-    reconcileThreadDetailState(id, response, hydrated.post, setUpvoted, setReposted, setVotes);
+    reconcileThreadDetailState(id, response, hydrated.post, setUpvoted, setReposted, setPollAnswerDrafts);
   }, [entryForThread, groups]);
 
   const refreshGroupMembership = useCallback(
@@ -1771,6 +1876,34 @@ function Portal() {
         showMutationError(cause, 'The post details could not be loaded.');
       });
   }, [groups, loadGroupDetail, refreshGroupMembership, showMutationError]);
+
+  const openNewsThread = useCallback((thread: RelatedNewsThread) => {
+    const group = groups.find((candidate) => (candidate.slug ?? candidate.id) === thread.groupSlug);
+    if (!group) {
+      Alert.alert('Discussion unavailable', 'This working group is no longer available.');
+      return;
+    }
+
+    newsFeed.close();
+    setTab('groups');
+    setGroupId(group.id);
+    setThreadId(thread.id);
+    refreshGroupMembership(group.id);
+    loadGroupDetail(group.id);
+    void getWorkingGroupFeedItemDetail(thread.groupSlug, 'discussion', thread.id)
+      .then((response) => {
+        const hydrated = workingGroupFeedItemResponseToEntry(response, group.id);
+        setGroupDetails((prev) => appendThreadToGroupDetails(prev, hydrated));
+      })
+      .catch((cause) => {
+        if (cause instanceof ApiError && cause.status === 404) {
+          Alert.alert('Discussion unavailable', 'This discussion is no longer available.');
+          setThreadId(null);
+          return;
+        }
+        showMutationError(cause, 'The discussion could not be loaded.');
+      });
+  }, [groups, loadGroupDetail, newsFeed, refreshGroupMembership, showMutationError]);
 
   const openHomeAction = useCallback((action: HomeImmediateAction) => {
     if (action.kind === 'annual-meeting') {
@@ -1999,7 +2132,7 @@ function Portal() {
           hydrated.post,
           setUpvoted,
           setReposted,
-          setVotes
+          setPollAnswerDrafts
         );
       })
       .catch(() => {});
@@ -2047,33 +2180,31 @@ function Portal() {
     }
   }, [pendingMutations, refreshThreadDetail, setMutationPending, showMutationError]);
 
-  // One vote per organization — the first choice sticks.
-  const vote = useCallback((id: string, option: number) => {
+  const updatePollDraft = useCallback((id: string, answers: PollAnswer[]) => {
+    setPollAnswerDrafts((current) => ({ ...current, [id]: answers }));
+  }, []);
+
+  const submitPollAnswers = useCallback(async (id: string, answers: PollAnswer[]): Promise<boolean> => {
     const pendingKey = `poll:vote:${id}`;
-    if (pendingMutations[pendingKey]) return;
+    if (pendingMutations[pendingKey]) return false;
     const entry = entryForThread(id);
     const poll = entry?.post.poll;
-    const chosen = poll?.options[option];
-    let cast = false;
-    setVotes((prev) => {
-      if (prev[id] !== undefined) return prev;
-      cast = true;
-      return { ...prev, [id]: option };
-    });
-    if (cast) {
-      setMutationPending(pendingKey, true);
-      void castVote(poll?.id ?? id, option, {
-        groupSlug: entry?.post.groupSlug,
-        questionId: poll?.questionId,
-        optionId: chosen?.id,
-      }).then(() => {
-        setMutationNotice({ type: 'success', message: 'Vote recorded.' });
-      }).catch((cause) => {
-          setVotes((prev) => ({ ...prev, [id]: undefined }));
-          showMutationError(cause, 'The vote could not be recorded.');
-        }).finally(() => setMutationPending(pendingKey, false));
+    if (!poll || answers.length !== poll.questions.length) return false;
+
+    setPollAnswerDrafts((current) => ({ ...current, [id]: answers }));
+    setMutationPending(pendingKey, true);
+    try {
+      await castVote(poll.id, answers, entry?.post.groupSlug);
+      await refreshThreadDetail(id);
+      setMutationNotice({ type: 'success', message: 'Poll response submitted.' });
+      return true;
+    } catch (cause) {
+      showMutationError(cause, 'The poll response could not be submitted. Your selections were kept.');
+      return false;
+    } finally {
+      setMutationPending(pendingKey, false);
     }
-  }, [entryForThread, pendingMutations, setMutationPending, showMutationError]);
+  }, [entryForThread, pendingMutations, refreshThreadDetail, setMutationPending, showMutationError]);
 
   const toggleUpvote = useCallback((id: string) => {
     const pendingKey = `upvote:${id}`;
@@ -2190,14 +2321,6 @@ function Portal() {
               ...(draft.location ? [{ icon: 'pin' as const, text: draft.location }] : []),
               ...(draft.isVirtual ? [{ icon: 'people' as const, text: 'Virtual' }] : []),
             ]
-          : undefined,
-      poll:
-        draft.type === 'poll'
-          ? {
-              q: draft.pollQuestion?.trim() || draft.title,
-              closes: draft.closesAt ?? 'Open',
-              options: (draft.pollOptions ?? []).map((label) => ({ label, votes: 0 })),
-            }
           : undefined,
       replies: [],
     };
@@ -2531,6 +2654,25 @@ function Portal() {
     [screenWidth, selectTab, tab, tabOffset, tabTranslateX]
   );
 
+  const selectedNewsIndex = newsFeed.selected
+    ? newsFeed.items.findIndex((item) => item.id === newsFeed.selected?.id)
+    : -1;
+  const newsReader = newsFeed.selected ? (
+    <NewsStoryScreen
+      item={newsFeed.selected}
+      relatedThreads={newsFeed.relatedThreads}
+      canPrevious={selectedNewsIndex > 0}
+      canNext={
+        selectedNewsIndex >= 0 &&
+        (selectedNewsIndex < newsFeed.items.length - 1 || Boolean(newsFeed.nextCursor))
+      }
+      onBack={newsFeed.close}
+      onPrevious={() => void newsFeed.move(-1)}
+      onNext={() => void newsFeed.move(1)}
+      onOpenThread={openNewsThread}
+    />
+  ) : null;
+
   return (
     <MemberProvider
       member={meQuery.data ?? null}
@@ -2571,14 +2713,30 @@ function Portal() {
                 error={meQuery.error}
                 onRetry={meQuery.refetch}
               >
-                {newsOpen ? (
-                  <NewsScreen
-                    stories={dashboardNews}
+                {newsFeed.selected && newsReaderOrigin !== 'resources' ? newsReader : newsOpen ? (
+                  <NewsFeedScreen
+                    items={newsFeed.items}
+                    facets={newsFeed.facets}
+                    topic={newsFeed.topic}
+                    source={newsFeed.source}
+                    totalMatching={newsFeed.totalMatching}
+                    totalAvailable={newsFeed.totalAvailable}
+                    refreshing={newsFeed.refreshing || newsFeed.loading}
+                    loadingMore={newsFeed.loadingMore}
+                    error={newsFeed.error}
                     onBack={() => setNewsOpen(false)}
-                    onOpen={openStory}
+                    onOpen={(item) => {
+                      setNewsReaderOrigin('list');
+                      void newsFeed.open(item);
+                    }}
+                    onFilters={newsFeed.applyFilters}
+                    onRefresh={newsFeed.refresh}
+                    onLoadMore={newsFeed.loadMore}
+                    onRetry={newsFeed.loadMore}
                   />
                 ) : (
                   <HomeScreen
+                    onOpenMemberProfile={openDirectoryProfile}
                     immediateActions={{ ...homeActionsQuery, onRetry: homeActionsQuery.refetch }}
                     events={{ ...eventsQuery, data: previewEvents, onRetry: eventsQuery.refetch }}
                     workingGroups={{ ...groupsQuery, onRetry: groupsQuery.refetch }}
@@ -2614,7 +2772,10 @@ function Portal() {
                       setMoreView('events');
                       setTab('more');
                     }}
-                    onGoNews={() => setNewsOpen(true)}
+                    onGoNews={() => {
+                      setNewsReaderOrigin('list');
+                      setNewsOpen(true);
+                    }}
                     onGoGroups={() => selectTab('groups')}
                     onPickGroup={(slug) => {
                       const group = groups.find((candidate) => (candidate.slug ?? candidate.id) === slug);
@@ -2644,6 +2805,8 @@ function Portal() {
                       setTab('more');
                     }}
                     onOpenPodcast={(episode) => openInResources('episode', episode.slug, 'home')}
+                    onSaveResource={saveResource}
+                    onOpenExternalResource={openExternalResource}
                   />
                 )}
               </DataGate>
@@ -2659,6 +2822,7 @@ function Portal() {
               <EventsScreen
                 key={eventRequest ? `event-${eventRequest.id}-${eventRequest.n}` : 'events-root'}
                 events={previewEvents}
+                onOpenMemberProfile={openDirectoryProfile}
                 initialEventId={eventRequest?.id ?? null}
                 onBack={() => setMoreView('root')}
                 onAddToCalendar={addEventToCalendar}
@@ -2694,7 +2858,6 @@ function Portal() {
                 updateCount={announcements.filter((item) => item.unread).length + surveys.filter((item) => item.status !== 'submitted' && item.status !== 'closed').length}
                 eventCount={previewEvents.filter((event) => event.status === 'upcoming').length}
                 resourceCount={libraryQuery.data?.resources.length ?? 0}
-                jobCount={jobsQuery.data?.length ?? 0}
                 onOpenAnnualMeeting={() => setMoreView('annual-meeting')}
                 onOpenUpdates={() => {
                   setUpdateRequest((current) => ({ selection: null, n: current.n + 1 }));
@@ -2706,19 +2869,6 @@ function Portal() {
                 }}
                 onOpenResources={() => {
                   setResourcesRequest(null);
-                  setResourcesNewsOpen(false);
-                  setMoreView('resources');
-                }}
-                onOpenJobBoard={() => {
-                  setResourcesRequest((current) => ({
-                    kind: 'job-board',
-                    id: 'jobs',
-                    sequence: (current?.sequence ?? 0) + 1,
-                    origin: 'more',
-                    view: 'jobs',
-                    returnTab: 'more',
-                    returnMoreView: 'root',
-                  }));
                   setResourcesNewsOpen(false);
                   setMoreView('resources');
                 }}
@@ -2891,11 +3041,26 @@ function Portal() {
                   jobsQuery.refetch();
                 }}
               >
-                {resourcesNewsOpen ? (
-                  <NewsScreen
-                    stories={libraryQuery.data?.newsRadar ?? []}
+                {newsFeed.selected && newsReaderOrigin === 'resources' ? newsReader : resourcesNewsOpen ? (
+                  <NewsFeedScreen
+                    items={newsFeed.items}
+                    facets={newsFeed.facets}
+                    topic={newsFeed.topic}
+                    source={newsFeed.source}
+                    totalMatching={newsFeed.totalMatching}
+                    totalAvailable={newsFeed.totalAvailable}
+                    refreshing={newsFeed.refreshing || newsFeed.loading}
+                    loadingMore={newsFeed.loadingMore}
+                    error={newsFeed.error}
                     onBack={() => setResourcesNewsOpen(false)}
-                    onOpen={openStory}
+                    onOpen={(item: NewsFeedItem) => {
+                      setNewsReaderOrigin('resources');
+                      void newsFeed.open(item);
+                    }}
+                    onFilters={newsFeed.applyFilters}
+                    onRefresh={newsFeed.refresh}
+                    onLoadMore={newsFeed.loadMore}
+                    onRetry={newsFeed.loadMore}
                   />
                 ) : (
                   <ResourcesScreen
@@ -2937,7 +3102,10 @@ function Portal() {
                     onDownloadPodcastAudio={downloadPodcastAudio}
                     onDownloadPodcastTranscript={downloadPodcastTranscript}
                     onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
-                    onGoNews={() => setResourcesNewsOpen(true)}
+                    onGoNews={() => {
+                      setNewsReaderOrigin('resources');
+                      setResourcesNewsOpen(true);
+                    }}
                   />
                 )}
               </DataGate>
@@ -2959,6 +3127,7 @@ function Portal() {
               >
               <GroupsScreen
                 member={member}
+                onOpenMemberProfile={openDirectoryProfile}
                 groups={groups}
                 newPosts={newPosts}
                 selectedGroupFeed={selectedGroupDetail?.items}
@@ -3014,8 +3183,9 @@ function Portal() {
                 onSavePoll={savePoll}
                 onClosePoll={closePoll}
                 onDeletePoll={deletePoll}
-                votes={votes}
-                onVote={vote}
+                pollAnswerDrafts={pollAnswerDrafts}
+                onUpdatePollDraft={updatePollDraft}
+                onSubmitPollAnswers={submitPollAnswers}
                 upvoted={upvoted}
                 onToggleUpvote={toggleUpvote}
                 reposted={reposted}
@@ -3288,11 +3458,14 @@ function Portal() {
               groups={groups}
               // The composer opens from inside a group, so that group is the default.
               initialGroupId={groupId ?? groups[0]?.id ?? ''}
-              tagSuggestions={groupId ? (groupDetails[groupId]?.tagSuggestions ?? []) : []}
+              tagSuggestionsByGroup={Object.fromEntries(
+                groups.map((group) => [group.id, groupDetails[group.id]?.tagSuggestions ?? []])
+              )}
               mentionMembersByGroup={Object.fromEntries(
                 groups.map((group) => [group.id, groupDetails[group.id]?.members ?? []])
               )}
               onSelectGroup={loadGroupMetadata}
+              onSearchTags={searchWorkingGroupTags}
               onClose={() => setComposerOpen(false)}
               onCreate={(draft) => createPost(draft, member)}
             />
@@ -3310,6 +3483,7 @@ function Portal() {
               <ResourceViewer
                 resource={resourceViewer.resource}
                 accessToken={resourceViewer.accessToken}
+                onSave={saveResource}
                 onClose={() => setResourceViewer(null)}
               />
             </View>
@@ -3432,7 +3606,7 @@ function reconcileThreadDetailState(
   post: Thread,
   setUpvoted: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
   setReposted: Dispatch<SetStateAction<Record<string, boolean | undefined>>>,
-  setVotes: Dispatch<SetStateAction<Record<string, number | undefined>>>
+  setPollAnswerDrafts: Dispatch<SetStateAction<Record<string, PollAnswer[] | undefined>>>
 ): void {
   const target = response.detail.kind === 'thread' ? response.detail.thread : response.detail.poll;
   const hasUpvoted = target.hasUpvoted;
@@ -3445,16 +3619,11 @@ function reconcileThreadDetailState(
     setReposted((prev) => ({ ...prev, [threadId]: hasReposted }));
   }
 
-  if (response.detail.kind !== 'poll') return;
-  const selectedOptionId = recordsFrom(response.detail.answers)
-    .map((answer) => firstStringValue(answer.optionId, answer.option_id, answer.pollOptionId, answer.poll_option_id))
-    .find((value): value is string => !!value);
-  if (!selectedOptionId) return;
-
-  const selectedIndex = post.poll?.options.findIndex((option) => option.id === selectedOptionId) ?? -1;
-  if (selectedIndex >= 0) {
-    setVotes((prev) => ({ ...prev, [threadId]: selectedIndex }));
-  }
+  if (response.detail.kind !== 'poll' || !post.poll) return;
+  setPollAnswerDrafts((current) => ({
+    ...current,
+    [threadId]: post.poll?.answers ?? [],
+  }));
 }
 
 function recordsFrom(value: unknown): Array<Record<string, unknown>> {

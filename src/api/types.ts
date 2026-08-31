@@ -45,6 +45,7 @@ export interface HomeThreadPreview {
   title: string;
   groupName: string;
   authorName: string;
+  authorId?: string;
   replies: number;
   age: string;
   unread: boolean;
@@ -62,6 +63,7 @@ export interface WorkingGroupsData {
 export type EventRsvpState = 'attending' | 'not-attending' | 'not-responded';
 
 export interface MobileEventAttendee {
+  id?: string;
   name: string;
   org?: string;
 }
@@ -235,17 +237,32 @@ export interface EventRow {
 }
 
 export interface PollOption {
-  id?: string;
+  id: string;
   label: string;
   votes: number;
+  percentage: number;
+}
+
+export interface PollQuestion {
+  id: string;
+  text: string;
+  options: PollOption[];
+}
+
+export interface PollAnswer {
+  questionId: string;
+  optionId: string;
 }
 
 export interface Poll {
-  id?: string;
-  questionId?: string;
-  q: string;
+  id: string;
   closes: string;
-  options: PollOption[];
+  closesAt?: string | null;
+  closedAt?: string | null;
+  questions: PollQuestion[];
+  answers: PollAnswer[];
+  hasSubmitted: boolean;
+  responseCount: number;
 }
 
 export interface Thread {
@@ -261,6 +278,8 @@ export interface Thread {
   /** Defaults to 'discussion' when the source design didn't classify the post. */
   type?: PostType;
   title: string;
+  /** Active member UUID for profile navigation when the author has a directory profile. */
+  authorId?: string;
   author: string;
   initials?: string;
   org: string;
@@ -797,6 +816,7 @@ export interface MemberPoll {
   closesAt?: string | null;
   closedAt?: string | null;
   totalResponses: number;
+  hasSubmitted?: boolean;
   groupSlug?: string | null;
   groupName?: string | null;
   questions: MemberPollQuestion[];
@@ -892,6 +912,79 @@ export type Relevance = 'high' | 'medium' | 'low';
 /** Who published a story: the industry radar, or GPFA itself. */
 export type NewsKind = 'radar' | 'gpfa';
 
+export type NewsSourceFilter = 'all' | 'gpfa' | 'industry';
+
+export interface RadarNewsStory {
+  kind: 'radar';
+  id: string;
+  title: string;
+  sourceName: string;
+  url: string;
+  summary: string;
+  whyItMatters: string;
+  topic: string;
+  relevance: Relevance;
+  publishedAt: string;
+  publishedAtISO?: string;
+  imageUrl?: string;
+  tickerTag?: string;
+  relatedThreadIds?: string[];
+}
+
+export interface GpfaNewsStory {
+  kind: 'gpfa';
+  id: string;
+  slug: string;
+  title: string;
+  articleType: 'GPFA Update' | 'Industry Article' | 'Member Announcement' | 'Award';
+  topic?: string;
+  topics: string[];
+  excerpt: string;
+  body?: string;
+  sourceName: string;
+  publishedAt: string;
+  publishedAtISO?: string;
+  imageUrl?: string;
+  externalUrl?: string;
+  isMemberOnly: boolean;
+}
+
+export type NewsFeedItem = RadarNewsStory | GpfaNewsStory;
+
+export interface RelatedNewsThread {
+  id: string;
+  groupSlug: string;
+  title: string;
+}
+
+export interface NewsFeedFacets {
+  topics: Array<{ value: string; count: number }>;
+  sources: { gpfa: number; industry: number };
+  allTopicsCount: number;
+  allSourcesCount: number;
+}
+
+export interface NewsFeedPage {
+  status: 'success';
+  items: NewsFeedItem[];
+  relatedThreads: RelatedNewsThread[];
+  nextCursor: string | null;
+  snapshotAt: string;
+  totalMatching: number;
+  totalAvailable: number;
+  facets: NewsFeedFacets;
+  selectedItem: NewsFeedItem | null;
+}
+
+export interface NewsFeedRequest {
+  topic?: string;
+  source?: NewsSourceFilter;
+  limit?: number;
+  cursor?: string | null;
+  snapshotAt?: string;
+  story?: string | null;
+}
+
 /**
  * A story on the News Radar.
  *
@@ -971,8 +1064,7 @@ export interface NewPostInput {
   location?: string;
   registrationUrl?: string;
   isVirtual?: boolean;
-  pollQuestion?: string;
-  pollOptions?: string[];
+  pollQuestions?: PollQuestionInput[];
   closesAt?: string;
 }
 
@@ -1040,6 +1132,8 @@ export interface AskDisplayMessage extends AskMessage {
     trace: AskTraceRow[];
     startedAt: number;
     durationSeconds?: number;
+    /** The answer rendered, but the durable history write was not confirmed. */
+    saveWarning?: string;
   };
 }
 
@@ -1294,6 +1388,18 @@ export type ResourceType =
   | 'Explainer'
   | 'Event Notes';
 
+export type ResourceArtifact =
+  | {
+      kind: 'file';
+      href: string;
+      fileName?: string;
+      contentType?: string;
+      byteSize?: number;
+      previewable: boolean;
+    }
+  | { kind: 'external'; href: string }
+  | { kind: 'none' };
+
 /** A document in the member library. */
 export interface LibraryResource {
   id: string;
@@ -1308,7 +1414,8 @@ export interface LibraryResource {
   mins?: number;
   pages?: number;
   tags: string[];
-  /** Where Open goes. Absent hides the action. */
+  artifact: ResourceArtifact;
+  /** Compatibility destination for older callers; new actions use `artifact`. */
   href?: string;
 }
 

@@ -255,13 +255,22 @@ export const GROUPS: Group[] = [
         state: 'Closes Mon',
         body: 'Before the custodians lock the pilot spec we should agree a preferred settlement window. Vote below — one response per organization, closes Monday.',
         poll: {
-          q: 'Which settlement window should the pilot target?',
+          id: 'fixture-settlement-poll',
           closes: 'Closes Mon · one vote per org',
-          options: [
-            { label: 'T+0 same-day', votes: 14 },
-            { label: 'T+1 overnight', votes: 8 },
-            { label: 'Split by currency', votes: 5 },
+          questions: [
+            {
+              id: 'fixture-settlement-question',
+              text: 'Which settlement window should the pilot target?',
+              options: [
+                { id: 'fixture-settlement-t0', label: 'T+0 same-day', votes: 14, percentage: 52 },
+                { id: 'fixture-settlement-t1', label: 'T+1 overnight', votes: 8, percentage: 30 },
+                { id: 'fixture-settlement-split', label: 'Split by currency', votes: 5, percentage: 18 },
+              ],
+            },
           ],
+          answers: [],
+          hasSubmitted: false,
+          responseCount: 27,
         },
         replies: [
           { id: 'cl2-r1', a: 'Sofia Lindqvist', org: 'AP4', time: '3h ago', initials: 'SL', up: 3, text: 'Voted T+0. If the pilot cannot prove same-day we will not get internal sign-off to scale it.' },
@@ -818,6 +827,14 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Aug 12',
     mins: 4320,
     pages: 24,
+    artifact: {
+      kind: 'file',
+      href: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      fileName: 'indemnification-comparison-matrix-v3.pdf',
+      contentType: 'application/pdf',
+      byteSize: 13264,
+      previewable: true,
+    },
     summary:
       'Indemnification terms normalized across 24 member lending programs: agent-provided vs third-party wrap, collateral haircut bands, and the two sovereign-fund respondents added in v3.',
     tags: ['Indemnification', 'Securities lending', 'Collateral'],
@@ -830,6 +847,14 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Aug 9',
     mins: 8640,
     pages: 11,
+    artifact: {
+      kind: 'file',
+      href: 'https://example.com/gmsla-2018-annex.docx',
+      fileName: 'gmsla-2018-annex.docx',
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      byteSize: 284672,
+      previewable: false,
+    },
     summary:
       'Consolidated carve-out language members have negotiated into the 2018 annex. Netherlands and Singapore versions are current; the Dutch text predates the 2025 securities law amendment.',
     tags: ['GMSLA', 'Documentation', 'Legal'],
@@ -842,6 +867,7 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Aug 4',
     mins: 15840,
     pages: 18,
+    artifact: { kind: 'none' },
     summary:
       'Shared scoring methodology with liquidity and wrong-way risk split into separate factors, on a quarterly refresh cadence. Feedback window closes end of month.',
     tags: ['Counterparty risk', 'Methodology'],
@@ -854,6 +880,14 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Jul 28',
     mins: 27360,
     pages: 6,
+    artifact: {
+      kind: 'file',
+      href: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      fileName: 'basel-recalibration-counsel-memo.pdf',
+      contentType: 'application/pdf',
+      byteSize: 151263,
+      previewable: true,
+    },
     summary:
       'Redacted memo behind the counter-proposal to accept a fee-adjustment mechanism rather than language shifting capital-driven costs to the lender.',
     tags: ['Basel', 'Indemnification', 'Legal'],
@@ -866,6 +900,14 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Jul 21',
     mins: 37440,
     pages: 32,
+    artifact: {
+      kind: 'file',
+      href: 'https://example.com/member-practices-survey.xlsx',
+      fileName: 'member-practices-survey.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      byteSize: 524288,
+      previewable: false,
+    },
     summary:
       'Responses from 41 organizations on indemnification, collateral mix, reinvestment guidelines and connectivity. One response per organization; results feed the working-group agendas.',
     tags: ['Survey', 'Benchmarking'],
@@ -878,6 +920,7 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Jul 14',
     mins: 47520,
     pages: 4,
+    artifact: { kind: 'none' },
     summary:
       'Fails rates back to pre-transition levels, funding cut-offs tighter than modelled, and the list of steps members still run manually.',
     tags: ['T+1', 'Europe', 'Settlement'],
@@ -890,6 +933,10 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Jun 30',
     mins: 67680,
     pages: 8,
+    artifact: {
+      kind: 'external',
+      href: 'https://www.gpfa.ca/',
+    },
     summary:
       'What the interoperability pilot changes for collateral mobility, which custodians are in, and the reconciliation work members should expect internally.',
     tags: ['Tri-party', 'Collateral'],
@@ -902,6 +949,7 @@ export const LIBRARY: LibraryResource[] = [
     updatedAt: 'Jun 18',
     mins: 84960,
     pages: 5,
+    artifact: { kind: 'none' },
     summary:
       'The fifteen-minute questionnaire covering platforms, messaging standards and post-trade integrations, published so members can circulate it internally first.',
     tags: ['Connectivity', 'Survey'],

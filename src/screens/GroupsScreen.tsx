@@ -27,6 +27,7 @@ import type {
   Member,
   MemberPoll,
   MemberPollUpdateInput,
+  PollAnswer,
   Reply,
   RsvpChoice,
   WorkingGroupFeedControls,
@@ -70,6 +71,7 @@ export interface GroupsScreenProps {
   onCloseGroup: () => void;
   threadId: string | null;
   onOpenThread: (id: string) => void;
+  onOpenMemberProfile: (memberId: string) => void;
   onCloseThread: () => void;
   postSummaries?: Record<string, string | undefined>;
   summarizing?: Record<string, boolean | undefined>;
@@ -91,9 +93,9 @@ export interface GroupsScreenProps {
   onSavePoll: (pollId: string, input: MemberPollUpdateInput) => Promise<boolean>;
   onClosePoll: (pollId: string) => Promise<void>;
   onDeletePoll: (pollId: string) => Promise<void>;
-  /** Chosen option index per thread; absent means this member has not voted. */
-  votes: Record<string, number | undefined>;
-  onVote: (threadId: string, option: number) => void;
+  pollAnswerDrafts: Record<string, PollAnswer[] | undefined>;
+  onUpdatePollDraft: (threadId: string, answers: PollAnswer[]) => void;
+  onSubmitPollAnswers: (threadId: string, answers: PollAnswer[]) => Promise<boolean>;
   /** Whether this member has upvoted a post; adds 1 to its stored count. */
   upvoted: Record<string, boolean | undefined>;
   onToggleUpvote: (threadId: string) => void;
@@ -145,6 +147,7 @@ export default function GroupsScreen({
   onCloseGroup,
   threadId,
   onOpenThread,
+  onOpenMemberProfile,
   onCloseThread,
   postSummaries = {},
   summarizing = {},
@@ -165,8 +168,9 @@ export default function GroupsScreen({
   onSavePoll,
   onClosePoll,
   onDeletePoll,
-  votes,
-  onVote,
+  pollAnswerDrafts,
+  onUpdatePollDraft,
+  onSubmitPollAnswers,
   upvoted,
   onToggleUpvote,
   reposted,
@@ -210,7 +214,6 @@ export default function GroupsScreen({
         onSummarize={() => onSummarize?.(thread.id)}
         onUpdate={(input) => onUpdatePost?.(thread.id, input)}
         onDelete={() => onDeletePost?.(thread.id)}
-        onChangeStatus={(status) => onChangePostStatus?.(thread.id, status)}
         memberId={member.id}
         mentionMembers={selectedGroupMembers}
         mutationNotice={mutationNotice}
@@ -233,8 +236,9 @@ export default function GroupsScreen({
         onToggleUpvote={() => onToggleUpvote(thread.id)}
         reposted={reposted[thread.id] ?? thread.hasReposted ?? false}
         onToggleRepost={() => onToggleRepost(thread.id)}
-        vote={votes[thread.id]}
-        onVote={(option) => onVote(thread.id, option)}
+        pollAnswerDraft={pollAnswerDrafts[thread.id] ?? thread.poll?.answers ?? []}
+        onUpdatePollDraft={(answers) => onUpdatePollDraft(thread.id, answers)}
+        onSubmitPollAnswers={(answers) => onSubmitPollAnswers(thread.id, answers)}
         rsvp={rsvps[thread.id]}
         onRsvp={(choice) => onRsvp(thread.id, choice)}
         onReply={(text, parentPostId, files) =>
@@ -250,6 +254,7 @@ export default function GroupsScreen({
           })
         }
         onOpenAttachment={onOpenAttachment}
+        onOpenMemberProfile={onOpenMemberProfile}
         onBack={onCloseThread}
       />
     );
@@ -309,6 +314,7 @@ export default function GroupsScreen({
         onCompose={onCompose}
         onOpenResourceSubmission={() => onOpenResourceSubmission(group)}
         onOpenResource={onOpenResource}
+        onOpenMemberProfile={onOpenMemberProfile}
       />
     );
   }

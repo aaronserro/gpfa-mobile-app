@@ -2,7 +2,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   BookOpen,
-  Briefcase,
   CalendarDots,
   CaretRight,
   Megaphone,
@@ -21,12 +20,10 @@ export default function MoreScreen({
   updateCount,
   eventCount,
   resourceCount,
-  jobCount,
   onOpenAnnualMeeting,
   onOpenUpdates,
   onOpenEvents,
   onOpenResources,
-  onOpenJobBoard,
   onOpenAccount,
 }: {
   member: Member;
@@ -35,12 +32,10 @@ export default function MoreScreen({
   updateCount: number;
   eventCount: number;
   resourceCount: number;
-  jobCount: number;
   onOpenAnnualMeeting: () => void;
   onOpenUpdates: () => void;
   onOpenEvents: () => void;
   onOpenResources: () => void;
-  onOpenJobBoard: () => void;
   onOpenAccount: () => void;
 }) {
   const { t } = useTheme();
@@ -49,11 +44,6 @@ export default function MoreScreen({
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="More" />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.intro}>
-          <Text style={[styles.introTitle, { color: t.inkStrong }]}>Everything else, close at hand.</Text>
-          <Text style={[styles.introCopy, { color: t.inkMuted }]}>Updates, member tools and your account in one place.</Text>
-        </View>
-
         <SectionLabel label="Featured & updates" />
         <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
           {annualMeetingEnabled && (
@@ -92,14 +82,6 @@ export default function MoreScreen({
             description={`${resourceCount} library items and member podcasts`}
             divided
             onPress={onOpenResources}
-          />
-          <MenuRow
-            icon={Briefcase}
-            iconTone="amber"
-            label="Job Board"
-            description={`${jobCount} open roles across the member network`}
-            divided
-            onPress={onOpenJobBoard}
           />
         </View>
 
@@ -182,9 +164,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
   scroll: { padding: 20, paddingBottom: 34 },
-  intro: { marginBottom: 24 },
-  introTitle: { fontFamily: sans(600), fontSize: 20, lineHeight: 25, letterSpacing: trackDisplay(20) },
-  introCopy: { marginTop: 5, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
   sectionLabel: { marginTop: 18, marginBottom: 9, fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
   group: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },

@@ -212,7 +212,7 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `POST` | `/api/members/forum/summarize` | Post detail summarize action | `ForumSummarizeResponse` |
 | `GET`/`POST` | `/api/members/polls` | Poll detail/create poll | `MemberPollsResponse` / `{ status, pollId }` |
 | `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Post detail poll editor, close, and delete actions | `MemberPollResponse` / `{ status }` |
-| `POST` | `/api/members/polls/vote` | Poll detail vote action | `{ status, message }` |
+| `POST` | `/api/members/polls/vote` | Submit or replace one complete poll response | `{ status, message }` |
 | `GET`/`POST`/`DELETE` | `/api/members/upvotes` | Feed/detail upvote actions | member content list / mutation response |
 | `GET`/`POST`/`DELETE` | `/api/members/saved-content` | Feed/detail repost actions + profile Reposts | member content list / mutation response |
 | `GET` | `/api/members/profile` | Greeting, avatars, authorship | `{ status: "success", member: Member }` |
@@ -663,6 +663,11 @@ assistant row with the durable message id. `App.tsx` owns this state and sends
 the conversation id with follow-up questions. Ask suggestions remain local
 until a real member suggestions endpoint exists.
 
+Once `done` arrives, the generated answer remains usable even if the native
+transport closes before `persisted`. The app attempts to reconcile that turn
+from conversation history and otherwise keeps the completed answer with a
+non-blocking warning that its history write was not confirmed.
+
 Stop aborts response-body consumption before `done`. The partial assistant text
 stays visible in memory and is explicitly marked unsaved; it is never written
 to local storage or treated as a persisted message. The already acknowledged
@@ -773,9 +778,11 @@ mutation feedback, and reconciles canonical detail when needed.
 - Reply creation uses the forum reply route and then refetches the canonical
   item detail. Reply deletion is available only when the canonical reply has an
   id and its `author.id` matches the signed-in member.
-- Poll voting sends canonical question and option ids through
-  `/api/members/polls/vote`. The app blocks a duplicate write while pending,
-  but the server must enforce vote constraints.
+- Poll participation keeps selections in memory until every canonical question
+  has one answer, then sends the complete ordered answer set through
+  `/api/members/polls/vote`. The app blocks another write while pending and
+  reloads canonical detail after success; the server remains authoritative for
+  completeness, option membership, subscription, and lifecycle constraints.
 - Working-group event RSVP maps `yes`/`no` UI choices to the route's canonical
   attendance statuses.
 
@@ -911,7 +918,7 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `GET /api/members/polls/:id` | Current / Member bearer-ready. Source: `members/polls/[id]/route.ts`. | Path `id`. | `MemberPollResponse`: `{ status, poll }`. | Loads the canonical mobile poll editor. Unknown/inaccessible polls return a permission-safe error. |
 | `PUT /api/members/polls/:id` | Current / Member bearer-ready. Source: same route. | JSON `MemberPollUpdateInput`. | `{ status: "success" }`. | The mobile editor sends full questions/options only before the first response; afterward it sends metadata only. Closing sends `{ status: "closed" }`. Closed polls cannot reopen. Validation `400`; lifecycle conflicts `409`. |
 | `DELETE /api/members/polls/:id` | Current / Member bearer-ready. Source: same route. | Path `id`; no body. | `{ status: "success" }`. | Used by the confirmed destructive mobile poll action. The server remains authoritative for ownership and active membership. |
-| `POST /api/members/polls/vote` | Current / Member bearer-ready. Source: `members/polls/vote/route.ts`. | JSON `{ pollId, groupSlug?, answers: [{ questionId, optionId }] }`. | `{ status: "success", message }`. | No pagination. Server must enforce one valid vote set per member/question; validation `400`; closed/inaccessible poll errors should fail closed. |
+| `POST /api/members/polls/vote` | Current / Member bearer-ready. Source: `members/polls/vote/route.ts`. | JSON `{ pollId, groupSlug?, answers: [{ questionId, optionId }] }`; `answers` must contain exactly one valid option for every canonical question. | `{ status: "success", message }`. | No pagination. A later complete submission may replace the member's selections while the poll is open. The server enforces active group subscription, completeness, option ownership, and lifecycle; validation `400`; closed/inaccessible poll errors fail closed. |
 
 #### Reposts (saved content) and upvotes
 
@@ -932,7 +939,7 @@ treating the remaining deferred routes as remote-ready.
 
 | Workflow | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- | --- |
-| Resources/library | `GET /api/members/resources` | Current / Member bearer-ready. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`. Map to `ResourceHubData`. | Server-defined resource and radar order; no pagination. Empty state `resources: []`, `newsRadar: []`. `401` inactive; `500` load failure. |
+| Resources/library | `GET /api/members/resources` | Current / Member bearer-ready. Source: `members/resources/route.ts`. | No query params. | `{ status: "success", resources: ResourceItem[], newsRadar: RadarFeedItem[] }`. Each resource includes an explicit `artifact` (`file`, `external`, or `none`) and maps to `ResourceHubData`. | Server-defined resource and radar order; no pagination. File artifacts may include `fileName`, `contentType`, and `byteSize`, plus server-derived `previewable`. Empty state `resources: []`, `newsRadar: []`. `401` inactive; `500` load failure. |
 | Podcasts | `GET /api/members/podcasts?waveform=mobile` | Current / Member bearer-ready. Source: `members/podcasts/route.ts`. | Optional `waveform=mobile`; omitted returns the detailed web waveform and any other value returns `400`. | `{ status: "success", episodes: PodcastEpisode[] }`. | Newest/catalog order from server. No pagination. Empty state `episodes: []`. Each playable episode supplies `audioUrl`; protected audio also supplies `audioExpiresAt`; mobile waveforms contain at most 48 amplitudes. Missing audio remains browsable but is shown as unavailable. |
 | Jobs | `GET /api/members/job-postings` | Current / Member bearer-ready. Source: `members/job-postings/route.ts`. | Query `page?` default `1`, `pageSize?` default `20`, max `100`. Mobile requests `pageSize=100`. | Active job-posting page from `getCachedActiveJobPostings`. Maps `jobPostings` to `JobListing[]`. | Page-based pagination from the API; mobile loads the first page for the Resources hub and Job board card count. Empty page is an empty jobs array with total metadata. Invalid pagination `400`; auth `401`; load failure `500`. |
 | Jobs write | `POST /api/members/job-postings`, `PATCH/DELETE /api/members/job-postings/:jobId` | Excluded first pass / Organization admin. Sources: job posting routes. | JSON job posting payload for create/update; path `jobId` for update/delete. | `{ status: "success", jobPosting }` or `{ status: "success" }`. | Org-admin mobile workflow does not exist; exclude until it does. |
@@ -941,7 +948,7 @@ treating the remaining deferred routes as remote-ready.
 | Directory profile | `GET /api/members/directory/profiles/:memberId` | Current / Member bearer-ready. | Active member UUID in the path. | `{ status: "success", profile }` with public identity, organization, skills, working groups, and `isSelf`; `events` is owner-only. | No pagination. Missing, inactive, and locked targets all return permission-safe `404`; auth `401`; responses are private/no-store. |
 | Directory profile activity | `GET /api/members/directory/profiles/:memberId/activity` | Current / Member bearer-ready. | Query `kind=posts|replies|reposts`, `page` defaults to `1`. | `{ status: "success", kind, items, page, pageSize, totalItems, hasMore }`; activity items carry native `groupSlug`, `targetType`, and `targetId` navigation identity. | 10 items per page, newest first. Empty state `items: []`; invalid query `400`; unavailable member `404`; auth `401`. |
 | Directory organizations | `GET /api/members/directory/organizations` | Current / Member bearer-ready. Source: `members/directory/organizations/route.ts`. | No query params. | `{ status: "success", organizations }`, mapped to `MemberOrg[]`. | Server order is A-Z. Empty state `organizations: []`. Auth `401`; load failure `500`. |
-| News feed | `GET /api/members/news` | Current / Member bearer-ready. Source: `members/news/route.ts`. | Query `topic?`, `source?`, `limit?`, `cursor?`, `snapshotAt?`, `story?`. | `{ status: "success", items, relatedThreads }`. Map to `NewsStory[]`. | Server feed order and cursor metadata. Empty state `items: []`. Invalid filters `400`; auth `401`; load failure `500`. |
+| News feed | `GET /api/members/news` | Current / Member bearer-ready. Source: `members/news/route.ts`. | Query `topic?` (`All` or canonical topic slug), `source?=all|gpfa|industry`, `limit?` 1-30, `cursor?`, `snapshotAt?` ISO timestamp, `story?` radar UUID or `article:<slug>`. | `NewsFeedPage`: `{ status: "success", items: (RadarNewsStory | GpfaNewsStory)[], relatedThreads, nextCursor, snapshotAt, totalMatching, totalAvailable, facets, facetRows, selectedItem }`. | Reuse the first response's `snapshotAt` for every appended page. `story` hydrates stable reader state even when the item is outside the returned page; a missing/deleted item yields `selectedItem: null`. Empty state `items: []`. Invalid filters `400`; auth `401`; load failure `500`. Responses are private/no-store. |
 | News Radar | `GET /api/members/news-radar` | Current / Member bearer-ready. Source: `members/news-radar/route.ts`. | Query `limit?`, 1-20. | `{ status: "success", articles }`. | Server/news-radar order; bounded by limit. Invalid limit `400`; auth `401`; load failure `500`. |
 | Events | `GET /api/members/events` | Deferred / active member, migration needed. Source: `members/events/route.ts`. | No query params. | `{ status: "success", events }`. | Server event order, includes past per route implementation. Empty state `events: []`. |
 | Event RSVP | `POST /api/members/events/rsvp` | Deferred / active member, migration needed. Source: `members/events/rsvp/route.ts`. | JSON event ID plus RSVP state as defined by the web route. | `{ status: "success", message }`. | Prefer idempotent writes. The current mobile app uses the working-group event RSVP route for feed event posts. |
@@ -1084,6 +1091,14 @@ hard-code the mapping from `id` in `portal.ts`.
 A group's **Topics** list on its About tab is the de-duplicated union of the
 tags on its posts, in first-seen order — there is no separate topics endpoint.
 
+The working-group create composer accepts new tags as typed hashtag tokens for
+discussions, polls, announcements, and events. Tags are lowercased, normalized
+to letters, numbers, and hyphens, de-duplicated in first-seen order, and limited
+to eight before submission. The tag-usage endpoint supplies up to six live,
+group-scoped suggestions with usage counts; those suggestions are advisory,
+not an allowlist. A failed suggestion request does not block custom tags or
+post creation.
+
 Two fields deserve attention:
 
 - **`time` is a pre-formatted string**, not ISO 8601. The app never parses it.
@@ -1118,16 +1133,35 @@ active subscribed-member directory for the selected working group. The server
 resolves handles from the body, persists mention records, and sends the
 notification; the client never submits display names as mention identity.
 
-### `Poll`, `PollOption`, `EventRow`
+### `Poll`, `PollQuestion`, `PollOption`, `PollAnswer`, `EventRow`
 
 ```ts
-Poll        { q: string; closes: string; options: PollOption[] }
-PollOption  { label: string; votes: number }   // votes = current tally
-EventRow    { icon: 'calendar' | 'pin' | 'people'; text: string }
+Poll {
+  id: string;
+  closes: string;
+  closesAt?: string | null;
+  closedAt?: string | null;
+  questions: PollQuestion[];
+  answers: PollAnswer[];       // current member's canonical selections
+  hasSubmitted: boolean;       // participation, not merely answer presence
+  responseCount: number;
+}
+PollQuestion { id: string; text: string; options: PollOption[] }
+PollOption   { id: string; label: string; votes: number; percentage: number }
+PollAnswer   { questionId: string; optionId: string }
+EventRow     { icon: 'calendar' | 'pin' | 'people'; text: string }
 ```
 
-Poll percentages are computed client-side from `options[].votes` plus the
-member's own vote. Send current tallies; the app does the arithmetic.
+Question order and option order are the order supplied by the canonical poll.
+The detail response supplies nested results per question; `votes` and
+`percentage` are server-derived values. Mobile does not flatten the poll or
+recompute percentages from a single question.
+
+Unsubmitted selections are local to the current app session. This scope does
+not persist partial answers to the server and does not support cross-device
+draft resume. Only a successful complete batch submission creates canonical
+participation; the app then reloads detail to reconcile `answers`, results, and
+`hasSubmitted`.
 
 ### `NewsStory`
 
@@ -1194,15 +1228,23 @@ EventTag      { label: string; tone: 'green' | 'default' }
 ```ts
 ResourceType    'Working Paper' | 'Podcast' | 'Briefing' | 'Template'
               | 'External Link' | 'Explainer' | 'Event Notes'
+ResourceArtifact  { kind: 'file', href, fileName?, contentType?, byteSize?, previewable }
+                | { kind: 'external', href }
+                | { kind: 'none' }
 LibraryResource { id, title, type: ResourceType, summary, authors,
-                  updatedAt, mins?, pages?, tags: string[], href? }
+                  updatedAt, mins?, pages?, tags: string[], artifact, href? }
 ```
 
 `updatedAt` ("Aug 12") is a display string. `mins` is the age in minutes and is
 the **only** sort key the Newest/Oldest toggle uses — omit it and ordering is
 undefined. `type` drives the chip colour and the corner glyph, so send one of
-the seven values above. `href` is where the sheet's Open button goes; without
-it the button does nothing.
+the seven values above. New resource actions use `artifact`: previewable files
+can open in the authenticated WebView, all files can be downloaded to temporary
+cache and handed to the native save/share sheet, and external links open through
+the operating system without GPFA credentials. Bearer credentials are attached
+only to configured GPFA origins whose path begins `/api/content-assets/`.
+`href` remains a compatibility field for older callers and must not drive new
+authenticated file actions.
 
 ### `PodcastPerson`, `PodcastEpisode`
 
@@ -1351,7 +1393,8 @@ are server-backed because that feed is cursor-paginated.
 | A group's topics list | Derived from the currently loaded canonical page in `groups/GroupView.tsx`; it is not presented as a complete feed count |
 | One-level reply nesting, from `parentPostId` | `groups/PostDetail.tsx` |
 | Working-group mention autocomplete and highlighting | `groups/MentionInput.tsx` |
-| Poll percentages | computed from `options[].votes` |
+| Poll answer draft | held in `App.tsx` until every question is answered; no partial server write |
+| Poll percentages | supplied by canonical nested results and rendered per question |
 | Reply counts | derived from `replies[]` |
 | Job search (title, org, location, function, blurb) | `jobs/JobBoard.tsx` |
 | Job function filter, member-orgs filter, newest-first order | `jobs/JobBoard.tsx` |
@@ -1429,15 +1472,17 @@ Honest list of what is *not* handled, in rough priority order:
    moving the query out of `GroupsScreen`.
 6. **Not wired to anything:** the per-card `⋯` menu, "Forgot password?", and
   Share / send on feed cards.
-7. **Composer captures only** group, type, title, body. A poll created in-app
-   has no options; an event has no date rows.
+7. **Event composition remains limited.** Poll composition supports multiple
+  questions with two to eight options each; event composition still has only
+  the currently exposed date/location fields.
 8. **Saved is read-only.** The member profile lists `GET /me/saved`, but nothing
    adds to or removes from it — the library has no bookmark control, and the
    post bookmark writes to `/posts/:id/save`, a different list. Wiring it means
    a `POST`/`DELETE /me/saved/:id` pair and a toggle on the profile row.
-9. **Session data is memory-only.** Optimistic state (`votes`, `upvoted`,
-   `rsvps`, `extraReplies`, `newPosts`) lives in `App.tsx` and resets on reload.
-   Server state is the source of truth after a refetch.
+9. **Session data is memory-only.** Optimistic state (`pollAnswerDrafts`,
+   `upvoted`, `rsvps`, `extraReplies`, `newPosts`) lives in `App.tsx` and resets
+   on reload. Poll answer drafts are intentionally not persisted until final
+   submission. Server state is the source of truth after a refetch.
 
 ---
 
@@ -1458,8 +1503,9 @@ class ApiError extends Error {
   in that order. Sending one of those gives users a real message instead of
   *"Request failed (500)."*
 - Requests time out after **15s** (`REQUEST_TIMEOUT_MS`). Ask GPFA stream
-  requests use **60s** (`AI_REQUEST_TIMEOUT_MS`) because retrieval and model
-  generation can take longer than ordinary JSON endpoints. The stream timeout
+  requests use **75s** (`AI_REQUEST_TIMEOUT_MS`) because retrieval and model
+  generation can take longer than ordinary JSON endpoints, and the server's
+  60-second execution budget still needs native transport headroom. The stream timeout
   and caller abort signal remain attached until response-body consumption ends.
   A `401` retry is allowed only before body consumption starts.
 - Read failures on Home and Groups render `DataGate`'s retry screen. Working-

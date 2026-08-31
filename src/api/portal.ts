@@ -81,6 +81,10 @@ import type {
   MobileEventPreview,
   NewPostInput,
   NewsStory,
+  NewsFeedFacets,
+  NewsFeedItem,
+  NewsFeedPage,
+  NewsFeedRequest,
   PodcastEpisode,
   PodcastTranscriptSegment,
   Poll,
@@ -90,6 +94,7 @@ import type {
   RenameConversationResponse,
   Reply,
   ResourceHubData,
+  ResourceArtifact,
   ResourceType,
   RsvpChoice,
   SendMessageInput,
@@ -328,7 +333,7 @@ interface EventsApiResponse {
     lifecycleStatus: string;
     rsvpStatus: 'attending' | 'not_attending' | null;
     attendeeCount: number;
-    attendees?: Array<{ name: string; org?: string }>;
+    attendees?: Array<{ id?: string; name: string; org?: string }>;
     memberJoinUrl?: string;
     summary?: string;
     agenda: Array<{ time: string; title: string; speakers?: string; moderator?: string }>;
@@ -640,6 +645,23 @@ export function getFeed(): Promise<FeedEntry[]> {
 export function getNews(): Promise<NewsStory[]> {
   if (USING_PORTAL_FIXTURES) return local(NEWS_STORIES);
   return request<unknown>(ROUTES.news).then(normalizeNewsStories);
+}
+
+export function getNewsFeedPage(input: NewsFeedRequest = {}): Promise<NewsFeedPage> {
+  if (USING_PORTAL_FIXTURES) return local(createFixtureNewsFeedPage(input));
+
+  const params = new URLSearchParams();
+  if (input.topic) params.set('topic', input.topic);
+  if (input.source) params.set('source', input.source);
+  if (input.limit !== undefined) params.set('limit', String(input.limit));
+  if (input.cursor) params.set('cursor', input.cursor);
+  if (input.snapshotAt) params.set('snapshotAt', input.snapshotAt);
+  if (input.story) params.set('story', input.story);
+  const query = params.toString();
+
+  return request<unknown>(`${ROUTES.news}${query ? `?${query}` : ''}`).then(
+    normalizeNewsFeedPage
+  );
 }
 
 export function getEvents(): Promise<MobileEventPreview[]> {
@@ -1815,14 +1837,7 @@ export async function createPost(input: NewPostInput): Promise<Thread | null> {
       tags: input.tags,
       closesAt: input.closesAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       groupSlug,
-      questions: [
-        {
-          text: input.pollQuestion?.trim() || input.title,
-          options: (input.pollOptions?.filter((option) => option.trim().length > 0) ?? []).map(
-            (label) => ({ label })
-          ),
-        },
-      ],
+      questions: input.pollQuestions ?? [],
     }).then(() => null);
   }
   const uploadedAttachmentIds = await uploadForumFiles(groupSlug, input.files ?? []);
@@ -2415,15 +2430,15 @@ export function deleteMemberSavedContent(
 
 export function castVote(
   pollId: string,
-  option: number,
-  details?: { groupSlug?: string; questionId?: string; optionId?: string }
+  answers: Array<{ questionId: string; optionId: string }>,
+  groupSlug?: string
 ): Promise<void> {
   if (!USING_REMOTE_API) return workingGroupsRequireApi<void>();
-  if (!details?.questionId || !details.optionId) return workingGroupsRequireApi<void>();
+  if (answers.length === 0) return workingGroupsRequireApi<void>();
   return voteMemberPoll({
     pollId,
-    groupSlug: details.groupSlug,
-    answers: [{ questionId: details.questionId, optionId: details.optionId }],
+    groupSlug,
+    answers,
   }).then(() => undefined);
 }
 
@@ -2493,6 +2508,217 @@ function normalizeNewsStories(payload: unknown): NewsStory[] {
         : [];
 
   return rows.map(normalizeNewsStory).filter((story): story is NewsStory => story !== null);
+}
+
+export function normalizeNewsFeedPage(payload: unknown): NewsFeedPage {
+  const record = objectRecord(payload, 'News feed response');
+  if (record.status !== 'success') throw new Error('News feed response was not successful.');
+  if (!Array.isArray(record.items) || !Array.isArray(record.relatedThreads)) {
+    throw new Error('News feed response is missing its item collections.');
+  }
+
+  const items = record.items.map((row, index) => normalizeNewsFeedItem(row, `items[${index}]`));
+  const relatedThreads = record.relatedThreads.map((row, index) => {
+    const thread = objectRecord(row, `relatedThreads[${index}]`);
+    return {
+      id: requiredString(thread.id, `relatedThreads[${index}].id`),
+      groupSlug: requiredString(thread.groupSlug, `relatedThreads[${index}].groupSlug`),
+      title: requiredString(thread.title, `relatedThreads[${index}].title`),
+    };
+  });
+  const selectedItem = record.selectedItem === null
+    ? null
+    : normalizeNewsFeedItem(record.selectedItem, 'selectedItem');
+
+  return {
+    status: 'success',
+    items,
+    relatedThreads,
+    nextCursor: nullableRequiredString(record.nextCursor, 'nextCursor'),
+    snapshotAt: requiredString(record.snapshotAt, 'snapshotAt'),
+    totalMatching: nonnegativeInteger(record.totalMatching, 'totalMatching'),
+    totalAvailable: nonnegativeInteger(record.totalAvailable, 'totalAvailable'),
+    facets: normalizeNewsFeedFacets(record.facets),
+    selectedItem,
+  };
+}
+
+function normalizeNewsFeedItem(value: unknown, path: string): NewsFeedItem {
+  const row = objectRecord(value, path);
+  const kind = requiredString(row.kind, `${path}.kind`);
+  const imageUrl = optionalHttpUrl(row.imageUrl, `${path}.imageUrl`);
+  const publishedAtISO = optionalString(row.publishedAtISO);
+
+  if (kind === 'radar') {
+    const relevance = requiredString(row.relevance, `${path}.relevance`);
+    if (relevance !== 'low' && relevance !== 'medium' && relevance !== 'high') {
+      throw new Error(`${path}.relevance is invalid.`);
+    }
+    return {
+      kind,
+      id: requiredString(row.id, `${path}.id`),
+      title: requiredString(row.title, `${path}.title`),
+      sourceName: requiredString(row.sourceName, `${path}.sourceName`),
+      url: requiredHttpUrl(row.url, `${path}.url`),
+      summary: requiredString(row.summary, `${path}.summary`),
+      whyItMatters: requiredString(row.whyItMatters, `${path}.whyItMatters`),
+      topic: requiredString(row.topic, `${path}.topic`),
+      relevance,
+      publishedAt: requiredString(row.publishedAt, `${path}.publishedAt`),
+      ...(publishedAtISO ? { publishedAtISO } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
+      ...(optionalString(row.tickerTag) ? { tickerTag: optionalString(row.tickerTag) } : {}),
+      ...(row.relatedThreadIds === undefined
+        ? {}
+        : { relatedThreadIds: stringArray(row.relatedThreadIds, `${path}.relatedThreadIds`) }),
+    };
+  }
+
+  if (kind !== 'gpfa') throw new Error(`${path}.kind is invalid.`);
+  const articleType = requiredString(row.articleType, `${path}.articleType`);
+  const articleTypes = ['GPFA Update', 'Industry Article', 'Member Announcement', 'Award'] as const;
+  if (!articleTypes.includes(articleType as (typeof articleTypes)[number])) {
+    throw new Error(`${path}.articleType is invalid.`);
+  }
+  if (typeof row.isMemberOnly !== 'boolean') throw new Error(`${path}.isMemberOnly is invalid.`);
+  const body = optionalString(row.body);
+  const externalUrl = optionalHttpUrl(row.externalUrl, `${path}.externalUrl`);
+  const topic = optionalString(row.topic);
+  return {
+    kind,
+    id: requiredString(row.id, `${path}.id`),
+    slug: requiredString(row.slug, `${path}.slug`),
+    title: requiredString(row.title, `${path}.title`),
+    articleType: articleType as (typeof articleTypes)[number],
+    ...(topic ? { topic } : {}),
+    topics: stringArray(row.topics, `${path}.topics`),
+    excerpt: requiredString(row.excerpt, `${path}.excerpt`, true),
+    ...(body ? { body } : {}),
+    sourceName: requiredString(row.sourceName, `${path}.sourceName`),
+    publishedAt: requiredString(row.publishedAt, `${path}.publishedAt`),
+    ...(publishedAtISO ? { publishedAtISO } : {}),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(externalUrl ? { externalUrl } : {}),
+    isMemberOnly: row.isMemberOnly,
+  };
+}
+
+function normalizeNewsFeedFacets(value: unknown): NewsFeedFacets {
+  const facets = objectRecord(value, 'facets');
+  const sources = objectRecord(facets.sources, 'facets.sources');
+  if (!Array.isArray(facets.topics)) throw new Error('facets.topics is invalid.');
+  return {
+    topics: facets.topics.map((value, index) => {
+      const topic = objectRecord(value, `facets.topics[${index}]`);
+      return {
+        value: requiredString(topic.value, `facets.topics[${index}].value`),
+        count: nonnegativeInteger(topic.count, `facets.topics[${index}].count`),
+      };
+    }),
+    sources: {
+      gpfa: nonnegativeInteger(sources.gpfa, 'facets.sources.gpfa'),
+      industry: nonnegativeInteger(sources.industry, 'facets.sources.industry'),
+    },
+    allTopicsCount: nonnegativeInteger(facets.allTopicsCount, 'facets.allTopicsCount'),
+    allSourcesCount: nonnegativeInteger(facets.allSourcesCount, 'facets.allSourcesCount'),
+  };
+}
+
+function createFixtureNewsFeedPage(input: NewsFeedRequest): NewsFeedPage {
+  const canonical = NEWS_STORIES.map(legacyNewsStoryToFeedItem);
+  const source = input.source ?? 'all';
+  const topic = input.topic?.toLowerCase();
+  const matching = canonical.filter((item) =>
+    (source === 'all' || (source === 'gpfa' ? item.kind === 'gpfa' : item.kind === 'radar'))
+    && (!topic || topic === 'all' || item.topic?.toLowerCase() === topic)
+  );
+  const offset = input.cursor ? Number(input.cursor.replace('fixture:', '')) : 0;
+  const limit = input.limit ?? 18;
+  const items = matching.slice(offset, offset + limit);
+  const topicCounts = new Map<string, number>();
+  canonical.forEach((item) => {
+    if (item.topic) topicCounts.set(item.topic, (topicCounts.get(item.topic) ?? 0) + 1);
+  });
+  return {
+    status: 'success',
+    items,
+    relatedThreads: [],
+    nextCursor: offset + items.length < matching.length ? `fixture:${offset + items.length}` : null,
+    snapshotAt: input.snapshotAt ?? new Date().toISOString(),
+    totalMatching: matching.length,
+    totalAvailable: canonical.length,
+    facets: {
+      topics: [...topicCounts].map(([value, count]) => ({ value, count })),
+      sources: {
+        gpfa: canonical.filter((item) => item.kind === 'gpfa').length,
+        industry: canonical.filter((item) => item.kind === 'radar').length,
+      },
+      allTopicsCount: canonical.length,
+      allSourcesCount: canonical.length,
+    },
+    selectedItem: input.story ? canonical.find((item) => item.id === input.story) ?? null : null,
+  };
+}
+
+function legacyNewsStoryToFeedItem(story: NewsStory): NewsFeedItem {
+  const sourceName = story.meta.split(' · ')[0] || 'GPFA';
+  const publishedAt = story.publishedAt ?? story.meta.split(' · ').at(-1) ?? 'Recent';
+  if (story.kind === 'radar') {
+    if (!story.url) throw new Error(`Fixture radar story ${story.id} requires a URL.`);
+    return {
+      kind: 'radar', id: story.id, title: story.title, sourceName, url: story.url,
+      summary: story.body, whyItMatters: story.body, topic: story.topic,
+      relevance: story.rel ?? 'low', publishedAt,
+      ...(story.ticker ? { tickerTag: story.ticker } : {}),
+    };
+  }
+  return {
+    kind: 'gpfa', id: story.id, slug: story.id, title: story.title,
+    articleType: 'GPFA Update', topic: story.topic, topics: story.topics ?? [],
+    excerpt: story.body, body: story.body, sourceName, publishedAt,
+    isMemberOnly: story.memberOnly ?? false,
+  };
+}
+
+function objectRecord(value: unknown, path: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} is invalid.`);
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, path: string, allowEmpty = false): string {
+  if (typeof value !== 'string' || (!allowEmpty && !value.trim())) throw new Error(`${path} is invalid.`);
+  return value.trim();
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function nullableRequiredString(value: unknown, path: string): string | null {
+  return value === null ? null : requiredString(value, path);
+}
+
+function nonnegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) throw new Error(`${path} is invalid.`);
+  return value;
+}
+
+function stringArray(value: unknown, path: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
+    throw new Error(`${path} is invalid.`);
+  }
+  return value.map((item) => (item as string).trim());
+}
+
+function requiredHttpUrl(value: unknown, path: string): string {
+  const resolved = absoluteResourceHref(requiredString(value, path));
+  if (!resolved) throw new Error(`${path} must be an HTTP(S) URL.`);
+  return resolved;
+}
+
+function optionalHttpUrl(value: unknown, path: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requiredHttpUrl(value, path);
 }
 
 function normalizeNewsStory(row: unknown, index: number): NewsStory | null {
@@ -2611,6 +2837,7 @@ function normalizeLibraryResource(row: unknown, index: number): LibraryResource 
       record.source_url
     )
   );
+  const artifact = normalizeResourceArtifact(record.artifact);
 
   return {
     id: firstString(record.id, record._id, record.uuid, record.slug) ?? `resource-${index}`,
@@ -2624,8 +2851,50 @@ function normalizeLibraryResource(row: unknown, index: number): LibraryResource 
       : {}),
     ...(numberFrom(record.pages, record.pageCount, record.page_count) ? { pages: numberFrom(record.pages, record.pageCount, record.page_count) } : {}),
     tags: arrayOfStrings(record.tags),
+    artifact,
     ...(href ? { href } : {}),
   };
+}
+
+function normalizeResourceArtifact(value: unknown): ResourceArtifact {
+  if (!value || typeof value !== 'object') return { kind: 'none' };
+  const artifact = value as Record<string, unknown>;
+  const kind = firstString(artifact.kind);
+
+  if (kind === 'file') {
+    const href = absoluteResourceHref(firstString(artifact.href));
+    if (!href) return { kind: 'none' };
+    const byteSize = numberFrom(artifact.byteSize, artifact.byte_size);
+    return {
+      kind: 'file',
+      href,
+      ...(firstString(artifact.fileName, artifact.file_name)
+        ? { fileName: firstString(artifact.fileName, artifact.file_name) }
+        : {}),
+      ...(firstString(artifact.contentType, artifact.content_type)
+        ? { contentType: firstString(artifact.contentType, artifact.content_type) }
+        : {}),
+      ...(byteSize !== undefined && byteSize >= 0 ? { byteSize } : {}),
+      previewable: artifact.previewable === true,
+    };
+  }
+
+  if (kind === 'external') {
+    const href = safeExternalResourceUrl(firstString(artifact.href));
+    return href ? { kind: 'external', href } : { kind: 'none' };
+  }
+
+  return { kind: 'none' };
+}
+
+function safeExternalResourceUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function absoluteResourceHref(value: string | undefined): string | undefined {
@@ -2817,6 +3086,7 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
     repostCount: item.repostCount,
     type,
     title: item.title,
+    authorId: item.author.id,
     author: item.author.name,
     initials: initialsFromName(item.author.name),
     org: authorOrg,
@@ -2824,15 +3094,6 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
     state: item.lifecycle === 'closed' ? 'Closed' : item.lifecycle === 'resolved' ? 'Answered' : undefined,
     lifecycle: item.lifecycle,
     body: item.excerpt ?? '',
-    poll:
-      type === 'poll'
-        ? {
-            id: item.id,
-            q: item.title,
-            closes: item.closedAt ? 'Closed' : item.closesAt ?? 'Open',
-            options: [],
-          }
-        : undefined,
     eventRows:
       type === 'event'
         ? [
@@ -2888,33 +3149,68 @@ function workingGroupPollDetailToPoll(
 ): Poll {
   const poll = detail.poll as Record<string, unknown>;
   const questions = arrayOfRecords(poll.questions);
-  const question = questions[0];
-  const options = arrayOfRecords(question?.options).length
-    ? arrayOfRecords(question?.options)
-    : arrayOfRecords(poll.options);
+  const answers = arrayOfRecords(detail.answers).map((answer) => {
+    const questionId = firstString(answer.questionId, answer.question_id);
+    const optionId = firstString(answer.optionId, answer.option_id);
+    if (!questionId || !optionId) {
+      throw new Error('The poll contains an invalid member answer.');
+    }
+    return { questionId, optionId };
+  });
+  const resultByQuestion = new Map(
+    arrayOfRecords(detail.results).map((result) => {
+      const questionId = firstString(result.questionId, result.question_id);
+      if (!questionId) throw new Error('The poll contains invalid results.');
+      return [questionId, result] as const;
+    })
+  );
+  const id = firstString(poll.id) ?? fallback?.id;
+  if (!id || questions.length === 0) {
+    throw new Error('The poll contains no valid questions.');
+  }
 
   return {
-    id: firstString(poll.id) ?? fallback?.id,
-    questionId: firstString(question?.id, question?.questionId) ?? fallback?.questionId,
-    q: firstString(question?.text, question?.title, poll.title) ?? fallback?.q ?? 'Poll',
+    id,
     closes: poll.closedAt ? 'Closed' : firstString(poll.closesLabel, poll.closesAt) ?? fallback?.closes ?? 'Open',
-    options: options.length ? options.map((option) => pollOptionFromDetail(option, detail.results)) : fallback?.options ?? [],
+    closesAt: firstString(poll.closesAt, poll.closes_at) ?? null,
+    closedAt: firstString(poll.closedAt, poll.closed_at) ?? null,
+    questions: questions.map((question) => {
+      const questionId = firstString(question.id, question.questionId);
+      const text = firstString(question.text, question.title);
+      const options = arrayOfRecords(question.options);
+      if (!questionId || !text || options.length < 2) {
+        throw new Error('The poll contains an invalid question.');
+      }
+      const result = resultByQuestion.get(questionId);
+      const resultOptions = arrayOfRecords(result?.options);
+      return {
+        id: questionId,
+        text,
+        options: options.map((option) => pollOptionFromDetail(option, resultOptions)),
+      };
+    }),
+    answers,
+    hasSubmitted: booleanFrom(poll.hasSubmitted, poll.has_submitted) ?? false,
+    responseCount: numberFrom(poll.totalResponses, poll.total_responses) ?? 0,
   };
 }
 
-function pollOptionFromDetail(option: Record<string, unknown>, results: unknown[]): PollOption {
+function pollOptionFromDetail(
+  option: Record<string, unknown>,
+  results: Array<Record<string, unknown>>
+): PollOption {
   const id = firstString(option.id, option.optionId) ?? '';
+  const label = firstString(option.label, option.text, option.title);
+  if (!id || !label) throw new Error('The poll contains an invalid option.');
+  const result = results.find(
+    (row) => firstString(row.id, row.optionId, row.option_id) === id
+  );
   return {
-    ...(id ? { id } : {}),
-    label: firstString(option.label, option.text, option.title) ?? 'Option',
-    votes: numberFrom(option.votes, option.voteCount, option.responseCount, resultVotesForOption(id, results)) ?? 0,
+    id,
+    label,
+    votes: numberFrom(result?.votes, result?.voteCount, option.votes, option.voteCount) ?? 0,
+    percentage: numberFrom(result?.percentage, option.percentage) ?? 0,
   };
-}
-
-function resultVotesForOption(optionId: string, results: unknown[]): number | undefined {
-  if (!optionId) return undefined;
-  const row = arrayOfRecords(results).find((result) => firstString(result.optionId, result.option_id, result.id) === optionId);
-  return row ? numberFrom(row.votes, row.voteCount, row.count, row.responses) : undefined;
 }
 
 function attachmentTitle(attachment: WorkingGroupDetailAttachment): string {
@@ -2982,6 +3278,7 @@ function mergeGroupThreads(
       targetType: 'thread',
       type: 'discussion',
       title: thread.title,
+      authorId: thread.authorId,
       author: thread.authorName,
       initials: thread.participants[0]?.initials,
       org: row.leadLabel || row.name,
@@ -3053,9 +3350,22 @@ function homeImmediateActionsFixture(): HomeImmediateActionsResponse {
 }
 
 function workingGroupsFixture(): WorkingGroupsData {
-  const joined = GROUPS.filter((group) => group.joined);
+  const memberIdForName = (name: string) =>
+    DIRECTORY_PEOPLE.find((person) => person.name === name)?.id;
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    threads: group.threads.map((thread) => ({
+      ...thread,
+      authorId: thread.authorId ?? memberIdForName(thread.author),
+      replies: thread.replies.map((reply) => ({
+        ...reply,
+        authorId: reply.authorId ?? memberIdForName(reply.a),
+      })),
+    })),
+  }));
+  const joined = groups.filter((group) => group.joined);
   return {
-    groups: GROUPS,
+    groups,
     home: {
       groups: joined.map((group) => ({
         slug: group.slug ?? group.id,
@@ -3070,17 +3380,18 @@ function workingGroupsFixture(): WorkingGroupsData {
             href: `/members/groups/${group.slug ?? group.id}/${thread.id}`,
             title: thread.title,
             groupName: group.n,
+            authorId: thread.authorId,
             authorName: thread.author,
             replies: thread.replies.length,
             age: thread.time,
             unread: group.unread > 0,
-            participants: [
-              {
-                id: thread.author,
-                name: thread.author,
-                initials: thread.initials ?? initialsFromName(thread.author),
-              },
-            ],
+            participants: thread.authorId
+              ? [{
+                  id: thread.authorId,
+                  name: thread.author,
+                  initials: thread.initials ?? initialsFromName(thread.author),
+                }]
+              : [],
           }))
         )
         .slice(0, 4),

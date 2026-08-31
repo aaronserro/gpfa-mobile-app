@@ -30,7 +30,6 @@ import {
   DownloadSimple,
   FileXls,
   Repeat,
-  ShareFat,
   X,
 } from '../../ds/icons';
 import { Avatar, Input, MastheadMeta, ScreenHeader } from '../../ds/primitives';
@@ -41,6 +40,7 @@ import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
 import ForumFilePicker from './ForumFilePicker';
 import { MentionInput, MentionText } from './MentionInput';
 import PollEditor from './PollEditor';
+import PollQuestionnaire from './PollQuestionnaire';
 import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import type {
   ForumAttachment,
@@ -49,6 +49,7 @@ import type {
   MemberPoll,
   MemberPollUpdateInput,
   Poll,
+  PollAnswer,
   PostType,
   Reply,
   RsvpChoice,
@@ -128,7 +129,6 @@ export interface PostDetailProps {
   onSummarize?: () => void;
   onUpdate?: (input: { title?: string; body?: string }) => void;
   onDelete?: () => void;
-  onChangeStatus?: (status: 'open' | 'answered' | 'closed') => void;
   memberId: string;
   mentionMembers: GroupMember[];
   mutationNotice: MutationNoticeValue | null;
@@ -151,13 +151,14 @@ export interface PostDetailProps {
   onToggleUpvote: () => void;
   reposted: boolean;
   onToggleRepost: () => void;
-  /** Chosen option index; absent means this member has not voted. */
-  vote: number | undefined;
-  onVote: (option: number) => void;
+  pollAnswerDraft: PollAnswer[];
+  onUpdatePollDraft: (answers: PollAnswer[]) => void;
+  onSubmitPollAnswers: (answers: PollAnswer[]) => Promise<boolean>;
   rsvp: RsvpChoice | undefined;
   onRsvp: (choice: RsvpChoice) => void;
   onReply: (text: string, parentPostId: string | null, files: ForumUploadFile[]) => Promise<boolean>;
   onOpenAttachment: (attachment: ForumAttachment) => void;
+  onOpenMemberProfile: (memberId: string) => void;
   onBack: () => void;
 }
 
@@ -170,7 +171,6 @@ export default function PostDetail({
   onSummarize,
   onUpdate,
   onDelete,
-  onChangeStatus,
   memberId,
   mentionMembers,
   mutationNotice,
@@ -193,12 +193,14 @@ export default function PostDetail({
   onToggleUpvote,
   reposted,
   onToggleRepost,
-  vote,
-  onVote,
+  pollAnswerDraft,
+  onUpdatePollDraft,
+  onSubmitPollAnswers,
   rsvp,
   onRsvp,
   onReply,
   onOpenAttachment,
+  onOpenMemberProfile,
   onBack,
 }: PostDetailProps) {
   const { t } = useTheme();
@@ -218,9 +220,6 @@ export default function PostDetail({
   const isEvent = type === 'event';
   const hasStructuredDetailCard = isAnnouncement || isEvent;
 
-  const voted = vote !== undefined;
-  const counts = post.poll?.options.map((o, i) => o.votes + (vote === i ? 1 : 0)) ?? [];
-  const total = counts.reduce((a, b) => a + b, 0);
   const initialReposted = post.hasReposted ?? false;
   const repostDelta = reposted === initialReposted ? 0 : reposted ? 1 : -1;
   const repostCount = Math.max(0, (post.repostCount ?? 0) + repostDelta);
@@ -229,7 +228,6 @@ export default function PostDetail({
   const canReply = post.canReply ?? !isAnnouncement;
   const canEdit = type !== 'poll' && !!post.canEdit && !!onUpdate;
   const canDelete = type !== 'poll' && !!post.canDelete && !!onDelete;
-  const canChangeStatus = type !== 'poll' && !!post.canChangeStatus && !!onChangeStatus;
   const canManagePoll = type === 'poll' && !!post.canEdit;
   const upvotePending = !!deletingReplies[`upvote:${post.id}`];
   const repostPending = !!deletingReplies[`repost:${post.id}`];
@@ -237,7 +235,6 @@ export default function PostDetail({
   const rsvpPending = !!deletingReplies[`rsvp:${post.id}`];
   const threadUpdatePending = !!deletingReplies[`thread:update:${post.id}`];
   const threadDeletePending = !!deletingReplies[`thread:delete:${post.id}`];
-  const threadStatusPending = !!deletingReplies[`thread:status:${post.id}`];
 
   const send = async () => {
     const text = draft.trim();
@@ -267,23 +264,20 @@ export default function PostDetail({
         onBack={onBack}
         backLabel={`Back to ${groupName}`}
         actions={
-          <View style={styles.topActions}>
-            <Pressable
-              onPress={onToggleRepost}
-              disabled={repostPending}
-              accessibilityRole="button"
-              accessibilityLabel={reposted ? 'Remove repost' : 'Repost'}
-              accessibilityState={{ selected: reposted, disabled: repostPending }}
-              hitSlop={8}
-            >
-              <Repeat
-                size={19}
-                weight={reposted ? 'bold' : 'regular'}
-                color={reposted ? t.brandGreenOnDark : '#fff'}
-              />
-            </Pressable>
-            <ShareFat size={19} color="#fff" />
-          </View>
+          <Pressable
+            onPress={onToggleRepost}
+            disabled={repostPending}
+            accessibilityRole="button"
+            accessibilityLabel={reposted ? 'Remove repost' : 'Repost'}
+            accessibilityState={{ selected: reposted, disabled: repostPending }}
+            hitSlop={8}
+          >
+            <Repeat
+              size={19}
+              weight={reposted ? 'bold' : 'regular'}
+              color={reposted ? t.brandGreenOnDark : '#fff'}
+            />
+          </Pressable>
         }
       />
 
@@ -344,7 +338,12 @@ export default function PostDetail({
               <Text style={[styles.postTitle, { color: t.inkStrong }]}>{post.title}</Text>
 
               {hasStructuredDetailCard ? (
-                <TypeDetailCard groupName={groupName} post={post} type={type} />
+                <TypeDetailCard
+                  groupName={groupName}
+                  post={post}
+                  type={type}
+                  onOpenAuthor={post.authorId ? () => onOpenMemberProfile(post.authorId!) : undefined}
+                />
               ) : (
                 <MentionText style={[styles.postBody, { color: t.inkBody }]}>{post.body}</MentionText>
               )}
@@ -352,7 +351,13 @@ export default function PostDetail({
           )}
 
           {!hasStructuredDetailCard && (
-            <View style={[styles.byline, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+            <Pressable
+              disabled={!post.authorId}
+              onPress={() => post.authorId && onOpenMemberProfile(post.authorId)}
+              accessibilityRole={post.authorId ? 'button' : undefined}
+              accessibilityLabel={post.authorId ? `Open ${post.author}'s profile` : undefined}
+              style={[styles.byline, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+            >
               <AnchorAvatar initials={post.initials ?? initialsOf(post.author)} size={34} />
               <View style={styles.flex}>
                 <View style={styles.bylineTop}>
@@ -363,7 +368,7 @@ export default function PostDetail({
                   {`${post.org} · ${post.time}`}
                 </MastheadMeta>
               </View>
-            </View>
+            </Pressable>
           )}
 
           {!!post.attachments?.length ? (
@@ -451,67 +456,18 @@ export default function PostDetail({
               <PollFilePanel
                 groupName={groupName}
                 poll={post.poll}
-                total={total}
-                answered={voted}
+                answered={post.poll.hasSubmitted}
                 status={post.lifecycle === 'closed' ? 'Closed' : 'Open'}
               />
-
-              <View style={[styles.poll, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-                <View style={styles.pollQRow}>
-                  <ChartBar size={15} color={t.brandAmber} />
-                  <Text style={[styles.pollQ, { color: t.inkStrong }]}>{post.poll.q}</Text>
-                </View>
-                <View style={styles.pollOptions}>
-                  {post.poll.options.map((o, i) => {
-                    const chosen = vote === i;
-                    const pct = voted && total > 0 ? Math.round((counts[i] / total) * 100) : 0;
-                    return (
-                      <Pressable
-                        key={o.label}
-                        onPress={() => onVote(i)}
-                        disabled={voted || votePending || post.lifecycle === 'closed'}
-                        accessibilityState={{ disabled: voted || votePending || post.lifecycle === 'closed', selected: chosen }}
-                        style={[
-                          styles.pollOption,
-                          {
-                            borderColor: chosen ? t.brandGreen : t.ruleHairline,
-                            backgroundColor: t.surfacePaper,
-                          },
-                        ]}
-                      >
-                        {voted && (
-                          <View
-                            style={[
-                              styles.pollFill,
-                              {
-                                width: `${pct}%`,
-                                backgroundColor: chosen
-                                  ? t.brandGreenSoft
-                                  : alpha(t.surfaceSoft, 0.6),
-                              },
-                            ]}
-                          />
-                        )}
-                        <View style={styles.pollLabelRow}>
-                          <Text
-                            style={[
-                              styles.pollLabel,
-                              { color: t.inkStrong, fontFamily: sans(chosen ? 600 : 500) },
-                            ]}
-                          >
-                            {o.label}
-                          </Text>
-                          {chosen && <CheckCircle size={15} weight="fill" color={t.brandLeaf} />}
-                        </View>
-                        {voted && <Text style={[styles.pollPct, { color: t.inkMuted }]}>{pct}%</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <MastheadMeta size={9.5} style={styles.pollMeta}>
-                  {(voted ? `${total} votes · ` : '') + post.poll.closes}
-                </MastheadMeta>
-              </View>
+              <PollQuestionnaire
+                key={post.poll.id}
+                poll={post.poll}
+                closed={post.lifecycle === 'closed' || !!post.poll.closedAt}
+                draftAnswers={pollAnswerDraft}
+                pending={votePending}
+                onDraftChange={onUpdatePollDraft}
+                onSubmit={onSubmitPollAnswers}
+              />
 
               {!!pollEditor && (
                 <PollEditor
@@ -638,22 +594,6 @@ export default function PostDetail({
             )}
           </View>
 
-          {canChangeStatus && (
-            <View style={styles.statusRow}>
-              {(['open', 'answered', 'closed'] as const).map((status) => (
-                <Pressable
-                  key={status}
-                  onPress={() => onChangeStatus?.(status)}
-                  disabled={threadStatusPending}
-                  accessibilityState={{ disabled: threadStatusPending }}
-                  style={[styles.statusBtn, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
-                >
-                  <Text style={[styles.statusText, { color: t.inkMuted }]}>{status}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
           {!!summary && (
             <View style={[styles.summaryCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
               <Text style={[styles.summaryTitle, { color: t.inkStrong }]}>Summary</Text>
@@ -709,6 +649,7 @@ export default function PostDetail({
                       onDelete={canReply && node.reply.id && node.reply.authorId === memberId ? () => confirmReplyDelete(node.reply.id!) : undefined}
                       deleting={!!node.reply.id && !!deletingReplies[`reply:delete:${node.reply.id}`]}
                       onOpenAttachment={onOpenAttachment}
+                      onOpenAuthor={node.reply.authorId ? () => onOpenMemberProfile(node.reply.authorId!) : undefined}
                     />
 
                     {node.children.map((child) => (
@@ -727,6 +668,7 @@ export default function PostDetail({
                               onDelete={canReply && child.reply.id && child.reply.authorId === memberId ? () => confirmReplyDelete(child.reply.id!) : undefined}
                               deleting={!!child.reply.id && !!deletingReplies[`reply:delete:${child.reply.id}`]}
                               onOpenAttachment={onOpenAttachment}
+                              onOpenAuthor={child.reply.authorId ? () => onOpenMemberProfile(child.reply.authorId!) : undefined}
                             />
                           </View>
                         </View>
@@ -808,6 +750,7 @@ function ReplyBody({
   onDelete,
   deleting = false,
   onOpenAttachment,
+  onOpenAuthor,
 }: {
   node: ReplyNode;
   nested?: boolean;
@@ -816,20 +759,28 @@ function ReplyBody({
   onDelete?: () => void;
   deleting?: boolean;
   onOpenAttachment: (attachment: ForumAttachment) => void;
+  onOpenAuthor?: () => void;
 }) {
   const { t } = useTheme();
   const r = node.reply;
   return (
     <>
       <View style={styles.replyByline}>
-        <Text
+        <Pressable
+          disabled={!onOpenAuthor}
+          onPress={onOpenAuthor}
+          accessibilityRole={onOpenAuthor ? 'button' : undefined}
+          accessibilityLabel={onOpenAuthor ? `Open ${r.a}'s profile` : undefined}
+        >
+          <Text
           style={[
             nested ? styles.childAuthor : styles.replyAuthor,
             { color: t.inkStrong },
           ]}
-        >
-          {r.a}
-        </Text>
+          >
+            {r.a}
+          </Text>
+        </Pressable>
         <MastheadMeta size={9.5}>
           {`${r.org} · ${r.time}`}
         </MastheadMeta>
@@ -912,10 +863,12 @@ function TypeDetailCard({
   groupName,
   post,
   type,
+  onOpenAuthor,
 }: {
   groupName: string;
   post: Thread;
   type: Extract<PostType, 'announcement' | 'event'>;
+  onOpenAuthor?: () => void;
 }) {
   const { t } = useTheme();
   const kind = postTypeStyle(t, type);
@@ -934,7 +887,14 @@ function TypeDetailCard({
             {`${groupName} ${noun}`}
           </Text>
           <View style={styles.typeDetailByline}>
-            <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.author}</Text>
+            <Pressable
+              disabled={!onOpenAuthor}
+              onPress={onOpenAuthor}
+              accessibilityRole={onOpenAuthor ? 'button' : undefined}
+              accessibilityLabel={onOpenAuthor ? `Open ${post.author}'s profile` : undefined}
+            >
+              <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.author}</Text>
+            </Pressable>
             <Text style={[styles.typeDetailDot, { color: t.inkFaint }]}>·</Text>
             <Text style={[styles.typeDetailBylineText, { color: t.inkMuted }]}>{post.org}</Text>
             <Text style={[styles.typeDetailDot, { color: t.inkFaint }]}>·</Text>
@@ -958,21 +918,19 @@ function TypeDetailCard({
 function PollFilePanel({
   groupName,
   poll,
-  total,
   answered,
   status,
 }: {
   groupName: string;
   poll: Poll;
-  total: number;
   answered: boolean;
   status: string;
 }) {
   const { t } = useTheme();
   const kind = postTypeStyle(t, 'poll');
   const facts = [
-    { k: 'Questions', v: '1' },
-    { k: 'Responses', v: String(total) },
+    { k: 'Questions', v: String(poll.questions.length) },
+    { k: 'Responses', v: String(poll.responseCount) },
     { k: 'Status', v: status },
     { k: status === 'Closed' ? 'Closed' : 'Closes', v: poll.closes },
   ];
@@ -1016,13 +974,6 @@ function PollFilePanel({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-
-  topActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingRight: 6,
-  },
 
   post: {
     borderBottomWidth: 1,
@@ -1237,9 +1188,6 @@ const styles = StyleSheet.create({
   },
   manageBtnText: { fontFamily: sans(600), fontSize: 12 },
   manageBtnOnText: { fontFamily: sans(600), fontSize: 12, color: '#fff' },
-  statusRow: { marginTop: 8, flexDirection: 'row', gap: 8 },
-  statusBtn: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderRadius: 8 },
-  statusText: { fontFamily: mono(400), fontSize: 10, textTransform: 'uppercase' },
   summaryCard: { marginTop: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
   summaryTitle: { fontFamily: sans(600), fontSize: 12.5 },
   summaryText: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5, lineHeight: 19.4 },

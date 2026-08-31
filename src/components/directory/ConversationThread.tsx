@@ -28,6 +28,7 @@ import { conversationTitle, messageTimestamp, messagingParticipantName } from '.
 
 export interface ConversationThreadProps {
   currentMemberId: string;
+  onOpenMemberProfile: (memberId: string) => void;
   conversation: ConversationDetail | null;
   draftRecipient: MessagingParticipant | null;
   draftGroupParticipants: MessagingParticipant[];
@@ -54,6 +55,7 @@ const REACTIONS: MessageReaction[] = ['👍', '❤️', '😂', '😮', '😢', 
 
 export default function ConversationThread({
   currentMemberId,
+  onOpenMemberProfile,
   conversation,
   draftRecipient,
   draftGroupParticipants,
@@ -143,14 +145,26 @@ export default function ConversationThread({
           <CaretLeft size={20} color={t.brandGreen} />
         </Pressable>
         {other ? (
-          <Avatar initials={initials(other.name)} photoUrl={other.avatarUrl ?? undefined} size={36} />
+          <Pressable
+            onPress={() => onOpenMemberProfile(other.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${other.name}'s profile`}
+          >
+            <Avatar initials={initials(other.name)} photoUrl={other.avatarUrl ?? undefined} size={36} />
+          </Pressable>
         ) : null}
-        <View style={styles.headerText}>
+        <Pressable
+          onPress={other ? () => onOpenMemberProfile(other.id) : undefined}
+          disabled={!other}
+          accessibilityRole={other ? 'button' : undefined}
+          accessibilityLabel={other ? `Open ${other.name}'s profile` : undefined}
+          style={styles.headerText}
+        >
           <Text numberOfLines={1} style={[styles.title, { color: t.inkStrong }]}>{title}</Text>
           <Text numberOfLines={1} style={[styles.subtitle, { color: t.inkMuted }]}>
             {other?.roleTitle || other?.organizationName || `${participants.length} participants`}
           </Text>
-        </View>
+        </Pressable>
         {isGroup && (
           <Pressable
             onPress={() => {
@@ -200,7 +214,18 @@ export default function ConversationThread({
 
           <Text style={[styles.manageHeading, { color: t.inkStrong }]}>Participants</Text>
           {participants.map((participant) => (
-            <View key={participant.id} style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}>
+            <Pressable
+              key={participant.id}
+              onPress={!participant.isCurrentMember && !participant.hasLeft
+                ? () => onOpenMemberProfile(participant.id)
+                : undefined}
+              disabled={participant.isCurrentMember || participant.hasLeft}
+              accessibilityRole={!participant.isCurrentMember && !participant.hasLeft ? 'button' : undefined}
+              accessibilityLabel={!participant.isCurrentMember && !participant.hasLeft
+                ? `Open ${participant.name}'s profile`
+                : undefined}
+              style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}
+            >
               <Avatar initials={initials(participant.name)} photoUrl={participant.avatarUrl ?? undefined} size={32} />
               <View style={styles.memberText}>
                 <Text style={[styles.memberName, { color: t.inkStrong }]}>{participant.name}</Text>
@@ -208,7 +233,7 @@ export default function ConversationThread({
                   {participant.hasLeft ? 'Left conversation' : participant.organizationName ?? participant.roleTitle ?? 'GPFA member'}
                 </Text>
               </View>
-            </View>
+            </Pressable>
           ))}
 
           {availableSlots > 0 && availablePeople.length > 0 && (
@@ -229,13 +254,24 @@ export default function ConversationThread({
                     disabled={actionPending}
                     style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}
                   >
-                    <Avatar initials={person.initials ?? initials(person.name)} photoUrl={person.photoUrl} size={32} />
-                    <View style={styles.memberText}>
+                    <Pressable
+                      onPress={() => onOpenMemberProfile(person.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${person.name}'s profile`}
+                    >
+                      <Avatar initials={person.initials ?? initials(person.name)} photoUrl={person.photoUrl} size={32} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onOpenMemberProfile(person.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${person.name}'s profile`}
+                      style={styles.memberText}
+                    >
                       <Text style={[styles.memberName, { color: t.inkStrong }]}>{person.name}</Text>
                       <Text numberOfLines={1} style={[styles.memberMeta, { color: t.inkMuted }]}>
                         {[person.role, orgById.get(person.orgId)].filter(Boolean).join(' · ')}
                       </Text>
-                    </View>
+                    </Pressable>
                     <View style={[styles.selectCircle, { borderColor: selected ? t.brandGreen : t.ruleStrong, backgroundColor: selected ? t.brandGreen : 'transparent' }]}>
                       {selected && <Text style={[styles.selectMark, { color: t.inkInverse }]}>✓</Text>}
                     </View>
@@ -326,13 +362,25 @@ export default function ConversationThread({
             return (
               <View key={message.id} style={[styles.messageRow, own && styles.messageRowOwn]}>
                 {!own && sender ? (
-                  <Avatar initials={initials(sender.name)} photoUrl={sender.avatarUrl ?? undefined} size={28} />
+                  <Pressable
+                    onPress={() => onOpenMemberProfile(sender.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${sender.name}'s profile`}
+                  >
+                    <Avatar initials={initials(sender.name)} photoUrl={sender.avatarUrl ?? undefined} size={28} />
+                  </Pressable>
                 ) : null}
                 <View style={[styles.messageColumn, own && styles.messageColumnOwn]}>
                   {!own && sender ? (
-                    <Text style={[styles.sender, { color: t.inkMuted }]}>
-                      {messagingParticipantName(sender)}
-                    </Text>
+                    <Pressable
+                      onPress={() => onOpenMemberProfile(sender.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${sender.name}'s profile`}
+                    >
+                      <Text style={[styles.sender, { color: t.inkMuted }]}>
+                        {messagingParticipantName(sender)}
+                      </Text>
+                    </Pressable>
                   ) : null}
                   <Pressable
                     onLongPress={() => setReactionPickerMessageId((current) => current === message.id ? null : message.id)}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +16,20 @@ import { mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import type { ForumUploadFile, Group, GroupMember, NewPostInput, PostType } from '../api/types';
 import ForumFilePicker from './groups/ForumFilePicker';
 import { MentionInput } from './groups/MentionInput';
+import PollQuestionFields, {
+  createPollQuestionDraft,
+  pollQuestionDraftsToInput,
+} from './groups/PollQuestionFields';
+import { pollQuestionsAreValid } from '../lib/polls';
+import {
+  appendTagToken,
+  filterTagSuggestions,
+  formatTagCountText,
+  getTagSuggestionQuery,
+  parseTagInput,
+  serializeTagInput,
+  type TagSuggestion,
+} from '../lib/tags';
 
 const TYPES: PostType[] = ['discussion', 'poll', 'announcement', 'event'];
 
@@ -28,7 +42,7 @@ const TYPE_ICON: Record<PostType, Icon> = {
 
 const TYPE_HINT: Record<PostType, string> = {
   discussion: 'Share the question you want the group to answer.',
-  poll: 'Question, then options. One response per organization.',
+  poll: 'Add one or more questions, then the options for each.',
   announcement: 'What changed, and what members need to do about it.',
   event: 'Date, time, location, and who should attend.',
 };
@@ -39,17 +53,19 @@ const TYPE_HINT: Record<PostType, string> = {
 export default function PostComposer({
   groups,
   initialGroupId,
-  tagSuggestions = [],
+  tagSuggestionsByGroup,
   mentionMembersByGroup,
   onSelectGroup,
+  onSearchTags,
   onClose,
   onCreate,
 }: {
   groups: Group[];
   initialGroupId: string;
-  tagSuggestions?: string[];
+  tagSuggestionsByGroup: Record<string, TagSuggestion[] | undefined>;
   mentionMembersByGroup: Record<string, GroupMember[] | undefined>;
   onSelectGroup?: (groupId: string) => void;
+  onSearchTags: (groupId: string, query: string) => Promise<TagSuggestion[]>;
   onClose: () => void;
   onCreate: (draft: NewPostInput) => void;
 }) {
@@ -59,10 +75,14 @@ export default function PostComposer({
   const [type, setType] = useState<PostType>('discussion');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [remoteTagSuggestions, setRemoteTagSuggestions] = useState<{
+    key: string;
+    entries: TagSuggestion[];
+  } | null>(null);
+  const tagRequestGeneration = useRef(0);
   const [files, setFiles] = useState<ForumUploadFile[]>([]);
-  const [pollQuestion, setPollQuestion] = useState('');
-  const [pollOptions, setPollOptions] = useState('');
+  const [pollQuestions, setPollQuestions] = useState(() => [createPollQuestionDraft()]);
   const [closesAt, setClosesAt] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -72,11 +92,48 @@ export default function PostComposer({
   const [isVirtual, setIsVirtual] = useState(false);
 
   const selectedGroup = groups.find((g) => g.id === groupId);
-  const parsedPollOptions = pollOptions
-    .split('\n')
-    .map((option) => option.trim())
-    .filter(Boolean);
-  const canPost = title.trim().length > 0 && (type !== 'poll' || parsedPollOptions.length >= 2);
+  const normalizedPollQuestions = pollQuestionDraftsToInput(pollQuestions);
+  const tags = useMemo(() => parseTagInput(tagInput, 8), [tagInput]);
+  const tagQuery = getTagSuggestionQuery(tagInput);
+  const tagLookupKey = `${groupId}:${tagQuery}`;
+  const localTagSuggestions = useMemo(
+    () => filterTagSuggestions(tagSuggestionsByGroup[groupId] ?? [], tagQuery, 6),
+    [groupId, tagQuery, tagSuggestionsByGroup]
+  );
+  const tagSuggestions =
+    remoteTagSuggestions?.key === tagLookupKey && remoteTagSuggestions.entries.length > 0
+      ? remoteTagSuggestions.entries
+      : localTagSuggestions;
+
+  useEffect(() => {
+    if (!groupId) return;
+
+    const generation = tagRequestGeneration.current + 1;
+    tagRequestGeneration.current = generation;
+    let active = true;
+    const timer = setTimeout(() => {
+      void onSearchTags(groupId, tagQuery)
+        .then((entries) => {
+          if (active && tagRequestGeneration.current === generation) {
+            setRemoteTagSuggestions({ key: tagLookupKey, entries });
+          }
+        })
+        .catch(() => {
+          // Previously loaded group tags remain useful when live lookup fails.
+          if (active && tagRequestGeneration.current === generation) {
+            setRemoteTagSuggestions({ key: tagLookupKey, entries: [] });
+          }
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [groupId, onSearchTags, tagLookupKey, tagQuery]);
+  const canPost =
+    title.trim().length > 0 &&
+    (type !== 'poll' || pollQuestionsAreValid(normalizedPollQuestions));
 
   const submit = () => {
     if (!canPost) return;
@@ -88,8 +145,7 @@ export default function PostComposer({
       body: body.trim(),
       tags,
       files: type === 'poll' ? undefined : files,
-      pollQuestion: pollQuestion.trim() || undefined,
-      pollOptions: parsedPollOptions,
+      pollQuestions: type === 'poll' ? normalizedPollQuestions : undefined,
       closesAt: closesAt.trim() || undefined,
       startsAt: startsAt.trim() || undefined,
       endsAt: endsAt.trim() || undefined,
@@ -171,18 +227,29 @@ export default function PostComposer({
             </View>
             <Text style={[styles.hint, { color: t.inkFaint }]}>{TYPE_HINT[type]}</Text>
 
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Tags</Text>
+            <Input
+              value={tagInput}
+              onChangeText={setTagInput}
+              onBlur={() => setTagInput((current) => serializeTagInput(current, 8))}
+              placeholder="#repo #collateral #legal"
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Tags"
+              style={styles.field}
+            />
+            <Text style={[styles.tagHelp, { color: t.inkFaint }]}>Create new tags as you type. Use hashtags and add up to 8.</Text>
             {tagSuggestions.length > 0 && (
-              <>
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Tags</Text>
                 <View style={styles.suggestionRow}>
-                  {tagSuggestions.map((tag) => {
-                    const on = tags.includes(tag);
+                  {tagSuggestions.map((suggestion) => {
+                    const normalizedLabel = parseTagInput(`#${suggestion.label}`, 1)[0] ?? suggestion.key;
+                    const on = tags.includes(normalizedLabel);
                     return (
                       <Pressable
-                        key={tag}
-                        onPress={() =>
-                          setTags((prev) => on ? prev.filter((value) => value !== tag) : [...prev, tag])
-                        }
+                        key={suggestion.key}
+                        onPress={() => setTagInput((current) => appendTagToken(current, suggestion.label, 8))}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add tag ${suggestion.label}, ${formatTagCountText(suggestion.count)}`}
                         style={[
                           styles.suggestionChip,
                           {
@@ -191,12 +258,12 @@ export default function PostComposer({
                           },
                         ]}
                       >
-                        <Text style={[styles.suggestionText, { color: on ? t.inkInverse : t.inkMuted }]}>{tag}</Text>
+                        <Text style={[styles.suggestionText, { color: on ? t.inkInverse : t.inkMuted }]}>#{suggestion.label}</Text>
+                        <Text style={[styles.suggestionCount, { color: on ? t.inkInverse : t.inkFaint }]}>{formatTagCountText(suggestion.count)}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
-              </>
             )}
 
             <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Title</Text>
@@ -220,16 +287,11 @@ export default function PostComposer({
 
             {type === 'poll' && (
               <>
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Poll question</Text>
-                <Input value={pollQuestion} onChangeText={setPollQuestion} placeholder="Question members will answer" style={styles.field} />
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Options</Text>
-                <Input
-                  value={pollOptions}
-                  onChangeText={setPollOptions}
-                  placeholder="One option per line"
-                  multiline
-                  textAlignVertical="top"
-                  style={[styles.field, styles.textarea]}
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Poll questions</Text>
+                <PollQuestionFields
+                  questions={pollQuestions}
+                  editable
+                  onChange={setPollQuestions}
                 />
                 <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Closes at</Text>
                 <Input value={closesAt} onChangeText={setClosesAt} placeholder="2026-09-01T17:00:00Z" style={styles.field} />
@@ -366,12 +428,17 @@ const styles = StyleSheet.create({
   suggestionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 },
   suggestionChip: {
     minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     justifyContent: 'center',
     paddingHorizontal: 10,
     borderWidth: 1,
     borderRadius: 32,
   },
   suggestionText: { fontFamily: sans(500), fontSize: 11.5 },
+  suggestionCount: { fontFamily: sans(400), fontSize: 9.5 },
+  tagHelp: { marginTop: 6, fontFamily: sans(400), fontSize: 11, lineHeight: 16 },
   field: {
     marginTop: 8,
     minHeight: 44,

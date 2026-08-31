@@ -21,6 +21,7 @@ import ConversationThread from './ConversationThread';
 
 export interface MessagesInboxProps {
   member: Member;
+  onOpenMemberProfile: (memberId: string) => void;
   people: DirectoryPerson[];
   orgs: MemberOrg[];
   conversations: ConversationSummary[];
@@ -51,6 +52,7 @@ export interface MessagesInboxProps {
 
 export default function MessagesInbox({
   member,
+  onOpenMemberProfile,
   people,
   orgs,
   conversations,
@@ -112,6 +114,7 @@ export default function MessagesInbox({
     return (
       <ConversationThread
         currentMemberId={member.id}
+        onOpenMemberProfile={onOpenMemberProfile}
         conversation={activeConversation}
         draftRecipient={draftRecipient}
         draftGroupParticipants={draftGroupParticipants}
@@ -218,13 +221,25 @@ export default function MessagesInbox({
                   },
                 ]}
               >
-                <Avatar initials={person.initials ?? initials(person.name)} photoUrl={person.photoUrl} size={38} />
-                <View style={styles.rowMain}>
+                <Pressable
+                  onPress={() => onOpenMemberProfile(person.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${person.name}'s profile`}
+                  style={styles.identityAvatar}
+                >
+                  <Avatar initials={person.initials ?? initials(person.name)} photoUrl={person.photoUrl} size={38} />
+                </Pressable>
+                <Pressable
+                  onPress={() => onOpenMemberProfile(person.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${person.name}'s profile`}
+                  style={styles.rowMain}
+                >
                   <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{person.name}</Text>
                   <Text numberOfLines={1} style={[styles.rowMeta, { color: t.inkMuted }]}>
                     {[person.role, orgById.get(person.orgId)].filter(Boolean).join(' · ')}
                   </Text>
-                </View>
+                </Pressable>
                 {resolvingMemberId === person.id ? (
                   <ActivityIndicator size="small" color={t.brandGreen} />
                 ) : groupMode ? (
@@ -286,6 +301,7 @@ export default function MessagesInbox({
           <ConversationRows
             conversations={conversations}
             onOpenConversation={onOpenConversation}
+            onOpenMemberProfile={onOpenMemberProfile}
           />
         </View>
       ) : loading && conversations.length === 0 ? (
@@ -307,7 +323,11 @@ export default function MessagesInbox({
           <Text style={[styles.empty, { color: t.inkMuted }]}>Start a message with another GPFA member.</Text>
         </View>
       ) : (
-        <ConversationRows conversations={conversations} onOpenConversation={onOpenConversation} />
+        <ConversationRows
+          conversations={conversations}
+          onOpenConversation={onOpenConversation}
+          onOpenMemberProfile={onOpenMemberProfile}
+        />
       )}
     </View>
   );
@@ -316,9 +336,11 @@ export default function MessagesInbox({
 function ConversationRows({
   conversations,
   onOpenConversation,
+  onOpenMemberProfile,
 }: {
   conversations: ConversationSummary[];
   onOpenConversation: (conversationId: string) => void;
+  onOpenMemberProfile: (memberId: string) => void;
 }) {
   const { t } = useTheme();
   return (
@@ -340,19 +362,39 @@ function ConversationRows({
               },
             ]}
           >
-            <Avatar
-              initials={initials(other?.name ?? conversationTitle(conversation))}
-              photoUrl={other?.avatarUrl ?? undefined}
-              size={40}
-            />
-            <View style={styles.rowMain}>
+            {conversation.kind === 'direct' && other ? (
+              <Pressable
+                onPress={() => onOpenMemberProfile(other.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${other.name}'s profile`}
+                style={styles.identityAvatar}
+              >
+                <Avatar initials={initials(other.name)} photoUrl={other.avatarUrl ?? undefined} size={40} />
+              </Pressable>
+            ) : (
+              <Avatar
+                initials={initials(conversationTitle(conversation))}
+                photoUrl={undefined}
+                size={40}
+              />
+            )}
+            <Pressable
+              onPress={conversation.kind === 'direct' && other
+                ? () => onOpenMemberProfile(other.id)
+                : () => onOpenConversation(conversation.id)}
+              accessibilityRole="button"
+              accessibilityLabel={conversation.kind === 'direct' && other
+                ? `Open ${other.name}'s profile`
+                : `Open ${conversationTitle(conversation)}`}
+              style={styles.rowMain}
+            >
               <Text numberOfLines={1} style={[styles.rowTitle, { color: t.inkStrong }]}>
                 {conversationTitle(conversation)}
               </Text>
               <Text numberOfLines={1} style={[styles.preview, { color: t.inkMuted }]}>
                 {conversation.lastMessage?.content ?? 'No messages yet'}
               </Text>
-            </View>
+            </Pressable>
             <View style={styles.rowRail}>
               <Text style={[styles.time, { color: t.inkFaint }]}>{messageTimestamp(conversation.lastMessageAt)}</Text>
               {conversation.unreadCount > 0 && (
@@ -391,6 +433,7 @@ const styles = StyleSheet.create({
   sectionLabel: { paddingHorizontal: 20, paddingBottom: 7, fontFamily: sans(600), fontSize: 11.5 },
   row: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, paddingRight: 18, paddingLeft: 17, borderBottomWidth: 1, borderLeftWidth: 3 },
   rowMain: { flex: 1, minWidth: 0 },
+  identityAvatar: { flexShrink: 0 },
   rowTitle: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
   rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5 },
   selection: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

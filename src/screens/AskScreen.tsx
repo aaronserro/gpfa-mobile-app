@@ -44,11 +44,13 @@ export default function AskScreen({
   const [draft, setDraft] = useState('');
   const scroller = useRef<ScrollView>(null);
   const lastTailId = useRef<string | null>(null);
+  const stickToBottom = useRef(true);
 
   useEffect(() => {
     const tailId = messages.at(-1)?.id ?? null;
     if (tailId === lastTailId.current) return;
     lastTailId.current = tailId;
+    stickToBottom.current = true;
     const frame = requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: false }));
     return () => cancelAnimationFrame(frame);
   }, [messages]);
@@ -87,6 +89,16 @@ export default function AskScreen({
         contentContainerStyle={styles.chat}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={32}
+        onScroll={({ nativeEvent }) => {
+          const distanceFromBottom = nativeEvent.contentSize.height
+            - nativeEvent.layoutMeasurement.height
+            - nativeEvent.contentOffset.y;
+          stickToBottom.current = distanceFromBottom < 72;
+        }}
+        onContentSizeChange={() => {
+          if (stickToBottom.current) scroller.current?.scrollToEnd({ animated: false });
+        }}
       >
         {loading && messages.length === 0 && (
           <View style={styles.loadingState}>
@@ -153,36 +165,46 @@ export default function AskScreen({
           )}
           {messages.map((m) => (
             <View key={m.id} style={{ alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-              <View
-                style={[
-                  styles.bubble,
-                  m.role === 'user'
-                    ? { backgroundColor: t.surfaceAnchor, borderColor: 'transparent' }
-                    : { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
-                ]}
-              >
-                {m.stream && <AskResearchStatus stream={m.stream} />}
-                {m.role === 'user' ? (
+              {m.role === 'user' ? (
+                <View style={[styles.userBubble, { backgroundColor: t.surfaceAnchor }]}>
                   <Text style={[styles.bubbleText, { color: t.inkInverse }]}>{m.text}</Text>
-                ) : m.text ? (
-                  <AskMarkdownAnswer streaming={m.stream?.status === 'generating'}>{m.text}</AskMarkdownAnswer>
-                ) : null}
-                {m.stream?.status === 'stopped' && (
-                  <Text style={[styles.stoppedCopy, { color: t.inkMuted }]}>Stopped — this partial answer was not saved.</Text>
-                )}
-                <AskSources sources={m.sources} sourceState={m.sourceState} onOpen={onOpenSource} />
-                {m.stream?.status === 'generating' && (
-                  <Pressable
-                    onPress={onStop}
-                    accessibilityRole="button"
-                    accessibilityLabel="Stop generating answer"
-                    style={[styles.stopButton, { borderColor: t.ruleHairline }]}
-                  >
-                    <View style={[styles.stopIcon, { backgroundColor: t.inkMuted }]} />
-                    <Text style={[styles.stopText, { color: t.inkMuted }]}>Stop</Text>
-                  </Pressable>
-                )}
-              </View>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.aiRow,
+                    m.stream?.status === 'generating' || m.stream?.status === 'saving'
+                      ? { borderLeftWidth: 2, borderLeftColor: t.brandGreen, paddingLeft: 8 }
+                      : { paddingLeft: 10 },
+                  ]}
+                >
+                  <View style={[styles.aiMark, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                    <Image source={markLogo} style={styles.aiMarkImage} resizeMode="contain" />
+                  </View>
+                  <View style={styles.aiContent}>
+                    <Text style={[styles.aiName, { color: t.inkStrong }]}>Ask GPFA</Text>
+                    {m.stream && <AskResearchStatus stream={m.stream} />}
+                    {m.text ? (
+                      <AskMarkdownAnswer streaming={m.stream?.status === 'generating'}>{m.text}</AskMarkdownAnswer>
+                    ) : null}
+                    {m.stream?.status === 'stopped' && (
+                      <Text style={[styles.stoppedCopy, { color: t.inkMuted }]}>Stopped — this partial answer was not saved.</Text>
+                    )}
+                    <AskSources sources={m.sources} sourceState={m.sourceState} onOpen={onOpenSource} />
+                    {m.stream?.status === 'generating' && (
+                      <Pressable
+                        onPress={onStop}
+                        accessibilityRole="button"
+                        accessibilityLabel="Stop generating answer"
+                        style={[styles.stopButton, { borderColor: t.ruleHairline }]}
+                      >
+                        <View style={[styles.stopIcon, { backgroundColor: t.inkMuted }]} />
+                        <Text style={[styles.stopText, { color: t.inkMuted }]}>Stop</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -278,13 +300,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   loadEarlierText: { fontFamily: sans(600), fontSize: 12.5 },
-  bubble: {
+  userBubble: {
     maxWidth: '82%',
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 14,
-    borderWidth: 1,
   },
+  aiRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  aiMark: { width: 30, height: 30, borderWidth: 1, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  aiMarkImage: { width: 20, height: 20 },
+  aiContent: { minWidth: 0, flex: 1 },
+  aiName: { marginBottom: 2, fontFamily: sans(600), fontSize: 12.5 },
   bubbleText: {
     fontFamily: sans(400),
     fontSize: 13.5,

@@ -43,8 +43,11 @@ export const USING_FIXTURE_PORTAL_DATA = rawFixturePortalData.trim().toLowerCase
 /** Abort a request that hasn't responded in this long. */
 export const REQUEST_TIMEOUT_MS = 15000;
 
-/** Ask GPFA can spend longer retrieving context and generating an answer. */
-export const AI_REQUEST_TIMEOUT_MS = 60000;
+/**
+ * Ask GPFA's server route can run for 60 seconds. Leave transport headroom so
+ * native clients do not abort while the completed answer is being persisted.
+ */
+export const AI_REQUEST_TIMEOUT_MS = 75000;
 
 /**
  * Paths are collected here so a backend whose routes differ can be adapted in

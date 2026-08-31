@@ -118,6 +118,7 @@ export interface GroupViewProps {
   showTags: boolean;
   onBack: () => void;
   onOpenPost: (postId: string) => void;
+  onOpenMemberProfile: (memberId: string) => void;
   onCompose: () => void;
   onOpenResourceSubmission: () => void;
   onOpenResource?: (resource: LibraryResource) => void;
@@ -162,6 +163,7 @@ export default function GroupView({
   showTags,
   onBack,
   onOpenPost,
+  onOpenMemberProfile,
   onCompose,
   onOpenResourceSubmission,
   onOpenResource,
@@ -374,6 +376,7 @@ export default function GroupView({
                       onToggleRepost={() => onToggleRepost(p.id)}
                       showTags={showTags}
                       onOpen={() => onOpenPost(p.id)}
+                      onOpenAuthor={p.authorId ? () => onOpenMemberProfile(p.authorId!) : undefined}
                     />
                   ))}
                   {(hasMore || loadingMore) && (
@@ -397,28 +400,6 @@ export default function GroupView({
               <Plus size={18} weight="bold" color="#fff" />
               <Text style={styles.fabText}>Post</Text>
             </Pressable>
-
-            <Pressable
-              onPress={onOpenResourceSubmission}
-              disabled={!subscribed}
-              accessibilityRole="button"
-              accessibilityLabel="Submit resource"
-              accessibilityState={{ disabled: !subscribed }}
-              style={({ pressed }) => [
-                styles.resourceFab,
-                {
-                  borderColor: t.ruleHairline,
-                  backgroundColor: !subscribed
-                    ? t.muted
-                    : pressed
-                      ? alpha(t.surfaceAnchor, 0.14)
-                      : t.surfacePaper,
-                },
-              ]}
-            >
-              <FileText size={16} color={subscribed ? t.surfaceAnchor : t.inkFaint} />
-              <Text style={[styles.resourceFabText, { color: subscribed ? t.surfaceAnchor : t.inkFaint }]}>Resource</Text>
-            </Pressable>
           </>
         )}
 
@@ -435,13 +416,20 @@ export default function GroupView({
               <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
                 <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Leadership</Text>
                 {coLeads.map((c) => (
-                  <View key={c.name} style={styles.leadRow}>
+                  <Pressable
+                    key={c.id ?? c.name}
+                    disabled={!c.id}
+                    onPress={() => c.id && onOpenMemberProfile(c.id)}
+                    accessibilityRole={c.id ? 'button' : undefined}
+                    accessibilityLabel={c.id ? `Open ${c.name}'s profile` : undefined}
+                    style={styles.leadRow}
+                  >
                     <AnchorAvatar initials={c.initials ?? initialsOf(c.name)} size={34} />
                     <View style={styles.flex}>
                       <Text style={[styles.personName, { color: t.inkStrong }]}>{c.name}</Text>
                       <Text style={[styles.personRole, { color: t.inkMuted }]}>Co-lead · {c.org}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             )}
@@ -542,8 +530,12 @@ export default function GroupView({
               {`${visibleMembers.length} OF ${memberCount} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
             </MastheadMeta>
             {visibleMembers.map((m) => (
-              <View
-                key={m.name}
+              <Pressable
+                key={m.id ?? m.name}
+                disabled={!m.id}
+                onPress={() => m.id && onOpenMemberProfile(m.id)}
+                accessibilityRole={m.id ? 'button' : undefined}
+                accessibilityLabel={m.id ? `Open ${m.name}'s profile` : undefined}
                 style={[
                   styles.memberRow,
                   { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline },
@@ -560,7 +552,7 @@ export default function GroupView({
                 <MastheadMeta size={9.5} color={t.inkFaint}>
                   {m.org}
                 </MastheadMeta>
-              </View>
+              </Pressable>
             ))}
             {visibleMembers.length === 0 && (
               <Text style={[styles.personEmpty, { color: t.inkMuted }]}>No members match this search.</Text>
@@ -972,6 +964,7 @@ function PostCard({
   onToggleRepost,
   showTags,
   onOpen,
+  onOpenAuthor,
 }: {
   post: Thread;
   replyCount: number;
@@ -984,6 +977,7 @@ function PostCard({
   onToggleRepost: () => void;
   showTags: boolean;
   onOpen: () => void;
+  onOpenAuthor?: () => void;
 }) {
   const { t } = useTheme();
   const type = post.type ?? 'discussion';
@@ -994,18 +988,25 @@ function PostCard({
   let strip = '';
   if (type === 'event' && post.eventRows) strip = post.eventRows.map((e) => e.text).join(' · ');
   if (post.poll) {
-    const total = post.poll.options.reduce((a, o) => a + o.votes, 0);
-    strip = `${post.poll.options.length} options · ${total} responses · ${post.poll.closes.split(' · ')[0]}`;
+    const questionLabel = post.poll.questions.length === 1 ? 'question' : 'questions';
+    strip = `${post.poll.questions.length} ${questionLabel} · ${post.poll.responseCount} responses · ${post.poll.closes.split(' · ')[0]}`;
   }
 
   return (
     <View style={[styles.card, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-      <Pressable onPress={onOpen} accessibilityRole="button">
-        <View style={styles.cardMetaRow}>
+      <View style={styles.cardMetaRow}>
+        <Pressable
+          onPress={onOpenAuthor}
+          disabled={!onOpenAuthor}
+          accessibilityRole={onOpenAuthor ? 'button' : undefined}
+          accessibilityLabel={onOpenAuthor ? `Open ${post.author}'s profile` : undefined}
+          style={styles.cardAuthorIdentity}
+        >
           <Avatar initials={post.initials ?? initialsOf(post.author)} size={22} />
           <Text numberOfLines={1} style={[styles.cardAuthor, { color: t.inkMuted }]}>
             {post.author}
           </Text>
+        </Pressable>
           <Text style={[styles.cardDot, { color: t.inkMuted }]}>·</Text>
           <View style={styles.cardType}>
             <TypeIcon size={13} color={alpha(t.inkStrong, 0.8)} />
@@ -1015,8 +1016,9 @@ function PostCard({
           </View>
           <Text style={[styles.cardDot, { color: t.inkMuted }]}>·</Text>
           <Text style={[styles.cardTime, { color: t.inkMuted }]}>{post.time}</Text>
-        </View>
+      </View>
 
+      <Pressable onPress={onOpen} accessibilityRole="button">
         <Text style={[styles.cardTitle, { color: t.inkStrong }]}>{post.title}</Text>
         <Text numberOfLines={2} style={[styles.cardBody, { color: t.inkMuted }]}>
           {post.body}
@@ -1160,6 +1162,7 @@ const styles = StyleSheet.create({
   cards: { gap: 12, paddingTop: 12, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 8, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cardAuthorIdentity: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
   cardAuthor: { flexShrink: 1, fontFamily: mono(400), fontSize: 11 },
   cardDot: { fontFamily: mono(400), fontSize: 11 },
   cardType: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -1228,24 +1231,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { fontFamily: sans(600), fontSize: 14, color: '#fff' },
-  resourceFab: {
-    position: 'absolute',
-    left: 16,
-    bottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 44,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderRadius: 22,
-    shadowColor: '#132329',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  resourceFabText: { fontFamily: sans(600), fontSize: 13 },
 
   about: { padding: 16, paddingBottom: 40, gap: 18 },
   aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },

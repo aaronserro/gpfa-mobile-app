@@ -8,10 +8,15 @@ import {
   normalizeAskSource,
   normalizeAskSources,
 } from '../src/api/ask-stream';
+import { AI_REQUEST_TIMEOUT_MS } from '../src/api/config';
 import { askSourceDestination, trustedAskSourceUrl } from '../src/lib/ask-source-navigation';
 import type { AskStreamEvent, AskTraceRow } from '../src/api/types';
 
 const encoder = new TextEncoder();
+
+test('keeps native stream timeout beyond the server execution budget', () => {
+  assert.ok(AI_REQUEST_TIMEOUT_MS > 60_000);
+});
 
 function source(overrides: Record<string, unknown> = {}) {
   return {
@@ -59,6 +64,18 @@ test('rejects malformed known stream events', () => {
     () => parser.push(encoder.encode('event: text_delta\ndata: {"type":"text_delta"}\n\n')),
     /invalid text update/
   );
+});
+
+test('drops an incomplete trailing SSE frame when the transport closes', () => {
+  const events: AskStreamEvent[] = [];
+  const parser = createAskSseParser((event) => events.push(event));
+  parser.push(encoder.encode(
+    'event: text_delta\ndata: {"type":"text_delta","text":"Complete"}\n\n' +
+    'event: persisted\ndata: {"type":"persisted"'
+  ));
+
+  assert.doesNotThrow(() => parser.finish());
+  assert.deepEqual(events, [{ type: 'text_delta', text: 'Complete' }]);
 });
 
 test('sorts and deduplicates structured sources', () => {
