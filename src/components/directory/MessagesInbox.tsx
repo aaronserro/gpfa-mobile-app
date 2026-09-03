@@ -29,6 +29,7 @@ export interface MessagesInboxProps {
   draftRecipient: MessagingParticipant | null;
   draftGroupParticipants: MessagingParticipant[];
   messages: MessageItem[];
+  threadVisible: boolean;
   loading: boolean;
   error: Error | null;
   sending: boolean;
@@ -37,6 +38,7 @@ export interface MessagesInboxProps {
   loadingOlderMessages: boolean;
   hasOlderMessages: boolean;
   actionPending: boolean;
+  messageMutationPendingId: string | null;
   onOpenConversation: (conversationId: string) => void;
   onStartMessage: (memberId: string) => void;
   onStartGroupMessage: (memberIds: string[]) => Promise<void>;
@@ -45,9 +47,12 @@ export interface MessagesInboxProps {
   onSend: (content: string) => Promise<void>;
   onLoadOlder: () => Promise<void>;
   onSetReaction: (messageId: string, emoji: MessageReaction, active: boolean) => Promise<void>;
+  onEditMessage: (messageId: string, content: string) => Promise<void>;
+  onUnsendMessage: (messageId: string) => Promise<void>;
   onRename: (title: string) => Promise<void>;
   onAddMembers: (participantIds: string[]) => Promise<void>;
   onLeave: () => Promise<void>;
+  onReachLatest: (ordinal: number) => void;
 }
 
 export default function MessagesInbox({
@@ -60,6 +65,7 @@ export default function MessagesInbox({
   draftRecipient,
   draftGroupParticipants,
   messages,
+  threadVisible,
   loading,
   error,
   sending,
@@ -68,6 +74,7 @@ export default function MessagesInbox({
   loadingOlderMessages,
   hasOlderMessages,
   actionPending,
+  messageMutationPendingId,
   onOpenConversation,
   onStartMessage,
   onStartGroupMessage,
@@ -76,9 +83,12 @@ export default function MessagesInbox({
   onSend,
   onLoadOlder,
   onSetReaction,
+  onEditMessage,
+  onUnsendMessage,
   onRename,
   onAddMembers,
   onLeave,
+  onReachLatest,
 }: MessagesInboxProps) {
   const { t } = useTheme();
   const [composing, setComposing] = useState(false);
@@ -121,20 +131,25 @@ export default function MessagesInbox({
         people={people}
         orgs={orgs}
         messages={messages}
+        visible={threadVisible}
         loading={loading || resolvingMemberId !== null || resolvingGroup}
         loadingOlder={loadingOlderMessages}
         hasOlder={hasOlderMessages}
         error={error}
         sending={sending}
         actionPending={actionPending}
+        messageMutationPendingId={messageMutationPendingId}
         onBack={onCloseConversation}
         onRetry={onRetryConversation}
         onSend={onSend}
         onLoadOlder={onLoadOlder}
         onSetReaction={onSetReaction}
+        onEditMessage={onEditMessage}
+        onUnsendMessage={onUnsendMessage}
         onRename={onRename}
         onAddMembers={onAddMembers}
         onLeave={onLeave}
+        onReachLatest={onReachLatest}
       />
     );
   }
@@ -379,13 +394,9 @@ function ConversationRows({
               />
             )}
             <Pressable
-              onPress={conversation.kind === 'direct' && other
-                ? () => onOpenMemberProfile(other.id)
-                : () => onOpenConversation(conversation.id)}
+              onPress={() => onOpenConversation(conversation.id)}
               accessibilityRole="button"
-              accessibilityLabel={conversation.kind === 'direct' && other
-                ? `Open ${other.name}'s profile`
-                : `Open ${conversationTitle(conversation)}`}
+              accessibilityLabel={`Open ${conversationTitle(conversation)}`}
               style={styles.rowMain}
             >
               <Text numberOfLines={1} style={[styles.rowTitle, { color: t.inkStrong }]}>

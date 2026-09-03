@@ -29,8 +29,10 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 | set | **Remote mode.** Every read and write hits your server. Sign-in posts real credentials and stores a token. |
 
 `EXPO_PUBLIC_GPFA_WEB_ORIGIN` is optional and is sent to sign-in as
-`webOrigin` when set. Use your Mac's LAN IP for real devices; `localhost`
-points at the phone itself.
+`webOrigin` when set. It is also the preferred origin for the browser-based
+password-recovery page. Use HTTPS in production. During development, use your
+Mac's reachable LAN IP or an HTTPS tunnel for real devices; `localhost` points
+at the phone itself.
 
 For a step-by-step real-device auth test flow, see
 [docs/MOBILE_AUTH_TESTING.md](docs/MOBILE_AUTH_TESTING.md).
@@ -145,7 +147,26 @@ field if present.
 > apps have no per-origin cookie jar. You need a token-issuing route for mobile.
 > This is the single most likely server-side change required.
 
-### 3.3 Refresh and revocation boundary
+### 3.3 Password recovery browser handoff
+
+The signed-out screen opens `${AUTH_BASE_URL}/forgot-password` in the system
+browser. A syntactically valid email already entered in the app is normalized,
+URL-encoded, and included only as an optional `email` prefill. Invalid or empty
+input still opens the unprefilled page.
+
+Native does not call the forgot-password or reset-password APIs and receives no
+recovery token. The browser page validates the email again, submits the public
+rate-limited request, and keeps account-state responses uniform. Supabase's
+callback session and the HMAC-bound `gpfa_password_recovery` httpOnly grant
+cookie remain browser-only. Password reset completes in that browser context;
+the member then returns to the app and signs in with the new password.
+
+Production builds require an HTTPS `AUTH_BASE_URL`. Development builds may use
+a reachable HTTP LAN origin. Missing, malformed, credential-bearing, or unsafe
+origins fail closed and show a retryable native error instead of opening a
+fallback URL.
+
+### 3.4 Refresh and revocation boundary
 
 The refresh token is sent only to the configured Supabase Auth
 `/auth/v1/token?grant_type=refresh_token` endpoint. Rotated access and refresh
@@ -160,6 +181,32 @@ currently list or control sessions on other devices.
 `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` must be a public publishable/anonymous
 client key. A secret or service-role key must never be embedded in a mobile
 build.
+
+### 3.5 Foreground realtime
+
+Remote mode uses the current access token to join two private Supabase
+Realtime broadcast topics:
+
+- `working-group:{slug}` listens for `working_group_feed_changed` with
+  `{ eventId, groupSlug, itemType, itemId, changeType, occurredAt }`.
+- `member:{memberId}:messaging` listens for `conversation.created`,
+  `conversation.member_left`, `conversation.members_added`,
+  `conversation.renamed`, `message.created`, `message.updated`, and
+  `reaction.changed`. Messaging payloads contain identifiers and, for a newly
+  created message, its ordinal; they never contain message content.
+
+Broadcasts are invalidation hints, not trusted records. The app fetches the
+canonical member API response before updating feed cards, conversation
+metadata, messages, edits, or reactions. Existing Realtime policies remain the
+authorization boundary for private topics, and the member API remains the
+authorization boundary for catch-up reads.
+
+Sockets run only while the app is active. They close when the app backgrounds
+and rejoin with bounded backoff after foregrounding or a channel failure. A
+successful join triggers a canonical catch-up so events missed during launch,
+network loss, token refresh, or background execution are recovered. Fixture
+mode does not open sockets. Background push delivery is not part of this
+contract.
 
 ---
 
@@ -186,6 +233,8 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `DELETE` | `/api/members/messages/conversations/:conversationId/leave` | Group conversation Manage → Leave | `{ status, conversationId }` |
 | `PATCH` | `/api/members/messages/conversations/:conversationId/title` | Group conversation Manage → Rename | `{ status, conversationId, title }` |
 | `POST` | `/api/members/messages/send` | Message composer | `SendMessageResponse` |
+| `PATCH` | `/api/members/messages/:messageId` | Own-message edit action | `{ status, conversationId, message }` |
+| `DELETE` | `/api/members/messages/:messageId` | Own-message unsend action | `{ status, conversationId, message }` |
 | `POST` | `/api/members/messages/reactions` | Message reaction picker | `{ status, conversationId, messageId, emoji, active }` |
 | `GET` | `/api/members/working-groups/:slug/feed` | Group detail infinite feed | `WorkingGroupFeedResponse` |
 | `GET` | `/api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Prepared route | `{ status, item: WorkingGroupFeedItem }` |
@@ -275,7 +324,7 @@ To change any path, edit `ROUTES` in `src/api/config.ts` — nothing else
 references URLs.
 
 Private messaging is always remote whenever `EXPO_PUBLIC_API_URL` is set. All
-ten `/api/members/messages*` operations send the stored bearer token and ignore
+twelve `/api/members/messages*` operations send the stored bearer token and ignore
 `EXPO_PUBLIC_FIXTURE_PORTAL_DATA`; fixture conversations are used only when no
 remote API is configured.
 
@@ -836,8 +885,8 @@ Universal response rules for GPFA web API routes:
 | --- | --- | --- | --- | --- |
 | `POST /api/members/sign-in` | Current / Public, rate-limited. Source: `members/sign-in/route.ts`. | JSON `{ email, password, responseMode?: "token" | "cookie", webOrigin? }`. Mobile should send `responseMode: "token"`; no `Authorization` header. | `{ status: "success", redirectTo, memberId, auth: { tokenType: "bearer", accessToken, refreshToken, expiresAt, expiresIn } }`. The app also accepts flat token aliases for adapter flexibility. | No pagination. Invalid credentials, locked, inactive, unverified, and non-member accounts fail before tokens are returned, normally `401` with `status: "error"`. |
 | `POST /api/members/sign-out` | Deferred / web session route. Source: `members/sign-out/route.ts`. | No body. | Redirect or status response depending on caller. | Mobile sign-out is local-only today; do not call until a token-mode logout/session endpoint is added. |
-| `POST /api/members/forgot-password` | Deferred / Public, rate-limited. Source: `members/forgot-password/route.ts`. | JSON `{ email }`. | `{ status: "success" }` or uniform recovery message. | No pagination. Keep account discovery narrow; the current mobile app has no forgot-password UI. |
-| `POST /api/members/reset-password` | Deferred / Public token flow. Source: `members/reset-password/route.ts`. | JSON reset token plus password fields. | `{ status: "success" }`. | No pagination. Invalid or expired token returns `400`/`401`; not part of first mobile shell. |
+| `POST /api/members/forgot-password` | Current via browser handoff / Public, rate-limited. Source: `members/forgot-password/route.ts`. | The mobile app does not call this route. The browser form submits its validated email. | Uniform recovery response that does not disclose account state. | Native opens `/forgot-password` with an optional email prefill. Rate limiting and all recovery submission errors remain in the browser flow. |
+| `POST /api/members/reset-password` | Current via browser handoff / Browser session plus recovery grant. Source: `members/reset-password/route.ts`. | Browser form password fields; authorization comes from the callback session and bound httpOnly recovery-grant cookie, not a mobile-supplied reset token. | `{ status: "success" }` after the authorized password change. | Invalid/expired grants fail closed. Native never receives the grant or calls this route. |
 | `POST /api/members/change-password` | Current / Member bearer-ready. Source: `members/change-password/route.ts`. | No body. | `{ status: "success", message }`. | Sends a verified recovery link to the authenticated profile email. Rate limits return `429`; auth errors return `401`. |
 | `POST /api/auth/verify-email-link` | Deferred / Public token flow. Source: `auth/verify-email-link/route.ts`. | JSON `{ token }`. | `{ status: "success" }`. | No pagination. Invalid token returns error; include only when mobile owns email verification. |
 
@@ -983,7 +1032,14 @@ caller cannot see a participant or conversation.
 | `DELETE /api/members/messages/conversations/:conversationId/leave` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/leave/route.ts`. | Conversation UUID in the path. | `{ status: "success", conversationId }`. | Group-only, exposed behind a two-tap confirmation. Direct conversation conflict `409`; inaccessible conversation `404`; rate limit `429`. |
 | `PATCH /api/members/messages/conversations/:conversationId/title` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/title/route.ts`. | JSON `{ title }`, trimmed and capped at 80 characters; an empty title clears the custom name. | `{ status: "success", conversationId, title }`. | Group-only Manage action. Invalid title `400`; inaccessible conversation `404`; direct conversation conflict `409`; rate limit `429`. |
 | `POST /api/members/messages/send` | Current / Member bearer-ready. Source: `members/messages/send/route.ts`. | JSON `{ conversationId, content, clientNonce }` or `{ participantIds, content, clientNonce }`. Exactly one target form is required. Content is trimmed and must be 1-4000 chars. | `SendMessageResponse`: `{ status, conversationId, conversationCreated, message }`. | `clientNonce` is a UUID used for idempotency. Invalid input `400`; inaccessible target `404`; conflict `409`; rate limit `429`. |
+| `PATCH /api/members/messages/:messageId` | Current / Member bearer-ready. Source: `members/messages/[messageId]/route.ts`. | JSON `{ content }`. CRLF is normalized to LF, outer whitespace is trimmed, and content must be 1-4000 characters without unsupported C0 controls. | `EditMessageResponse`: `{ status: "success", conversationId, message }`; `message` is the authoritative replacement row. | Sender's own committed text message only, while the caller remains an active participant and strictly less than five minutes have elapsed since `createdAt`. Invalid input `400`; inaccessible, non-owned, or non-text message uses permission-safe `404`; closed window/conflict `409`; rate limit `429`; failure `500`. |
+| `DELETE /api/members/messages/:messageId` | Current / Member bearer-ready. Source: `members/messages/[messageId]/route.ts`. | Message UUID in the path; no body. | `UnsendMessageResponse`: `{ status: "success", conversationId, message }`; `message` is the authoritative system-row replacement. | Uses the same sender, participant, text-kind, and five-minute checks as edit. Unsend retains the row id, client nonce, ordinal, sender, conversation, and creation time; changes `kind` to `system`; replaces content with “{actor} unsent a message”; clears `editedAt`; and deletes reactions. Invalid input `400`; permission-safe `404`; closed window `409`; rate limit `429`; failure `500`. |
 | `POST /api/members/messages/reactions` | Current / Member bearer-ready. Source: `members/messages/reactions/route.ts`. | JSON `{ messageId, emoji, active }`; emoji is one of 👍 ❤️ 😂 😮 😢 🎉. | `{ status: "success", conversationId, messageId, emoji, active }`. | Reaction chips toggle the caller's own reaction. Invalid input `400`; inaccessible message `404`; conflict `409`; rate limit `429`. |
+
+The five-minute check in native UI is only an affordance for hiding expired
+actions; the server remains authoritative. `message.updated` Realtime payloads
+contain identifiers only. Mobile fetches the canonical authorized row before
+displaying an edit or unsend performed on another device.
 
 #### Public membership
 
@@ -1238,9 +1294,11 @@ LibraryResource { id, title, type: ResourceType, summary, authors,
 `updatedAt` ("Aug 12") is a display string. `mins` is the age in minutes and is
 the **only** sort key the Newest/Oldest toggle uses — omit it and ordering is
 undefined. `type` drives the chip colour and the corner glyph, so send one of
-the seven values above. New resource actions use `artifact`: previewable files
-can open in the authenticated WebView, all files can be downloaded to temporary
-cache and handed to the native save/share sheet, and external links open through
+the seven values above. New resource actions use `artifact`: PDFs, images, and
+safe text formats use native renderers selected from `contentType` (with
+`fileName` extension as a fallback); server-approved HTML uses the authenticated
+WebView; unsupported or conflicting formats use the native save/share sheet.
+All files can be downloaded to temporary cache, and external links open through
 the operating system without GPFA credentials. Bearer credentials are attached
 only to configured GPFA origins whose path begins `/api/content-assets/`.
 `href` remains a compatibility field for older callers and must not drive new
@@ -1348,7 +1406,7 @@ and fall back to initials.
 MessagingParticipant { id, name, avatarUrl, roleTitle, organizationName,
                        isCurrentMember, isAvailable, hasLeft }
 MessageItem           { id, conversationId, senderId, content, clientNonce,
-                       ordinal, createdAt, kind, reactions }
+                       ordinal, createdAt, editedAt, kind, reactions }
 ConversationSummary   { id, kind, title, participants, lastMessage,
                        lastMessageAt, lastReaction, lastReadOrdinal, unreadCount }
 ConversationDetail    { id, kind, title, participants, lastReadOrdinal }
@@ -1358,7 +1416,8 @@ Direct conversations contain exactly two active participants. Group
 conversations contain three to eight active participants. The mobile UI can
 read existing group conversations but its first compose flow starts direct
 conversations with one searched directory member. `createdAt` values are ISO
-timestamps and `ordinal` is the stable server ordering/read-cursor key.
+timestamps, `editedAt` is an ISO timestamp or null, and `ordinal` is the stable
+server ordering/read-cursor key.
 
 ### `NewPostInput`, Ask GPFA, `FeedEntry`, `RsvpChoice`
 

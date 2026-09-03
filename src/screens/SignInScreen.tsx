@@ -16,20 +16,40 @@ import { DisplayHead, Input, RadialWash } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, topPad } from '../ds/tokens';
 import { useAuth } from '../auth/AuthProvider';
-import { SIGN_IN_URL } from '../api/config';
 
 import bannerLogo from '../../assets/banner-logo-white.png';
 
-export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
+export default function SignInScreen({
+  onSignedIn,
+  onForgotPassword,
+}: {
+  onSignedIn: () => void;
+  onForgotPassword: (email: string) => Promise<void>;
+}) {
   const { t, isDark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
   const { signIn, busy, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [openingRecovery, setOpeningRecovery] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (busy) return;
+    if (busy || openingRecovery) return;
     if (await signIn(email.trim(), password)) onSignedIn();
+  };
+
+  const beginPasswordRecovery = async () => {
+    if (busy || openingRecovery) return;
+    setRecoveryError(null);
+    setOpeningRecovery(true);
+    try {
+      await onForgotPassword(email);
+    } catch {
+      setRecoveryError('Password reset could not be opened. Check your connection and try again.');
+    } finally {
+      setOpeningRecovery(false);
+    }
   };
 
   return (
@@ -95,10 +115,10 @@ export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void })
               />
               <Pressable
                 onPress={() => void submit()}
-                disabled={busy}
+                disabled={busy || openingRecovery}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  { backgroundColor: t.brandGreenOnDark, opacity: busy ? 0.7 : 1 },
+                  { backgroundColor: t.brandGreenOnDark, opacity: busy || openingRecovery ? 0.7 : 1 },
                   pressed && styles.pressed,
                 ]}
               >
@@ -109,16 +129,37 @@ export default function SignInScreen({ onSignedIn }: { onSignedIn: () => void })
                 )}
               </Pressable>
               {!!error && <Text style={[styles.error, { color: t.brandBrickInk }]}>{error}</Text>}
-              {__DEV__ && !!SIGN_IN_URL && (
-                <Text style={[styles.debug, { color: alpha(t.inkInverse, 0.54) }]}>
-                  Auth: {SIGN_IN_URL}
-                </Text>
-              )}
             </View>
 
-            <Pressable hitSlop={8}>
-              <Text style={[styles.forgot, { color: t.brandGreenOnDark }]}>Forgot password?</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset your password"
+              accessibilityState={{ disabled: busy || openingRecovery, busy: openingRecovery }}
+              disabled={busy || openingRecovery}
+              hitSlop={8}
+              onPress={() => void beginPasswordRecovery()}
+              style={({ pressed }) => [
+                styles.forgotButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              {openingRecovery && <ActivityIndicator size="small" color={t.brandGreenOnDark} />}
+              <Text
+                accessibilityLiveRegion="polite"
+                style={[styles.forgot, { color: t.brandGreenOnDark }]}
+              >
+                {openingRecovery ? 'Opening password reset…' : 'Forgot password?'}
+              </Text>
             </Pressable>
+            {!!recoveryError && (
+              <Text
+                accessibilityLiveRegion="assertive"
+                accessibilityRole="alert"
+                style={[styles.recoveryError, { color: t.brandBrickInk }]}
+              >
+                {recoveryError}
+              </Text>
+            )}
           </View>
 
           <Text style={[styles.disclaimer, { color: alpha(t.inkInverse, 0.45) }]}>
@@ -185,17 +226,23 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     textAlign: 'center',
   },
-  debug: {
-    fontFamily: sans(400),
-    fontSize: 10.5,
-    lineHeight: 15,
-    textAlign: 'center',
+  forgotButton: {
+    marginTop: 18,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   forgot: {
-    marginTop: 18,
-    textAlign: 'center',
     fontFamily: sans(400),
     fontSize: 12.5,
+  },
+  recoveryError: {
+    marginTop: 2,
+    fontFamily: sans(500),
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: 'center',
   },
   disclaimer: {
     textAlign: 'center',

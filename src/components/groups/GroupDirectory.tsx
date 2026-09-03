@@ -5,7 +5,8 @@
  * Presentational — subscription state and the post counts arrive resolved.
  */
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ArrowRight, Fire, MagnifyingGlass, UsersThree } from '../../ds/icons';
 import { ScreenHeader } from '../../ds/primitives';
@@ -51,7 +52,6 @@ export default function GroupDirectory({
     { label: 'Your groups', groups: subscribed },
     { label: 'All groups', groups: rest },
   ].filter((s) => s.groups.length > 0);
-  const totalGroups = subscribed.length + rest.length;
 
   return (
     <View style={styles.fill}>
@@ -74,7 +74,6 @@ export default function GroupDirectory({
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.directoryControls}>
-          <Text style={[styles.resultCount, { color: t.inkMuted }]}>Showing {totalGroups} working groups</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortStrip}>
             {SORTS.map((option) => {
               const active = option.id === sort;
@@ -123,9 +122,11 @@ export default function GroupDirectory({
                       <HatchBanner />
                       {!!g.cardImageUrl && !failedImages[g.id] && (
                         <Image
-                          source={{ uri: g.cardImageUrl }}
+                          source={g.cardImageUrl}
                           style={styles.bannerImage}
-                          resizeMode="cover"
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={160}
                           accessibilityIgnoresInvertColors
                           onError={() => setFailedImages((prev) => ({ ...prev, [g.id]: true }))}
                         />
@@ -202,8 +203,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 13 },
-  directoryControls: { paddingTop: 14, paddingHorizontal: 16, gap: 9 },
-  resultCount: { fontFamily: mono(400), fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.7 },
+  directoryControls: { paddingTop: 14, paddingHorizontal: 16 },
   sortStrip: { gap: 8 },
   sortChip: {
     minHeight: 30,

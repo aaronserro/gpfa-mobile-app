@@ -183,6 +183,36 @@ Expected result:
 - The app signs in and stores the token.
 - Later authenticated requests include `Authorization: Bearer <accessToken>`.
 
+### Test Password Recovery
+
+Return to the signed-out screen and enter a mixed-case email with surrounding
+spaces, then tap `Forgot password?`.
+
+Expected result:
+
+- The control briefly shows `Opening password reset…` and opens the system
+  browser once.
+- The browser opens `/forgot-password` on the configured GPFA web origin.
+- A valid email is normalized and prefilled. Empty or invalid input opens the
+  same page without a prefill.
+- Recovery submission, the email callback, and password replacement remain in
+  the browser. No recovery token or browser cookie is copied into the app.
+- After resetting the password, reopen the app manually and sign in with the
+  new password.
+
+Also verify failure behavior before finishing:
+
+- With both API/web origins unset, fixture mode shows a retryable inline error
+  instead of inventing a production URL.
+- A development LAN `http://` origin is accepted, but production builds require
+  HTTPS.
+- A blocked or unavailable browser leaves the sign-in fields intact and shows
+  the same retryable inline error.
+
+Expo inlines these origins at build time. Restart Metro with a cleared cache
+after changing either value. Do not log the typed email, recovery URL, callback
+parameters, browser cookies, or recovery grant while testing.
+
 ### Signing Out During Testing
 
 In development builds, tap the header avatar to open the member sheet, then tap

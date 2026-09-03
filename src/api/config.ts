@@ -28,6 +28,64 @@ export const GPFA_WEB_ORIGIN = rawWebOrigin.trim().replace(/\/+$/, '');
 /** Host used for member auth routes. */
 export const AUTH_BASE_URL = GPFA_WEB_ORIGIN || API_BASE_URL;
 
+const FORGOT_PASSWORD_PATH = '/forgot-password';
+
+export type ForgotPasswordUrlResult =
+  | { ok: true; url: string }
+  | { ok: false; reason: 'missing_origin' | 'invalid_origin' | 'insecure_origin' };
+
+function normalizedPrefillEmail(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 320 ||
+    /[\s\u0000-\u001f\u007f]/.test(normalized) ||
+    !/^[^@]+@[^@]+\.[^@]+$/.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+/** Builds the browser-only recovery page URL from a trusted configured origin. */
+export function buildForgotPasswordUrl(
+  baseUrl: string,
+  email = '',
+  allowInsecureHttp = false
+): ForgotPasswordUrlResult {
+  const configuredOrigin = baseUrl.trim();
+  if (!configuredOrigin) return { ok: false, reason: 'missing_origin' };
+
+  let origin: URL;
+  try {
+    origin = new URL(configuredOrigin);
+  } catch {
+    return { ok: false, reason: 'invalid_origin' };
+  }
+
+  if (
+    origin.username ||
+    origin.password ||
+    (origin.pathname !== '/' && origin.pathname !== '') ||
+    origin.search ||
+    origin.hash
+  ) {
+    return { ok: false, reason: 'invalid_origin' };
+  }
+  if (origin.protocol !== 'https:' && !(allowInsecureHttp && origin.protocol === 'http:')) {
+    return { ok: false, reason: 'insecure_origin' };
+  }
+
+  const destination = new URL(FORGOT_PASSWORD_PATH, `${origin.origin}/`);
+  const normalizedEmail = normalizedPrefillEmail(email);
+  if (normalizedEmail) destination.searchParams.set('email', normalizedEmail);
+  return { ok: true, url: destination.toString() };
+}
+
+export function forgotPasswordUrl(email = ''): ForgotPasswordUrlResult {
+  return buildForgotPasswordUrl(AUTH_BASE_URL, email, __DEV__);
+}
+
 /** Supabase Auth host used only for token refresh and current-session revocation. */
 export const SUPABASE_URL = rawSupabaseUrl.trim().replace(/\/+$/, '');
 
@@ -101,6 +159,8 @@ export const ROUTES = {
   memberSavedContent: '/api/members/saved-content',
   memberDirectory: '/api/members/directory',
   messageConversations: '/api/members/messages',
+  message: (messageId: string) =>
+    `/api/members/messages/${encodeURIComponent(messageId)}`,
   messageConversation: (conversationId: string) =>
     `/api/members/messages/conversations/${conversationId}`,
   messageConversationRead: (conversationId: string) =>

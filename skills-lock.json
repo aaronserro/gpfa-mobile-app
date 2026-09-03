@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "momentic-mobile-test": {
+      "source": "momentic-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/momentic-mobile-test/SKILL.md",
+      "computedHash": "cea538e1ab55e72b1096e4f1da0ac6f0a3378c47dde8eb4e94b39da8b38c3313"
+    }
+  }
+}

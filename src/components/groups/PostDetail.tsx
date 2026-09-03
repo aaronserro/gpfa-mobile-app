@@ -263,22 +263,6 @@ export default function PostDetail({
         title={groupName}
         onBack={onBack}
         backLabel={`Back to ${groupName}`}
-        actions={
-          <Pressable
-            onPress={onToggleRepost}
-            disabled={repostPending}
-            accessibilityRole="button"
-            accessibilityLabel={reposted ? 'Remove repost' : 'Repost'}
-            accessibilityState={{ selected: reposted, disabled: repostPending }}
-            hitSlop={8}
-          >
-            <Repeat
-              size={19}
-              weight={reposted ? 'bold' : 'regular'}
-              color={reposted ? t.brandGreenOnDark : '#fff'}
-            />
-          </Pressable>
-        }
       />
 
       <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
@@ -489,7 +473,12 @@ export default function PostDetail({
             </View>
           )}
 
-          <View style={styles.actions}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.actionScroller}
+            contentContainerStyle={styles.actions}
+          >
             <Pressable
               style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
               onPress={onToggleUpvote}
@@ -530,9 +519,6 @@ export default function PostDetail({
                 {reposted ? 'Reposted' : 'Repost'} · {repostCount}
               </Text>
             </Pressable>
-          </View>
-
-          <View style={styles.manageRow}>
             {!!onSummarize && (
               <Pressable
                 onPress={onSummarize}
@@ -592,7 +578,7 @@ export default function PostDetail({
                 <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{pollDeleting ? 'Deleting…' : 'Delete poll'}</Text>
               </Pressable>
             )}
-          </View>
+          </ScrollView>
 
           {!!summary && (
             <View style={[styles.summaryCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
@@ -1175,18 +1161,19 @@ const styles = StyleSheet.create({
   pollMeta: { marginTop: 10 },
   tags: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 32, paddingHorizontal: 10, borderWidth: 1, borderRadius: 6 },
-  actionText: { fontFamily: mono(400), fontSize: 11 },
+  actionScroller: { marginTop: 12 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 2 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, paddingHorizontal: 8, borderWidth: 1, borderRadius: 6 },
+  actionText: { fontFamily: mono(400), fontSize: 10 },
   manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   manageBtn: {
-    minHeight: 34,
+    minHeight: 28,
     justifyContent: 'center',
-    paddingHorizontal: 11,
+    paddingHorizontal: 8,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 6,
   },
-  manageBtnText: { fontFamily: sans(600), fontSize: 12 },
+  manageBtnText: { fontFamily: sans(600), fontSize: 10.5 },
   manageBtnOnText: { fontFamily: sans(600), fontSize: 12, color: '#fff' },
   summaryCard: { marginTop: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
   summaryTitle: { fontFamily: sans(600), fontSize: 12.5 },

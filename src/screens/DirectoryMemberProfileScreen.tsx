@@ -34,7 +34,7 @@ export interface DirectoryMemberProfileScreenProps {
   onOpenActivity: (item: MemberProfileActivityItem) => void;
   onOpenWorkingGroup: (groupSlug: string) => void;
   onOpenEvent: (event: NonNullable<DirectoryMemberProfile['events']>[number]) => void;
-  onOpenOrganization: (organizationSlug: string) => void;
+  onOpenOrganization: (organizationId: string) => void;
   onMessage?: (memberId: string) => void;
   onEdit?: () => void;
 }
@@ -248,7 +248,7 @@ export default function DirectoryMemberProfileScreen({
 
         <Section title="Organization">
           <Pressable
-            onPress={() => onOpenOrganization(profile.organization.slug)}
+            onPress={() => onOpenOrganization(profile.organization.id)}
             style={({ pressed }) => [styles.orgCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.ruleHairline }]}
           >
             <View style={styles.flex}>

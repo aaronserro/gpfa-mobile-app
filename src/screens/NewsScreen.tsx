@@ -11,7 +11,8 @@
  * App.tsx, the same way the job board's filters live in `ResourcesScreen`.
  */
 import { useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { ArrowRight, ArrowSquareOut, LockSimple, Tray } from '../ds/icons';
@@ -217,9 +218,11 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
         <View style={[styles.hero, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
           {!!story.imageUrl && (
             <Image
-              source={{ uri: story.imageUrl }}
+              source={story.imageUrl}
               style={StyleSheet.absoluteFill}
-              resizeMode="cover"
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={160}
               accessibilityIgnoresInvertColors
             />
           )}

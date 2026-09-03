@@ -50,12 +50,11 @@ import { initials } from '../lib/format';
 import {
   ALL_RESOURCE_TYPES,
   filterLibraryResources,
-  formatBytes,
   relatedResources,
-  resourceFileFacts,
   resourceTypeCounts,
   type ResourceTypeFilter,
 } from '../lib/library-resources';
+import { resourceCanPreview } from '../api/resource-download-policy';
 import type {
   JobListing,
   LibraryResource,
@@ -712,6 +711,8 @@ export default function ResourcesScreen({
     <Sheet_ onClose={closeSheet}>
       {(() => {
         const skin = resourceTypeStyle(t, sheetResource.type);
+        const canPreview =
+          sheetResource.artifact.kind === 'file' && resourceCanPreview(sheetResource.artifact);
         return (
           <>
             <View
@@ -740,11 +741,9 @@ export default function ResourcesScreen({
               >
                 <FileText size={24} color={t.brandGreen} />
                 <View style={styles.artifactBody}>
-                  <Text style={[styles.artifactTitle, { color: t.inkStrong }]}>
-                    {resourceFileFacts(sheetResource) ?? 'File'}
-                  </Text>
+                  <Text style={[styles.artifactTitle, { color: t.inkStrong }]}>File</Text>
                   <Text style={[styles.artifactDescription, { color: t.inkMuted }]}>
-                    {sheetResource.artifact.previewable
+                    {canPreview
                       ? 'Preview this file in the app or save a copy to your device.'
                       : 'This file type cannot be previewed in the app. Save it to open it with another app.'}
                   </Text>
@@ -782,20 +781,6 @@ export default function ResourcesScreen({
               </View>
             )}
 
-            {sheetResource.artifact.kind === 'file' ? (
-              <View style={[styles.factList, { borderColor: t.ruleHairline }]}>
-                {sheetResource.artifact.contentType ? (
-                  <ResourceFact label="Content type" value={sheetResource.artifact.contentType} />
-                ) : null}
-                {formatBytes(sheetResource.artifact.byteSize) ? (
-                  <ResourceFact label="Size" value={formatBytes(sheetResource.artifact.byteSize) ?? ''} />
-                ) : null}
-                {sheetResource.artifact.fileName ? (
-                  <ResourceFact label="File name" value={sheetResource.artifact.fileName} />
-                ) : null}
-              </View>
-            ) : null}
-
             {!!sheetResource.tags.length && (
               <View style={styles.tags}>
                 {sheetResource.tags.map((tag) => (
@@ -807,7 +792,7 @@ export default function ResourcesScreen({
             )}
 
             <View style={styles.sheetActions}>
-              {sheetResource.artifact.kind === 'file' && sheetResource.artifact.previewable ? (
+              {canPreview ? (
                 <Pressable
                   onPress={() => onOpenResource?.(sheetResource)}
                   disabled={resourceActionPending}
@@ -826,8 +811,8 @@ export default function ResourcesScreen({
                   onPress={() => void runResourceAction(onSaveResource, sheetResource)}
                   disabled={resourceActionPending || !onSaveResource}
                   style={[
-                    sheetResource.artifact.previewable ? styles.secondaryBtn : styles.primaryBtn,
-                    sheetResource.artifact.previewable
+                    canPreview ? styles.secondaryBtn : styles.primaryBtn,
+                    canPreview
                       ? { borderColor: t.ruleHairline }
                       : { backgroundColor: t.surfaceAnchor },
                     (resourceActionPending || !onSaveResource) && styles.disabled,
@@ -836,17 +821,17 @@ export default function ResourcesScreen({
                   {resourceActionPending ? (
                     <ActivityIndicator
                       size="small"
-                      color={sheetResource.artifact.previewable ? t.brandGreen : '#fff'}
+                      color={canPreview ? t.brandGreen : '#fff'}
                     />
                   ) : (
                     <DownloadSimple
                       size={15}
-                      color={sheetResource.artifact.previewable ? t.brandGreen : '#fff'}
+                      color={canPreview ? t.brandGreen : '#fff'}
                     />
                   )}
                   <Text
                     style={
-                      sheetResource.artifact.previewable
+                      canPreview
                         ? [styles.secondaryBtnText, { color: t.brandGreen }]
                         : styles.primaryBtnText
                     }
@@ -896,7 +881,7 @@ export default function ResourcesScreen({
                           {resource.title}
                         </Text>
                         <MastheadMeta size={10}>
-                          {[resource.type, resourceFileFacts(resource)].filter(Boolean).join(' · ')}
+                          {resource.type}
                         </MastheadMeta>
                       </View>
                       <ArrowRight size={15} color={t.ruleStrong} />
@@ -1172,18 +1157,6 @@ function HubCard({
 
 function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
   return <ScreenHeader title={title} onBack={onBack} backLabel="Back to resources" />;
-}
-
-function ResourceFact({ label, value }: { label: string; value: string }) {
-  const { t } = useTheme();
-  return (
-    <View style={styles.factRow}>
-      <Text style={[styles.factLabel, { color: t.inkMuted }]}>{label}</Text>
-      <Text style={[styles.factValue, { color: t.inkStrong }]} selectable>
-        {value}
-      </Text>
-    </View>
-  );
 }
 
 function resourceExternalHost(href: string): string {
@@ -1563,10 +1536,6 @@ const styles = StyleSheet.create({
   artifactBody: { flex: 1, minWidth: 0 },
   artifactTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
   artifactDescription: { marginTop: 4, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
-  factList: { marginTop: 12, borderTopWidth: 1 },
-  factRow: { flexDirection: 'row', gap: 16, paddingTop: 10 },
-  factLabel: { width: 86, fontFamily: sans(500), fontSize: 11.5 },
-  factValue: { flex: 1, fontFamily: mono(400), fontSize: 11, lineHeight: 16, textAlign: 'right' },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',

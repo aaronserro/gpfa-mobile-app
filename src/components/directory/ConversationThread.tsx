@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,12 +20,20 @@ import type {
   MessageReaction,
   MessagingParticipant,
 } from '../../api/types';
-import { CaretLeft, PaperPlaneTilt } from '../../ds/icons';
+import { CaretLeft, DotsThree, PaperPlaneTilt, PencilSimple, Trash, X } from '../../ds/icons';
 import { Avatar } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, sans, trackDisplay } from '../../ds/tokens';
 import { initials } from '../../lib/format';
-import { conversationTitle, messageTimestamp, messagingParticipantName } from '../../lib/messages';
+import {
+  MESSAGE_EDIT_WINDOW_MS,
+  conversationTitle,
+  isMessageWithinEditWindow,
+  messageContentError,
+  messageTimestamp,
+  messagingParticipantName,
+  normalizeMessageContent,
+} from '../../lib/messages';
 
 export interface ConversationThreadProps {
   currentMemberId: string;
@@ -35,20 +44,25 @@ export interface ConversationThreadProps {
   people: DirectoryPerson[];
   orgs: MemberOrg[];
   messages: MessageItem[];
+  visible: boolean;
   loading: boolean;
   loadingOlder: boolean;
   hasOlder: boolean;
   error: Error | null;
   sending: boolean;
   actionPending: boolean;
+  messageMutationPendingId: string | null;
   onBack: () => void;
   onRetry: () => void;
   onSend: (content: string) => Promise<void>;
   onLoadOlder: () => Promise<void>;
   onSetReaction: (messageId: string, emoji: MessageReaction, active: boolean) => Promise<void>;
+  onEditMessage: (messageId: string, content: string) => Promise<void>;
+  onUnsendMessage: (messageId: string) => Promise<void>;
   onRename: (title: string) => Promise<void>;
   onAddMembers: (participantIds: string[]) => Promise<void>;
   onLeave: () => Promise<void>;
+  onReachLatest: (ordinal: number) => void;
 }
 
 const REACTIONS: MessageReaction[] = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
@@ -62,37 +76,59 @@ export default function ConversationThread({
   people,
   orgs,
   messages,
+  visible,
   loading,
   loadingOlder,
   hasOlder,
   error,
   sending,
   actionPending,
+  messageMutationPendingId,
   onBack,
   onRetry,
   onSend,
   onLoadOlder,
   onSetReaction,
+  onEditMessage,
+  onUnsendMessage,
   onRename,
   onAddMembers,
   onLeave,
+  onReachLatest,
 }: ConversationThreadProps) {
   const { t } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const [content, setContent] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const [messageActionsId, setMessageActionsId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editWindowNow, setEditWindowNow] = useState(() => Date.now());
   const [managing, setManaging] = useState(false);
   const [titleInput, setTitleInput] = useState(conversation?.title ?? '');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const lastTailId = useRef<string | null>(null);
+  const nearBottom = useRef(true);
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const participants = conversation?.participants ?? (draftRecipient ? [draftRecipient] : draftGroupParticipants);
   const other = participants.find((participant) => !participant.isCurrentMember && !participant.hasLeft) ?? null;
   const title = conversation ? conversationTitle(conversation) : draftRecipient?.name ?? 'New message';
-  const normalized = content.replace(/\r\n/g, '\n').trim();
-  const invalid = normalized.length === 0 || normalized.length > 4_000;
+  const editingMessage = editingMessageId
+    ? messages.find((message) => message.id === editingMessageId) ?? null
+    : null;
+  const composerContent = editingMessage ? editContent : content;
+  const normalized = normalizeMessageContent(composerContent);
+  const validationError = messageContentError(composerContent);
+  const invalid = validationError !== null;
+  const composerPending = editingMessage
+    ? messageMutationPendingId === editingMessage.id
+    : sending;
+  const composerError = editingMessage ? editError : sendError;
   const isGroup = conversation?.kind === 'group';
   const existingIds = new Set(participants.map((participant) => participant.id));
   const availablePeople = people.filter((person) => person.id !== currentMemberId && !existingIds.has(person.id));
@@ -105,16 +141,88 @@ export default function ConversationThread({
   }, [conversation?.id, conversation?.title]);
 
   useEffect(() => {
+    lastTailId.current = null;
+    nearBottom.current = true;
+    setNewMessageCount(0);
+    setMessageActionsId(null);
+    setReactionPickerMessageId(null);
+    setEditingMessageId(null);
+    setEditContent('');
+    setEditError(null);
+  }, [conversation?.id]);
+
+  useEffect(() => {
+    setEditWindowNow(Date.now());
+  }, [currentMemberId, messages]);
+
+  useEffect(() => {
+    const now = editWindowNow;
+    const nextExpiry = messages
+      .filter((message) =>
+        message.senderId === currentMemberId &&
+        message.kind === 'text' &&
+        isMessageWithinEditWindow(message.createdAt, now)
+      )
+      .map((message) => Date.parse(message.createdAt) + MESSAGE_EDIT_WINDOW_MS)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b)[0];
+    if (nextExpiry === undefined) return;
+    const timer = setTimeout(() => setEditWindowNow(Date.now()), Math.max(0, nextExpiry - now + 1));
+    return () => clearTimeout(timer);
+  }, [currentMemberId, editWindowNow, messages]);
+
+  useEffect(() => {
+    if (!editingMessageId) return;
+    const selected = messages.find((message) => message.id === editingMessageId);
+    if (
+      selected &&
+      selected.senderId === currentMemberId &&
+      selected.kind === 'text' &&
+      isMessageWithinEditWindow(selected.createdAt, editWindowNow)
+    ) {
+      return;
+    }
+    setEditingMessageId(null);
+    setEditContent('');
+    setEditError(null);
+    setActionError('This message is no longer available to edit.');
+  }, [currentMemberId, editingMessageId, editWindowNow, messages]);
+
+  useEffect(() => {
     const tailId = messages.at(-1)?.id ?? null;
     if (tailId === lastTailId.current) return;
+    const previousTailId = lastTailId.current;
     lastTailId.current = tailId;
+    const previousTailIndex = previousTailId
+      ? messages.findIndex((message) => message.id === previousTailId)
+      : -1;
+    const arrivals = previousTailIndex >= 0
+      ? messages.slice(previousTailIndex + 1)
+      : messages;
+    const ownArrival = arrivals.some((message) => message.senderId === currentMemberId);
+    if (!visible || (previousTailId && !nearBottom.current && !ownArrival)) {
+      setNewMessageCount((current) => current + arrivals.filter((message) => message.senderId !== currentMemberId).length);
+      return;
+    }
+    setNewMessageCount(0);
     const frame = requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
     return () => cancelAnimationFrame(frame);
-  }, [messages]);
+  }, [currentMemberId, messages, visible]);
 
   async function submit() {
-    if (invalid || sending) return;
+    if (invalid || composerPending) return;
     const outgoing = normalized;
+    if (editingMessage) {
+      setEditError(null);
+      try {
+        await onEditMessage(editingMessage.id, outgoing);
+        setEditingMessageId(null);
+        setEditContent('');
+      } catch (cause) {
+        setEditError(cause instanceof Error ? cause.message : 'Message not updated.');
+      }
+      return;
+    }
     setContent('');
     setSendError(null);
     try {
@@ -125,13 +233,48 @@ export default function ConversationThread({
     }
   }
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>): Promise<boolean> {
     setActionError(null);
     try {
       await action();
+      return true;
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'The conversation could not be updated.');
+      return false;
     }
+  }
+
+  function beginEditing(message: MessageItem) {
+    setMessageActionsId(null);
+    setReactionPickerMessageId(null);
+    setEditingMessageId(message.id);
+    setEditContent(message.content);
+    setEditError(null);
+    setActionError(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function confirmUnsend(message: MessageItem) {
+    setMessageActionsId(null);
+    Alert.alert(
+      'Unsend message?',
+      'This message will be replaced for everyone in the conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unsend',
+          style: 'destructive',
+          onPress: () => {
+            void runAction(() => onUnsendMessage(message.id)).then((success) => {
+              if (!success || editingMessageId !== message.id) return;
+              setEditingMessageId(null);
+              setEditContent('');
+              setEditError(null);
+            });
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -181,7 +324,7 @@ export default function ConversationThread({
       </View>
 
       {actionError && !managing && (
-        <View style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
+        <View accessibilityRole="alert" style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
           <Text style={[styles.inlineErrorText, { color: t.brandRed }]}>{actionError}</Text>
         </View>
       )}
@@ -329,6 +472,19 @@ export default function ConversationThread({
           style={[styles.transcript, { backgroundColor: t.surfacePage }]}
           contentContainerStyle={styles.transcriptContent}
           keyboardShouldPersistTaps="handled"
+          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          scrollEventThrottle={16}
+          onScroll={({ nativeEvent }) => {
+            const distanceFromBottom =
+              nativeEvent.contentSize.height -
+              nativeEvent.layoutMeasurement.height -
+              nativeEvent.contentOffset.y;
+            nearBottom.current = distanceFromBottom <= 72;
+            if (!visible || !nearBottom.current) return;
+            setNewMessageCount(0);
+            const latestOrdinal = messages.at(-1)?.ordinal ?? 0;
+            if (latestOrdinal > 0) onReachLatest(latestOrdinal);
+          }}
         >
           {hasOlder && (
             <Pressable
@@ -359,6 +515,8 @@ export default function ConversationThread({
             }
             const sender = participants.find((participant) => participant.id === message.senderId);
             const own = sender?.isCurrentMember ?? message.senderId === currentMemberId;
+            const actionsAvailable = own && isMessageWithinEditWindow(message.createdAt, editWindowNow);
+            const mutationPending = messageMutationPendingId === message.id;
             return (
               <View key={message.id} style={[styles.messageRow, own && styles.messageRowOwn]}>
                 {!own && sender ? (
@@ -383,7 +541,10 @@ export default function ConversationThread({
                     </Pressable>
                   ) : null}
                   <Pressable
-                    onLongPress={() => setReactionPickerMessageId((current) => current === message.id ? null : message.id)}
+                    onLongPress={() => {
+                      setMessageActionsId(null);
+                      setReactionPickerMessageId((current) => current === message.id ? null : message.id);
+                    }}
                     delayLongPress={250}
                     accessibilityRole="button"
                     accessibilityLabel={`${message.content}. Long press to react.`}
@@ -442,14 +603,62 @@ export default function ConversationThread({
                     </View>
                   )}
                   <View style={styles.messageMetaRow}>
-                    <Text style={[styles.time, { color: t.inkFaint }]}>{messageTimestamp(message.createdAt)}</Text>
+                    <Text style={[styles.time, { color: t.inkFaint }]}>
+                      {messageTimestamp(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
+                    </Text>
                     <Pressable
-                      onPress={() => setReactionPickerMessageId((current) => current === message.id ? null : message.id)}
+                      onPress={() => {
+                        setMessageActionsId(null);
+                        setReactionPickerMessageId((current) => current === message.id ? null : message.id);
+                      }}
                       hitSlop={5}
+                      accessibilityRole="button"
+                      accessibilityLabel="React to message"
                     >
                       <Text style={[styles.reactLabel, { color: t.brandGreen }]}>React</Text>
                     </Pressable>
+                    {actionsAvailable && (
+                      <Pressable
+                        onPress={() => {
+                          setReactionPickerMessageId(null);
+                          setMessageActionsId((current) => current === message.id ? null : message.id);
+                        }}
+                        disabled={mutationPending}
+                        accessibilityRole="button"
+                        accessibilityLabel="Message actions"
+                        accessibilityState={{ disabled: mutationPending, busy: mutationPending }}
+                        style={styles.messageActionsButton}
+                      >
+                        {mutationPending ? (
+                          <ActivityIndicator size="small" color={t.brandGreen} />
+                        ) : (
+                          <DotsThree size={18} color={t.brandGreen} weight="bold" />
+                        )}
+                      </Pressable>
+                    )}
                   </View>
+                  {messageActionsId === message.id && actionsAvailable && (
+                    <View style={[styles.messageActionsMenu, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                      <Pressable
+                        onPress={() => beginEditing(message)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit message"
+                        style={styles.messageAction}
+                      >
+                        <PencilSimple size={16} color={t.inkStrong} />
+                        <Text style={[styles.messageActionLabel, { color: t.inkStrong }]}>Edit</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => confirmUnsend(message)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Unsend message"
+                        style={styles.messageAction}
+                      >
+                        <Trash size={16} color={t.brandRed} />
+                        <Text style={[styles.messageActionLabel, { color: t.brandRed }]}>Unsend</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -457,41 +666,92 @@ export default function ConversationThread({
         </ScrollView>
       )}
 
+      {!managing && newMessageCount > 0 && (
+        <Pressable
+          onPress={() => {
+            nearBottom.current = true;
+            setNewMessageCount(0);
+            scrollRef.current?.scrollToEnd({ animated: true });
+            const latestOrdinal = messages.at(-1)?.ordinal ?? 0;
+            if (visible && latestOrdinal > 0) onReachLatest(latestOrdinal);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}. Jump to latest.`}
+          style={[styles.newMessagesButton, { backgroundColor: t.surfaceAnchor }]}
+        >
+          <Text style={[styles.newMessagesText, { color: t.inkInverse }]}>New Messages · {newMessageCount}</Text>
+        </Pressable>
+      )}
+
       {!managing && (
       <View style={[styles.composer, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
-        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: sendError ? t.brandRed : t.ruleHairline }]}>
+        {editingMessage && (
+          <View style={styles.editingHeader}>
+            <View style={styles.editingHeaderText}>
+              <Text style={[styles.editingLabel, { color: t.inkStrong }]}>Editing message</Text>
+              <Text numberOfLines={1} style={[styles.editingPreview, { color: t.inkMuted }]}>{editingMessage.content}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setEditingMessageId(null);
+                setEditContent('');
+                setEditError(null);
+              }}
+              disabled={composerPending}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing message"
+              style={styles.cancelEdit}
+            >
+              <X size={18} color={t.inkMuted} />
+            </Pressable>
+          </View>
+        )}
+        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: composerError ? t.brandRed : t.ruleHairline }]}>
           <TextInput
-            value={content}
+            ref={inputRef}
+            value={composerContent}
             onChangeText={(value) => {
-              setContent(value);
-              setSendError(null);
+              if (editingMessage) {
+                setEditContent(value);
+                setEditError(null);
+              } else {
+                setContent(value);
+                setSendError(null);
+              }
             }}
-            placeholder="Write a message"
+            placeholder={editingMessage ? 'Edit message' : 'Write a message'}
             placeholderTextColor={t.inkFaint}
             style={[styles.input, { color: t.inkStrong }]}
             multiline
             maxLength={4_001}
-            editable={!sending}
+            editable={!composerPending}
+            accessibilityLabel={editingMessage ? 'Edit message' : 'Write a message'}
             textAlignVertical="top"
           />
           <View style={styles.composerFooter}>
-            <Text style={[styles.counter, { color: sendError ? t.brandRed : t.inkFaint }]}>
-              {sendError ?? `${content.length.toLocaleString()}/4,000`}
+            <Text accessibilityRole={composerError ? 'alert' : undefined} style={[styles.counter, { color: composerError ? t.brandRed : t.inkFaint }]}>
+              {composerError ?? (validationError && composerContent.length > 0 ? validationError : `${composerContent.length.toLocaleString()}/4,000`)}
             </Text>
             <Pressable
               onPress={() => void submit()}
-              disabled={invalid || sending}
+              disabled={invalid || composerPending}
               accessibilityRole="button"
-              accessibilityLabel="Send message"
+              accessibilityLabel={editingMessage ? 'Save edited message' : 'Send message'}
+              accessibilityState={{ disabled: invalid || composerPending, busy: composerPending }}
               style={[
                 styles.send,
-                { backgroundColor: invalid || sending ? t.surfaceSoft : t.brandGreen },
+                editingMessage && styles.saveEdit,
+                { backgroundColor: invalid || composerPending ? t.surfaceSoft : t.brandGreen },
               ]}
             >
-              {sending ? (
+              {composerPending ? (
                 <ActivityIndicator size="small" color={t.inkInverse} />
               ) : (
-                <PaperPlaneTilt size={17} color={invalid ? t.inkFaint : t.inkInverse} weight="fill" />
+                editingMessage ? (
+                  <Text style={[styles.saveEditLabel, { color: invalid ? t.inkFaint : t.inkInverse }]}>Save</Text>
+                ) : (
+                  <PaperPlaneTilt size={17} color={invalid ? t.inkFaint : t.inkInverse} weight="fill" />
+                )
               )}
             </Pressable>
           </View>
@@ -564,11 +824,24 @@ const styles = StyleSheet.create({
   messageMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   reactLabel: { marginTop: 4, fontFamily: sans(600), fontSize: 10.5 },
   time: { marginTop: 4, paddingHorizontal: 4, fontFamily: sans(400), fontSize: 10.5 },
+  messageActionsButton: { width: 44, height: 44, marginVertical: -12, alignItems: 'center', justifyContent: 'center' },
+  messageActionsMenu: { flexDirection: 'row', alignSelf: 'flex-end', borderWidth: 1, borderRadius: 8, marginTop: 6, padding: 3 },
+  messageAction: { minWidth: 88, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 },
+  messageActionLabel: { fontFamily: sans(600), fontSize: 11.5 },
   systemMessage: { alignSelf: 'center', paddingVertical: 4, fontFamily: sans(400), fontSize: 11.5 },
+  newMessagesButton: { alignSelf: 'center', minHeight: 34, justifyContent: 'center', borderRadius: 17, marginVertical: 8, paddingHorizontal: 16 },
+  newMessagesText: { fontFamily: sans(600), fontSize: 11.5 },
   composer: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
+  editingHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingBottom: 8 },
+  editingHeaderText: { flex: 1, minWidth: 0 },
+  editingLabel: { fontFamily: sans(600), fontSize: 11.5 },
+  editingPreview: { marginTop: 2, fontFamily: sans(400), fontSize: 10.5 },
+  cancelEdit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   inputShell: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   input: { minHeight: 44, maxHeight: 112, paddingHorizontal: 12, paddingTop: 10, fontFamily: sans(400), fontSize: 14 },
   composerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 6 },
   counter: { flex: 1, paddingHorizontal: 6, fontFamily: sans(400), fontSize: 10.5 },
   send: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  saveEdit: { width: 58, paddingHorizontal: 10 },
+  saveEditLabel: { fontFamily: sans(600), fontSize: 11 },
 });

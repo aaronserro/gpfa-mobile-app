@@ -54,7 +54,11 @@ export default function PortalTabBar({
         const color = active ? t.brandGreen : t.inkFaint;
         const badge = badges[id] ?? 0;
         return (
-          <Pressable key={id} style={styles.tab} onPress={() => onSelect(id)}>
+          <Pressable
+            key={id}
+            style={({ pressed }) => [styles.tab, pressed ? { opacity: 0.7 } : null]}
+            onPress={() => onSelect(id)}
+          >
             <Icon size={23} color={color} weight={active ? 'fill' : 'regular'} />
             <Text style={[styles.label, { color }]}>{label}</Text>
             {showBadges && !!badge && (

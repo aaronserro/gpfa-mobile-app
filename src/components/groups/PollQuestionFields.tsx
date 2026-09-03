@@ -86,7 +86,7 @@ export default function PollQuestionFields({
       {questions.map((question, questionIndex) => (
         <View
           key={question.key}
-          style={[styles.question, { borderColor: t.ruleHairline }]}
+          style={[styles.question, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
         >
           <View style={styles.questionHeader}>
             <Text style={[styles.questionNumber, { color: t.inkMuted }]}>
@@ -110,9 +110,15 @@ export default function PollQuestionFields({
             value={question.text}
             onChangeText={(value) => updateQuestion(question.key, value)}
             placeholder="Question members will answer"
+            multiline
+            textAlignVertical="top"
+            style={styles.questionInput}
           />
           {question.options.map((option, optionIndex) => (
             <View key={option.key} style={styles.optionRow}>
+              <View style={[styles.optionNumber, { backgroundColor: t.surfaceSoft }]}>
+                <Text style={[styles.optionNumberText, { color: t.inkMuted }]}>{optionIndex + 1}</Text>
+              </View>
               <Input
                 editable={editable}
                 value={option.label}
@@ -188,13 +194,16 @@ export default function PollQuestionFields({
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 10 },
-  question: { gap: 8, borderWidth: 1, borderRadius: 8, padding: 10 },
+  list: { gap: 14, marginTop: 8 },
+  question: { gap: 12, borderWidth: 1, borderRadius: 10, padding: 15 },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  questionNumber: { fontFamily: sans(600), fontSize: 11.5 },
-  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  questionNumber: { fontFamily: sans(600), fontSize: 13 },
+  questionInput: { minHeight: 68, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
+  optionRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  optionNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  optionNumberText: { fontFamily: sans(600), fontSize: 11 },
   optionInput: { flex: 1 },
-  addAction: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingVertical: 4 },
-  addQuestion: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderRadius: 8 },
-  addText: { fontFamily: sans(600), fontSize: 11.5 },
+  addAction: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 7 },
+  addQuestion: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderRadius: 8 },
+  addText: { fontFamily: sans(600), fontSize: 12.5 },
 });

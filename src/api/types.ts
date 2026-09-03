@@ -448,6 +448,16 @@ export interface WorkingGroupFeedResponse {
   totalMatching: number;
 }
 
+/** Minimal private broadcast emitted when a working-group feed item changes. */
+export interface WorkingGroupFeedRealtimeEvent {
+  eventId: string;
+  groupSlug: string;
+  itemType: 'discussion' | 'announcement' | 'event' | 'poll';
+  itemId: string;
+  changeType: 'created' | 'updated' | 'deleted';
+  occurredAt: string;
+}
+
 export interface WorkingGroupDetailAttachment {
   id: string;
   title: string;
@@ -1564,6 +1574,7 @@ export interface MessageItem {
   clientNonce: string;
   ordinal: number;
   createdAt: string;
+  editedAt: string | null;
   kind: 'text' | 'system';
   reactions: MessageReactionAggregate[];
 }
@@ -1612,6 +1623,16 @@ export interface MessageWindowQuery {
   limit?: number;
 }
 
+/** Private broadcast events are invalidation hints; message content is never included. */
+export type MessagingRealtimeEvent =
+  | { type: 'conversation.created'; conversationId: string }
+  | { type: 'conversation.member_left'; conversationId: string }
+  | { type: 'conversation.members_added'; conversationId: string }
+  | { type: 'conversation.renamed'; conversationId: string }
+  | { type: 'message.created'; conversationId: string; messageId: string; ordinal: number }
+  | { type: 'message.updated'; conversationId: string; messageId: string }
+  | { type: 'reaction.changed'; conversationId: string; messageId: string };
+
 export interface DirectConversationResponse {
   status: 'success';
   conversationId: string | null;
@@ -1634,6 +1655,18 @@ export interface SendMessageResponse {
   status: 'success';
   conversationId: string;
   conversationCreated: boolean;
+  message: MessageItem;
+}
+
+export interface EditMessageResponse {
+  status: 'success';
+  conversationId: string;
+  message: MessageItem;
+}
+
+export interface UnsendMessageResponse {
+  status: 'success';
+  conversationId: string;
   message: MessageItem;
 }
 

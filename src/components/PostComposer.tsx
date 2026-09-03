@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarDots, ChartBar, ChatCircle, Megaphone, X, type Icon } from '../ds/icons';
 import { Input } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
+import { postTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import type { ForumUploadFile, Group, GroupMember, NewPostInput, PostType } from '../api/types';
 import ForumFilePicker from './groups/ForumFilePicker';
 import { MentionInput } from './groups/MentionInput';
@@ -20,6 +20,12 @@ import PollQuestionFields, {
   createPollQuestionDraft,
   pollQuestionDraftsToInput,
 } from './groups/PollQuestionFields';
+import {
+  deviceTimezone,
+  nextWholeHour,
+  PostDateTimeField,
+  PostTimezoneField,
+} from './groups/PostDateTimeFields';
 import { pollQuestionsAreValid } from '../lib/polls';
 import {
   appendTagToken,
@@ -55,7 +61,6 @@ export default function PostComposer({
   initialGroupId,
   tagSuggestionsByGroup,
   mentionMembersByGroup,
-  onSelectGroup,
   onSearchTags,
   onClose,
   onCreate,
@@ -64,14 +69,13 @@ export default function PostComposer({
   initialGroupId: string;
   tagSuggestionsByGroup: Record<string, TagSuggestion[] | undefined>;
   mentionMembersByGroup: Record<string, GroupMember[] | undefined>;
-  onSelectGroup?: (groupId: string) => void;
   onSearchTags: (groupId: string, query: string) => Promise<TagSuggestion[]>;
   onClose: () => void;
   onCreate: (draft: NewPostInput) => void;
 }) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
-  const [groupId, setGroupId] = useState(initialGroupId);
+  const groupId = initialGroupId;
   const [type, setType] = useState<PostType>('discussion');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -83,10 +87,11 @@ export default function PostComposer({
   const tagRequestGeneration = useRef(0);
   const [files, setFiles] = useState<ForumUploadFile[]>([]);
   const [pollQuestions, setPollQuestions] = useState(() => [createPollQuestionDraft()]);
-  const [closesAt, setClosesAt] = useState('');
-  const [startsAt, setStartsAt] = useState('');
-  const [endsAt, setEndsAt] = useState('');
-  const [timezone, setTimezone] = useState('');
+  const initialStart = useMemo(() => nextWholeHour(), []);
+  const [startsAt, setStartsAt] = useState(initialStart);
+  const [endsAt, setEndsAt] = useState(() => new Date(initialStart.getTime() + 60 * 60 * 1000));
+  const [closesAt, setClosesAt] = useState(() => new Date(initialStart.getTime() + 7 * 24 * 60 * 60 * 1000));
+  const [timezone, setTimezone] = useState(deviceTimezone);
   const [location, setLocation] = useState('');
   const [registrationUrl, setRegistrationUrl] = useState('');
   const [isVirtual, setIsVirtual] = useState(false);
@@ -133,7 +138,8 @@ export default function PostComposer({
   }, [groupId, onSearchTags, tagLookupKey, tagQuery]);
   const canPost =
     title.trim().length > 0 &&
-    (type !== 'poll' || pollQuestionsAreValid(normalizedPollQuestions));
+    (type !== 'poll' || (pollQuestionsAreValid(normalizedPollQuestions) && closesAt.getTime() > Date.now())) &&
+    (type !== 'event' || endsAt.getTime() > startsAt.getTime());
 
   const submit = () => {
     if (!canPost) return;
@@ -146,13 +152,13 @@ export default function PostComposer({
       tags,
       files: type === 'poll' ? undefined : files,
       pollQuestions: type === 'poll' ? normalizedPollQuestions : undefined,
-      closesAt: closesAt.trim() || undefined,
-      startsAt: startsAt.trim() || undefined,
-      endsAt: endsAt.trim() || undefined,
-      timezone: timezone.trim() || undefined,
-      location: location.trim() || undefined,
-      registrationUrl: registrationUrl.trim() || undefined,
-      isVirtual,
+      closesAt: type === 'poll' ? closesAt.toISOString() : undefined,
+      startsAt: type === 'event' ? startsAt.toISOString() : undefined,
+      endsAt: type === 'event' ? endsAt.toISOString() : undefined,
+      timezone: type === 'event' ? timezone : undefined,
+      location: type === 'event' ? location.trim() || undefined : undefined,
+      registrationUrl: type === 'event' ? registrationUrl.trim() || undefined : undefined,
+      isVirtual: type === 'event' ? isVirtual : undefined,
     });
   };
 
@@ -176,33 +182,8 @@ export default function PostComposer({
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
-            <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Working group</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {groups.map((g) => {
-                const on = g.id === groupId;
-                return (
-                  <Pressable
-                    key={g.id}
-                    onPress={() => {
-                      setGroupId(g.id);
-                      onSelectGroup?.(g.id);
-                    }}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
-                        borderColor: on ? t.surfaceAnchor : t.ruleHairline,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.chipText, { color: on ? t.inkInverse : t.inkMuted }]}>{g.short}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Post type</Text>
-            <View style={styles.typeGrid}>
+            <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Post type</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
               {TYPES.map((k) => {
                 const kind = postTypeStyle(t, k);
                 const TypeIcon = TYPE_ICON[k];
@@ -211,6 +192,8 @@ export default function PostComposer({
                   <Pressable
                     key={k}
                     onPress={() => setType(k)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
                     style={[
                       styles.typeTile,
                       {
@@ -224,8 +207,16 @@ export default function PostComposer({
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
             <Text style={[styles.hint, { color: t.inkFaint }]}>{TYPE_HINT[type]}</Text>
+
+            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Title</Text>
+            <Input
+              value={title}
+              onChangeText={setTitle}
+              placeholder="What should peers compare or decide?"
+              style={styles.field}
+            />
 
             <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Tags</Text>
             <Input
@@ -266,14 +257,6 @@ export default function PostComposer({
                 </View>
             )}
 
-            <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Title</Text>
-            <Input
-              value={title}
-              onChangeText={setTitle}
-              placeholder="What should peers compare or decide?"
-              style={styles.field}
-            />
-
             <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Body</Text>
             <MentionInput
               value={body}
@@ -287,25 +270,43 @@ export default function PostComposer({
 
             {type === 'poll' && (
               <>
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Poll questions</Text>
+                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Questions</Text>
                 <PollQuestionFields
                   questions={pollQuestions}
                   editable
                   onChange={setPollQuestions}
                 />
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Closes at</Text>
-                <Input value={closesAt} onChangeText={setClosesAt} placeholder="2026-09-01T17:00:00Z" style={styles.field} />
+                <PostDateTimeField
+                  label="Closes at"
+                  value={closesAt}
+                  timezone={timezone}
+                  minimumDate={new Date()}
+                  onChange={setClosesAt}
+                />
+                <PostTimezoneField value={timezone} onChange={setTimezone} />
               </>
             )}
 
             {type === 'event' && (
               <>
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Starts at</Text>
-                <Input value={startsAt} onChangeText={setStartsAt} placeholder="2026-09-01T17:00:00Z" style={styles.field} />
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Ends at</Text>
-                <Input value={endsAt} onChangeText={setEndsAt} placeholder="2026-09-01T18:00:00Z" style={styles.field} />
-                <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Timezone</Text>
-                <Input value={timezone} onChangeText={setTimezone} placeholder="America/Toronto" style={styles.field} />
+                <PostDateTimeField
+                  label="Starts at"
+                  value={startsAt}
+                  timezone={timezone}
+                  minimumDate={new Date()}
+                  onChange={(value) => {
+                    setStartsAt(value);
+                    if (endsAt <= value) setEndsAt(new Date(value.getTime() + 60 * 60 * 1000));
+                  }}
+                />
+                <PostDateTimeField
+                  label="Ends at"
+                  value={endsAt}
+                  timezone={timezone}
+                  minimumDate={startsAt}
+                  onChange={setEndsAt}
+                />
+                <PostTimezoneField value={timezone} onChange={setTimezone} />
                 <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Location</Text>
                 <Input value={location} onChangeText={setLocation} placeholder="Toronto or Zoom" style={styles.field} />
                 <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Registration URL</Text>
@@ -381,39 +382,18 @@ const styles = StyleSheet.create({
   body: { paddingBottom: 14 },
   label: { marginTop: 16 },
   fieldLabel: { fontFamily: sans(500), fontSize: 12.5 },
-  chips: {
+  typeRow: {
     gap: 8,
     paddingVertical: 10,
   },
-  chip: {
-    minHeight: 34,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderRadius: 32,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontFamily: mono(400),
-    fontSize: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
   typeTile: {
-    flexGrow: 1,
-    flexBasis: '46%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 44,
-    paddingHorizontal: 12,
+    minHeight: 40,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 20,
   },
   typeLabel: {
     fontFamily: sans(500),

@@ -13,14 +13,20 @@
       "backgroundColor": "#f7fafb"
     },
     "ios": {
+      "bundleIdentifier": "org.gpfa.mobile",
       "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ]
+      },
+      "entitlements": {
+        "aps-environment": "development"
       }
     },
     "android": {
+      "package": "org.gpfa.mobile",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE_MICROPHONE"
@@ -35,6 +41,12 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ],
       "expo-font",
       "expo-secure-store",
       [
@@ -44,7 +56,11 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-system-ui",
+      "@react-native-community/datetimepicker",
+      "@config-plugins/react-native-blob-util",
+      "@config-plugins/react-native-pdf"
     ]
   }
 }

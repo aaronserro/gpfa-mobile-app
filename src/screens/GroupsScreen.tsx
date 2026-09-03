@@ -49,6 +49,8 @@ export interface GroupsScreenProps {
   selectedGroupNextCursor?: string | null;
   selectedGroupTotalMatching?: number;
   selectedGroupFeedControls?: WorkingGroupFeedControls;
+  hasNewGroupPosts?: boolean;
+  refreshingNewGroupPosts?: boolean;
   selectedGroupCoLeads?: Group['members'];
   selectedGroupMembers?: Group['members'];
   selectedGroupMembershipRole?: 'member' | 'co_lead' | null;
@@ -65,6 +67,7 @@ export interface GroupsScreenProps {
   onRemoveResource: (submissionId: string) => Promise<boolean>;
   onLoadMoreGroupFeed?: () => void;
   onApplyGroupFeedControls: (groupId: string, controls: WorkingGroupFeedControls) => void;
+  onShowNewGroupPosts: () => Promise<void>;
   /** The group whose page is open; null shows the directory. */
   groupId: string | null;
   onOpenGroup: (id: string) => void;
@@ -129,6 +132,8 @@ export default function GroupsScreen({
   selectedGroupNextCursor = null,
   selectedGroupTotalMatching = 0,
   selectedGroupFeedControls = DEFAULT_WORKING_GROUP_FEED_CONTROLS,
+  hasNewGroupPosts = false,
+  refreshingNewGroupPosts = false,
   selectedGroupCoLeads = [],
   selectedGroupMembers = [],
   selectedGroupMembershipRole = null,
@@ -142,6 +147,7 @@ export default function GroupsScreen({
   onRemoveResource,
   onLoadMoreGroupFeed,
   onApplyGroupFeedControls,
+  onShowNewGroupPosts,
   groupId,
   onOpenGroup,
   onCloseGroup,
@@ -289,6 +295,9 @@ export default function GroupsScreen({
         onTab={setTab}
         feedControls={selectedGroupFeedControls}
         onApplyFeedControls={(controls) => onApplyGroupFeedControls(group.id, controls)}
+        hasNewPosts={hasNewGroupPosts}
+        refreshingNewPosts={refreshingNewGroupPosts}
+        onShowNewPosts={onShowNewGroupPosts}
         mutationNotice={mutationNotice}
         onDismissMutationNotice={onDismissMutationNotice}
         pendingMutations={pendingMutations}

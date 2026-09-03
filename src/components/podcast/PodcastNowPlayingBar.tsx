@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Article, ArrowClockwise, ArrowCounterClockwise, Pause, Play } from '../../ds/icons';
+import { Article, ArrowClockwise, ArrowCounterClockwise, Pause, Play, X } from '../../ds/icons';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, sans } from '../../ds/tokens';
 import { formatTime, usePodcastPlayer, usePodcastTimeline } from './PlayerProvider';
@@ -29,6 +29,7 @@ export default function PodcastNowPlayingBar({
     toggle,
     skip,
     retry,
+    stop,
   } = usePodcastPlayer();
   const { position, duration } = usePodcastTimeline();
 
@@ -117,6 +118,19 @@ export default function PodcastNowPlayingBar({
           <Article size={14} color={t.inkInverse} />
           <Text style={[styles.actionText, { color: t.inkInverse }]}>Episode</Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => stop({ resetProgress: true })}
+          accessibilityRole="button"
+          accessibilityLabel="Stop podcast and close player"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.close,
+            { backgroundColor: pressed ? 'rgba(255,255,255,.1)' : 'transparent' },
+          ]}
+        >
+          <X size={18} color={t.inkInverse} />
+        </Pressable>
       </View>
     </View>
   );
@@ -176,5 +190,12 @@ const styles = StyleSheet.create({
   actionText: {
     fontFamily: sans(400),
     fontSize: 11.5,
+  },
+  close: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

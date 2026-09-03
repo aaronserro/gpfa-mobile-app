@@ -1,4 +1,5 @@
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'markdown-to-jsx/native';
 
 import type { NewsFeedItem, RelatedNewsThread } from '../api/types';
@@ -29,7 +30,7 @@ export default function NewsStoryScreen({ item, relatedThreads, canPrevious, can
   return <View style={styles.fill}>
     <ScreenHeader title="Story" onBack={onBack} backLabel="Back to News Radar" />
     <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.hero} resizeMode="cover" accessibilityIgnoresInvertColors /> : <View style={[styles.hero, { backgroundColor: t.surfaceSoft }]} />}
+      {item.imageUrl ? <Image source={item.imageUrl} style={styles.hero} contentFit="cover" cachePolicy="memory-disk" transition={160} accessibilityIgnoresInvertColors /> : <View style={[styles.hero, { backgroundColor: t.surfaceSoft }]} />}
       <View style={styles.article}>
         <View style={styles.badges}><Text style={[styles.badge, { borderColor: t.ruleHairline, color: t.inkMuted }]}>{item.kind === 'gpfa' ? item.articleType : item.topic}</Text>{item.kind === 'gpfa' && item.isMemberOnly ? <View style={styles.lock}><LockSimple size={13} color={t.inkMuted} /><Text style={{ color: t.inkMuted, fontFamily: mono(500), fontSize: 9 }}>MEMBERS ONLY</Text></View> : null}</View>
         <Text style={[styles.title, { color: t.inkStrong }]}>{item.title}</Text>
@@ -54,19 +55,19 @@ export default function NewsStoryScreen({ item, relatedThreads, canPrevious, can
           }}>{stripMarkdownHtml(item.body)}</Markdown> : item.isMemberOnly ? <View style={[styles.unavailable, { borderColor: t.ruleHairline }]}><Text style={[styles.body, { color: t.inkMuted }]}>This member article is temporarily unavailable.</Text></View> : null}
           {item.topics.length ? <View style={styles.topics}>{item.topics.map((topic) => <Text key={topic} style={[styles.topic, { color: t.inkStrong, borderColor: alpha(t.brandGreen, 0.3), backgroundColor: alpha(t.brandGreen, 0.1) }]}>{topic}</Text>)}</View> : null}
         </>}
-        {storyThreads.length ? <View style={[styles.discussions, { borderTopColor: t.ruleHairline }]}><Text style={[styles.sectionTitle, { color: t.inkStrong }]}>Discussed in</Text>{storyThreads.map((thread) => <Pressable key={thread.id} onPress={() => onOpenThread(thread)} style={[styles.thread, { borderColor: t.ruleHairline }]}><Text style={[styles.flex, { color: t.inkStrong, fontFamily: sans(500) }]}>{thread.title}</Text><ArrowRight size={15} color={t.inkMuted} /></Pressable>)}</View> : null}
+        {storyThreads.length ? <View style={[styles.discussions, { borderTopColor: t.ruleHairline }]}><Text style={[styles.sectionTitle, { color: t.inkStrong }]}>Discussed in</Text>{storyThreads.map((thread) => <Pressable key={thread.id} onPress={() => onOpenThread(thread)} style={({ pressed }) => [styles.thread, { borderColor: t.ruleHairline, backgroundColor: pressed ? t.surfaceSoft : 'transparent' }]}><Text style={[styles.flex, { color: t.inkStrong, fontFamily: sans(500) }]}>{thread.title}</Text><ArrowRight size={15} color={t.inkMuted} /></Pressable>)}</View> : null}
       </View>
     </ScrollView>
     <View style={[styles.footer, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
       <View style={styles.nav}><NavButton disabled={!canPrevious} onPress={onPrevious}><ArrowLeft size={17} color={canPrevious ? t.inkStrong : t.inkFaint} /></NavButton><NavButton disabled={!canNext} onPress={onNext}><ArrowRight size={17} color={canNext ? t.inkStrong : t.inkFaint} /></NavButton></View>
-      {(item.kind === 'radar' || (!item.isMemberOnly && item.externalUrl)) ? <Pressable onPress={() => void Linking.openURL(item.kind === 'radar' ? item.url : item.externalUrl!)} style={[styles.source, { backgroundColor: t.surfaceAnchor }]}><Text style={{ color: t.inkInverse, fontFamily: sans(600), fontSize: 12 }}>{item.kind === 'radar' ? 'View full article' : 'View original'}</Text><ArrowSquareOut size={15} color={t.inkInverse} /></Pressable> : null}
+      {(item.kind === 'radar' || (!item.isMemberOnly && item.externalUrl)) ? <Pressable onPress={() => void Linking.openURL(item.kind === 'radar' ? item.url : item.externalUrl!)} style={({ pressed }) => [styles.source, { backgroundColor: pressed ? alpha(t.surfaceAnchor, 0.82) : t.surfaceAnchor }]}><Text style={{ color: t.inkInverse, fontFamily: sans(600), fontSize: 12 }}>{item.kind === 'radar' ? 'View full article' : 'View original'}</Text><ArrowSquareOut size={15} color={t.inkInverse} /></Pressable> : null}
     </View>
   </View>;
 }
 
 function NavButton({ disabled, onPress, children }: { disabled: boolean; onPress: () => void; children: React.ReactNode }) {
   const { t } = useTheme();
-  return <Pressable disabled={disabled} onPress={onPress} style={[styles.navButton, { borderColor: t.ruleHairline }, disabled && { opacity: 0.5 }]}>{children}</Pressable>;
+  return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.navButton, { borderColor: t.ruleHairline, backgroundColor: pressed && !disabled ? t.surfaceSoft : 'transparent' }, disabled && { opacity: 0.5 }]}>{children}</Pressable>;
 }
 
 function MarkdownTable({ children }: { children?: React.ReactNode }) {

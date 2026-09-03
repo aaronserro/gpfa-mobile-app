@@ -1,14 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Print from 'expo-print';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView } from 'react-native-webview';
 
 import type { LibraryResource } from '../api/types';
 import { API_BASE_URL, GPFA_WEB_ORIGIN } from '../api/config';
-import { resourceDownloadHeaders } from '../api/resource-download-policy';
+import { resourceDownloadHeaders, resourcePreviewKind } from '../api/resource-download-policy';
 import { DownloadSimple } from '../ds/icons';
 import { ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans } from '../ds/tokens';
+import { ResourceImageRenderer } from './resource-viewer/ResourceImageRenderer';
+import { ResourcePdfRenderer } from './resource-viewer/ResourcePdfRenderer';
+import { ResourceTextRenderer } from './resource-viewer/ResourceTextRenderer';
+import { ResourceWebRenderer } from './resource-viewer/ResourceWebRenderer';
 
 export default function ResourceViewer({
   resource,
@@ -26,6 +31,8 @@ export default function ResourceViewer({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [pdfPath, setPdfPath] = useState<string | null>(null);
   const file = resource.artifact.kind === 'file' ? resource.artifact : null;
 
   const source = useMemo(
@@ -41,6 +48,21 @@ export default function ResourceViewer({
     }),
     [accessToken, file]
   );
+  const previewKind = file ? resourcePreviewKind(file) : 'external';
+  const pdfUnavailableInExpoGo =
+    previewKind === 'pdf' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setSaveError(null);
+    setPdfPath(null);
+  }, [resource.id]);
+
+  const rendererError = useCallback((message: string) => {
+    setLoading(false);
+    setError(message);
+  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -54,68 +76,118 @@ export default function ResourceViewer({
     }
   };
 
-  const canPreview = !!file?.previewable;
+  const print = async () => {
+    if (!pdfPath) return;
+    setPrinting(true);
+    setSaveError(null);
+    try {
+      const uri = pdfPath.startsWith('file://') ? pdfPath : `file://${pdfPath}`;
+      await Print.printAsync({ uri });
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'The PDF could not be printed.');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const canRender = !!file && previewKind !== 'external' && !pdfUnavailableInExpoGo;
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title={resource.title} onBack={onClose} backLabel="Back to resources" />
       <View style={[styles.viewer, { backgroundColor: t.surfacePaper }]}>
-        {canPreview && !error && (
-          <WebView
-            style={styles.web}
-            containerStyle={styles.web}
-            source={source}
-            originWhitelist={['http://*', 'https://*']}
-            startInLoadingState
-            setSupportMultipleWindows={false}
-            onLoadStart={() => {
-              setLoading(true);
-              setError(null);
-            }}
-            onLoadEnd={() => setLoading(false)}
-            onError={(event) => {
-              setLoading(false);
-              setError(event.nativeEvent.description || 'The resource could not be loaded.');
-            }}
-            onHttpError={(event) => {
-              setLoading(false);
-              setError(`The preview returned status ${event.nativeEvent.statusCode}.`);
-            }}
+        {canRender && !error && previewKind === 'pdf' ? (
+          <ResourcePdfRenderer
+            uri={source.uri}
+            headers={source.headers}
+            onError={rendererError}
+            onLocalFile={setPdfPath}
           />
-        )}
+        ) : null}
+        {canRender && !error && previewKind === 'image' ? (
+          <ResourceImageRenderer
+            uri={source.uri}
+            headers={source.headers}
+            title={resource.title}
+            onError={rendererError}
+          />
+        ) : null}
+        {canRender && !error && previewKind === 'text' ? (
+          <ResourceTextRenderer uri={source.uri} headers={source.headers} onError={rendererError} />
+        ) : null}
+        {canRender && !error && previewKind === 'web' ? (
+          <ResourceWebRenderer
+            uri={source.uri}
+            headers={source.headers}
+            onLoading={setLoading}
+            onError={rendererError}
+          />
+        ) : null}
 
-        {canPreview && loading && !error && (
+        {previewKind === 'web' && loading && !error && (
           <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: t.surfacePaper }]}>
             <ActivityIndicator color={t.brandGreen} />
           </View>
         )}
 
-        {(!canPreview || error) && (
+        {(!canRender || error) && (
           <View style={styles.center}>
             <Text style={[styles.errorTitle, { color: t.inkStrong }]}>Preview unavailable</Text>
             <Text style={[styles.errorBody, { color: t.inkMuted }]}>
-              {error ?? 'This file type cannot be previewed in the app. Save it to open it with another app.'}
+              {error ?? (pdfUnavailableInExpoGo
+                ? 'PDF preview requires a development build. Save the file to open it with another app.'
+                : 'This file type cannot be previewed in the app. Save it to open it with another app.')}
             </Text>
-            <Pressable
-              onPress={() => void save()}
-              disabled={saving || !file}
-              style={({ pressed }) => [
-                styles.closeButton,
-                { backgroundColor: pressed ? t.brandGreenStrong : t.surfaceAnchor },
-                (saving || !file) && styles.disabled,
-              ]}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <DownloadSimple size={16} color="#fff" />
-              )}
-              <Text style={styles.closeButtonText}>{saving ? 'Preparing…' : 'Save to device'}</Text>
-            </Pressable>
-            {saveError ? <Text style={[styles.errorBody, { color: t.brandRed }]}>{saveError}</Text> : null}
           </View>
         )}
       </View>
+      {file ? (
+        <View style={[styles.actionBar, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Save resource to device"
+            onPress={() => void save()}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.actionButton,
+              { backgroundColor: pressed ? t.surfaceAnchorSoft : t.surfaceAnchor },
+              saving && styles.disabled,
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={t.inkInverse} />
+            ) : (
+              <DownloadSimple size={16} color={t.inkInverse} />
+            )}
+            <Text style={[styles.actionButtonText, { color: t.inkInverse }]}>
+              {saving ? 'Preparing…' : 'Save to device'}
+            </Text>
+          </Pressable>
+          {previewKind === 'pdf' && !pdfUnavailableInExpoGo ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Print PDF"
+              onPress={() => void print()}
+              disabled={!pdfPath || printing}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                { borderColor: t.ruleStrong, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper },
+                (!pdfPath || printing) && styles.disabled,
+              ]}
+            >
+              {printing ? <ActivityIndicator size="small" color={t.brandGreen} /> : null}
+              <Text style={[styles.secondaryButtonText, { color: t.inkStrong }]}>
+                {printing ? 'Opening…' : 'Print'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {saveError ? (
+        <Text style={[styles.saveError, { color: t.brandRed, backgroundColor: t.surfacePaper }]}>
+          {saveError}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -125,9 +197,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   viewer: {
-    flex: 1,
-  },
-  web: {
     flex: 1,
   },
   center: {
@@ -148,20 +217,43 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
   },
-  closeButton: {
+  actionBar: {
     alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+  },
+  actionButton: {
+    alignItems: 'center',
+    borderRadius: 8,
     flexDirection: 'row',
     gap: 8,
-    borderRadius: 8,
     justifyContent: 'center',
-    marginTop: 6,
     minHeight: 44,
     paddingHorizontal: 18,
   },
   disabled: { opacity: 0.45 },
-  closeButtonText: {
-    color: '#fff',
+  actionButtonText: {
     fontFamily: sans(600),
     fontSize: 13,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 18,
+  },
+  secondaryButtonText: { fontFamily: sans(600), fontSize: 13 },
+  saveError: {
+    fontFamily: sans(400),
+    fontSize: 12,
+    paddingBottom: 8,
+    paddingHorizontal: 12,
+    textAlign: 'center',
   },
 });

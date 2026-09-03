@@ -154,7 +154,6 @@ export default function HomeScreen({
                         <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
                           {event.rsvp === 'attending' ? "You’re going" : 'Not responded'}
                         </Badge>
-                        <Text style={[styles.detailLink, { color: t.inkStrong }]}>Details</Text>
                       </View>
                     </View>
                   </Pressable>
@@ -439,8 +438,7 @@ const styles = StyleSheet.create({
   dateChip: { width: 48, alignItems: 'center', paddingTop: 2 },
   dateMonth: { fontFamily: sans(500), fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
   dateNumber: { marginTop: 2, fontFamily: sans(600), fontSize: 25, lineHeight: 27, letterSpacing: trackDisplay(25) },
-  eventActions: { marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  detailLink: { fontFamily: sans(500), fontSize: 11.5, textDecorationLine: 'underline' },
+  eventActions: { marginTop: 9, flexDirection: 'row', alignItems: 'center' },
   groupChips: { paddingHorizontal: 20, paddingBottom: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   groupChip: { minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8 },
   groupChipText: { fontFamily: sans(500), fontSize: 11.5 },

@@ -27,36 +27,6 @@ export function filterLibraryResources(
   });
 }
 
-export function formatBytes(value: number | undefined): string | null {
-  if (value === undefined || !Number.isFinite(value) || value < 0) return null;
-  if (value < 1024) return `${value} B`;
-
-  const units = ['KB', 'MB', 'GB'];
-  let size = value / 1024;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const precision = size >= 10 ? 0 : 1;
-  return `${size.toFixed(precision).replace(/\.0$/, '')} ${units[unitIndex]}`;
-}
-
-export function resourceFileFormat(resource: LibraryResource): string | null {
-  if (resource.artifact.kind !== 'file') return null;
-  const extension = resource.artifact.fileName?.match(/\.([a-z0-9]+)$/i)?.[1];
-  if (extension) return extension.toUpperCase();
-  const subtype = resource.artifact.contentType?.split('/')[1];
-  return subtype ? subtype.toUpperCase() : 'File';
-}
-
-export function resourceFileFacts(resource: LibraryResource): string | null {
-  if (resource.artifact.kind !== 'file') return null;
-  return [resourceFileFormat(resource), formatBytes(resource.artifact.byteSize)]
-    .filter(Boolean)
-    .join(' · ');
-}
-
 export function relatedResources(
   resources: LibraryResource[],
   current: LibraryResource,

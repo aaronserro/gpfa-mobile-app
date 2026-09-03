@@ -28,6 +28,7 @@ import type {
   DirectoryMemberSummary,
   DirectoryPerson,
   DirectConversationResponse,
+  EditMessageResponse,
   FeedEntry,
   ForumAttachment,
   ForumReplyInput,
@@ -102,6 +103,7 @@ import type {
   LeaveConversationResponse,
   StatusResponse,
   Thread,
+  UnsendMessageResponse,
   WorkingGroupMembership,
   WorkingGroupCoLead,
   WorkingGroupEventRsvpInput,
@@ -128,6 +130,12 @@ import type {
   WorkingGroupsData,
 } from './types';
 import type { OrgSector, WgRuleClass } from '../ds/tokens';
+import {
+  isMessageWithinEditWindow,
+  messageContentError,
+  normalizeMessageContent,
+  replaceConversationLastMessage,
+} from '../lib/messages';
 import {
   ANNUAL_MEETING,
   ASK_CONVERSATIONS,
@@ -1362,10 +1370,9 @@ export function resolveGroupMessageConversation(
 }
 
 export function sendMemberMessage(input: SendMessageInput): Promise<SendMessageResponse> {
-  const content = input.content.replace(/\r\n/g, '\n').trim();
-  if (!content || content.length > 4_000) {
-    return Promise.reject(new Error('Messages must be between 1 and 4,000 characters.'));
-  }
+  const content = normalizeMessageContent(input.content);
+  const contentError = messageContentError(content);
+  if (contentError) return Promise.reject(new Error(contentError));
   if (!USING_MESSAGE_FIXTURES) {
     return request<SendMessageResponse>(ROUTES.sendMessage, { method: 'POST', body: { ...input, content } });
   }
@@ -1413,6 +1420,7 @@ export function sendMemberMessage(input: SendMessageInput): Promise<SendMessageR
     clientNonce: input.clientNonce,
     ordinal: (messages.at(-1)?.ordinal ?? 0) + 1,
     createdAt: new Date().toISOString(),
+    editedAt: null,
     kind: 'text',
     reactions: [],
   };
@@ -1427,6 +1435,54 @@ export function sendMemberMessage(input: SendMessageInput): Promise<SendMessageR
     .sort((a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt));
 
   return local({ status: 'success', conversationId, conversationCreated, message: cloneMessage(message) });
+}
+
+export function editMemberMessage(messageId: string, value: string): Promise<EditMessageResponse> {
+  const content = normalizeMessageContent(value);
+  const contentError = messageContentError(content);
+  if (contentError) return Promise.reject(new Error(contentError));
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<EditMessageResponse>(ROUTES.message(messageId), {
+      method: 'PATCH',
+      body: { content },
+    });
+  }
+
+  const located = findEditableFixtureMessage(messageId);
+  if ('error' in located) return Promise.reject(located.error);
+  if (located.message.content === content) {
+    return local({
+      status: 'success',
+      conversationId: located.conversationId,
+      message: cloneMessage(located.message),
+    });
+  }
+
+  const message: MessageItem = {
+    ...located.message,
+    content,
+    editedAt: new Date().toISOString(),
+  };
+  replaceFixtureMessage(located.conversationId, message);
+  return local({ status: 'success', conversationId: located.conversationId, message: cloneMessage(message) });
+}
+
+export function unsendMemberMessage(messageId: string): Promise<UnsendMessageResponse> {
+  if (!USING_MESSAGE_FIXTURES) {
+    return request<UnsendMessageResponse>(ROUTES.message(messageId), { method: 'DELETE' });
+  }
+
+  const located = findEditableFixtureMessage(messageId);
+  if ('error' in located) return Promise.reject(located.error);
+  const message: MessageItem = {
+    ...located.message,
+    content: `${MEMBER.name} unsent a message`,
+    editedAt: null,
+    kind: 'system',
+    reactions: [],
+  };
+  replaceFixtureMessage(located.conversationId, message);
+  return local({ status: 'success', conversationId: located.conversationId, message: cloneMessage(message) });
 }
 
 export function markMessageConversationRead(conversationId: string, lastReadOrdinal: number): Promise<void> {
@@ -1736,6 +1792,39 @@ function persistFixtureAskAssistant(answer: AskAnswer) {
 
 function cloneMessage(message: MessageItem): MessageItem {
   return { ...message, reactions: message.reactions.map((reaction) => ({ ...reaction })) };
+}
+
+function findEditableFixtureMessage(messageId: string):
+  | { conversationId: string; message: MessageItem }
+  | { error: Error } {
+  for (const [conversationId, messages] of Object.entries(fixtureMessageItems)) {
+    const message = messages.find((candidate) => candidate.id === messageId);
+    if (!message) continue;
+    const conversation = fixtureMessageConversations.find((candidate) => candidate.id === conversationId);
+    const currentParticipant = conversation?.participants.find((participant) => participant.isCurrentMember);
+    // Mirror the route's permission-safe response for ownership and message-kind failures.
+    if (
+      !conversation ||
+      !currentParticipant ||
+      currentParticipant.hasLeft ||
+      message.senderId !== MEMBER.id ||
+      message.kind !== 'text'
+    ) {
+      return { error: new Error('Message unavailable.') };
+    }
+    if (!isMessageWithinEditWindow(message.createdAt)) {
+      return { error: new Error('The edit window for this message has closed.') };
+    }
+    return { conversationId, message };
+  }
+  return { error: new Error('Message unavailable.') };
+}
+
+function replaceFixtureMessage(conversationId: string, next: MessageItem): void {
+  fixtureMessageItems[conversationId] = (fixtureMessageItems[conversationId] ?? []).map((message) =>
+    message.id === next.id ? next : message
+  );
+  fixtureMessageConversations = replaceConversationLastMessage(fixtureMessageConversations, next);
 }
 
 function updateFixtureReaction(

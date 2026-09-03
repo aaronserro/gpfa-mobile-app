@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import type { NewsFeedFacets, NewsFeedItem, NewsSourceFilter } from '../api/types';
 import { LockSimple, Tray } from '../ds/icons';
@@ -37,13 +38,13 @@ export default function NewsFeedScreen({
           <MastheadMeta size={10}>{totalMatching === totalAvailable ? `${totalAvailable} STORIES` : `${totalMatching} OF ${totalAvailable} STORIES`}</MastheadMeta>
           <View style={[styles.segment, { borderColor: t.ruleHairline }]}>{SOURCES.map((option) => <Pressable
             key={option.value} onPress={() => onFilters(topic, option.value)}
-            style={[styles.segmentButton, option.value === source && { backgroundColor: t.surfaceAnchor }]}
+            style={({ pressed }) => [styles.segmentButton, pressed ? { opacity: 0.7 } : null, option.value === source && { backgroundColor: t.surfaceAnchor }]}
           ><Text style={{ fontFamily: sans(500), fontSize: 11, color: option.value === source ? t.inkInverse : t.inkMuted }}>{option.label}</Text></Pressable>)}</View>
         </View>
         <FlatList horizontal data={topics} keyExtractor={(item) => item.value} showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.topicRow} renderItem={({ item }) => <Pressable
             onPress={() => onFilters(item.value, source)}
-            style={[styles.topic, { borderColor: item.value === topic ? t.surfaceAnchor : t.ruleHairline, backgroundColor: item.value === topic ? t.surfaceAnchor : t.surfacePaper }]}
+            style={({ pressed }) => [styles.topic, { borderColor: item.value === topic ? t.surfaceAnchor : t.ruleHairline, backgroundColor: item.value === topic ? t.surfaceAnchor : t.surfacePaper }, pressed ? { opacity: 0.7 } : null]}
           ><Text style={{ color: item.value === topic ? t.inkInverse : t.inkMuted, fontFamily: sans(500), fontSize: 11 }}>{item.value}</Text><Text style={[styles.count, { color: item.value === topic ? t.inkInverse : t.inkMuted }]}>{item.count}</Text></Pressable>} />
       </View>}
       renderItem={({ item }) => <StoryCard item={item} onOpen={() => onOpen(item)} />}
@@ -57,7 +58,7 @@ export default function NewsFeedScreen({
 function StoryCard({ item, onOpen }: { item: NewsFeedItem; onOpen: () => void }) {
   const { t } = useTheme();
   return <Pressable onPress={onOpen} style={({ pressed }) => [styles.card, { borderColor: t.ruleHairline, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper }]}>
-    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.image} accessibilityIgnoresInvertColors /> : <View style={[styles.image, { backgroundColor: t.surfaceSoft }]} />}
+    {item.imageUrl ? <Image source={item.imageUrl} style={styles.image} contentFit="cover" cachePolicy="memory-disk" recyclingKey={item.id} transition={160} accessibilityIgnoresInvertColors /> : <View style={[styles.image, { backgroundColor: t.surfaceSoft }]} />}
     <View style={styles.cardBody}>
       <View style={styles.badges}><Text style={[styles.badge, { borderColor: t.ruleHairline, color: t.inkMuted }]}>{item.kind === 'gpfa' ? item.articleType : item.topic}</Text>{item.kind === 'gpfa' && item.isMemberOnly ? <LockSimple size={13} color={t.inkMuted} /> : null}</View>
       <Text style={[styles.title, { color: t.inkStrong }]}>{item.title}</Text>

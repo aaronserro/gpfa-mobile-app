@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { Alert, Animated, AppState, Linking, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Alert, Animated, AppState, Keyboard, Linking, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -56,6 +56,7 @@ import {
   deleteForumThread,
   deleteMemberPoll,
   dismissNotifications,
+  editMemberMessage,
   getAnnualMeeting,
   getAskConversation,
   getAskConversations,
@@ -121,15 +122,17 @@ import {
   updateMemberEmailPreference,
   updateOwnProfile,
   updateMemberHandle,
+  unsendMemberMessage,
   uploadMemberAvatar,
   workingGroupFeedItemResponseToEntry,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
 import { ApiError, RequestCancelledError } from './src/api/client';
-import { GPFA_WEB_ORIGIN } from './src/api/config';
+import { forgotPasswordUrl, GPFA_WEB_ORIGIN } from './src/api/config';
 import { getAccessToken } from './src/api/tokens';
 import { sharePodcastDownload } from './src/api/podcast-download';
 import { shareResourceDownload } from './src/api/resource-download';
+import { resourceCanPreview } from './src/api/resource-download-policy';
 import { addEventToDeviceCalendar, shareEventIcs } from './src/lib/event-device-actions';
 import { memberDirectoryDestination } from './src/lib/member-directory-route';
 import { notificationDestination } from './src/lib/notification-navigation';
@@ -140,9 +143,12 @@ import {
   prependNotificationItem,
 } from './src/lib/notification-state';
 import { subscribeToNotificationInserts } from './src/api/notifications-realtime';
+import { subscribeToMessaging } from './src/api/messaging-realtime';
+import { subscribeToWorkingGroupFeed } from './src/api/working-group-realtime';
 import { normalizeNotification } from './src/api/notification-normalization';
 import { DEFAULT_WORKING_GROUP_FEED_CONTROLS } from './src/lib/workingGroupFeedControls';
 import { useNewsFeed } from './src/hooks/useNewsFeed';
+import { useOneSignalIntegration } from './src/hooks/useOneSignalIntegration';
 import type {
   AskConversationSummary,
   AskDisplayMessage,
@@ -172,6 +178,7 @@ import type {
   MobileEventPreview,
   MessageItem,
   MessageReaction,
+  MessagingRealtimeEvent,
   MessagingParticipant,
   NewPostInput,
   NewsFeedItem,
@@ -185,6 +192,7 @@ import type {
   Thread,
   WorkingGroupFeedItemResponse,
   WorkingGroupFeedControls,
+  WorkingGroupFeedRealtimeEvent,
   WorkingGroupResourceSubmissionInput,
   WorkingGroupResourceModerationSubmission,
   WorkingGroupResourceReviewInput,
@@ -194,6 +202,15 @@ import { MemberProvider } from './src/auth/MemberProvider';
 import DataGate from './src/components/DataGate';
 import { openForumAttachment as openForumAttachmentFile } from './src/lib/forumAttachments';
 import { mergeAskMessages } from './src/lib/ask-gpfa-core';
+import {
+  mergeRealtimeMessages as mergeMessages,
+  rememberBoundedId,
+} from './src/lib/realtime-state';
+import {
+  messageUpdatedWindowQuery,
+  replaceConversationLastMessage,
+  replaceMessageById,
+} from './src/lib/messages';
 import { loadActiveAskConversation, saveActiveAskConversation } from './src/lib/ask-gpfa-session';
 import { askSourceDestination, trustedAskSourceUrl } from './src/lib/ask-source-navigation';
 import { externalResourceUrl } from './src/lib/library-resources';
@@ -276,6 +293,13 @@ function Portal() {
   const tabTranslateX = useRef(new Animated.Value(0)).current;
 
   const { isSignedIn, status, signOut, signingOut } = useAuth();
+  const openForgotPassword = useCallback(async (email: string) => {
+    const destination = forgotPasswordUrl(email);
+    if (!destination.ok) {
+      throw new Error('Password recovery is not configured for this build.');
+    }
+    await Linking.openURL(destination.url);
+  }, []);
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
   const [moreView, setMoreView] = useState<MoreView>('root');
   const [eventRequest, setEventRequest] = useState<{ id: string; n: number } | null>(null);
@@ -298,6 +322,10 @@ function Portal() {
   const groupDetailsRef = useRef(groupDetails);
   const feedRequestGeneration = useRef<Record<string, number>>({});
   const [feedControls, setFeedControls] = useState<Record<string, WorkingGroupFeedControls | undefined>>({});
+  const [groupsWithNewPosts, setGroupsWithNewPosts] = useState<Record<string, boolean | undefined>>({});
+  const [refreshingGroupNewPosts, setRefreshingGroupNewPosts] = useState<Record<string, boolean | undefined>>({});
+  const workingGroupRealtimeEventIds = useRef<string[]>([]);
+  const workingGroupRealtimeHandlerRef = useRef<(event: WorkingGroupFeedRealtimeEvent) => void>(() => {});
   const [mutationNotice, setMutationNotice] = useState<MutationNoticeValue | null>(null);
   const [pendingMutations, setPendingMutations] = useState<Record<string, boolean | undefined>>({});
   const [pollEditors, setPollEditors] = useState<Record<string, MemberPoll | undefined>>({});
@@ -345,6 +373,11 @@ function Portal() {
   const [draftMessageRecipient, setDraftMessageRecipient] = useState<MessagingParticipant | null>(null);
   const [draftGroupParticipants, setDraftGroupParticipants] = useState<MessagingParticipant[]>([]);
   const [messageItems, setMessageItems] = useState<MessageItem[]>([]);
+  const activeMessageConversationIdRef = useRef(activeMessageConversationId);
+  const messageItemsRef = useRef(messageItems);
+  const messageCatchUpGeneration = useRef(0);
+  const lastMessageReadOrdinalRef = useRef(0);
+  const messagingRealtimeHandlerRef = useRef<(event: MessagingRealtimeEvent) => void>(() => {});
   const [messageConversationLoading, setMessageConversationLoading] = useState(false);
   const [messageConversationError, setMessageConversationError] = useState<Error | null>(null);
   const [messageSending, setMessageSending] = useState(false);
@@ -353,6 +386,8 @@ function Portal() {
   const [messageLoadingOlder, setMessageLoadingOlder] = useState(false);
   const [messageHasOlder, setMessageHasOlder] = useState(false);
   const [messageActionPending, setMessageActionPending] = useState(false);
+  const [messageMutationPendingId, setMessageMutationPendingId] = useState<string | null>(null);
+  const messageMutationPendingIdRef = useRef<string | null>(null);
   const [askConversations, setAskConversations] = useState<AskConversationSummary[]>([]);
   const [activeAskConversationId, setActiveAskConversationId] = useState<string | null>(null);
   const [askMessages, setAskMessages] = useState<AskDisplayMessage[]>([]);
@@ -528,6 +563,10 @@ function Portal() {
     setDraftMessageRecipient(null);
     setDraftGroupParticipants([]);
     setMessageItems([]);
+    setGroupsWithNewPosts({});
+    setRefreshingGroupNewPosts({});
+    workingGroupRealtimeEventIds.current = [];
+    messageCatchUpGeneration.current += 1;
     askFlushText.current?.();
     askAbortController.current?.abort();
     askAbortController.current = null;
@@ -614,7 +653,7 @@ function Portal() {
     }
     if (resource.artifact.kind !== 'file') return;
 
-    if (!resource.artifact.previewable) {
+    if (!resourceCanPreview(resource.artifact)) {
       void getAccessToken()
         .then((accessToken) => shareResourceDownload(resource, accessToken))
         .catch((cause) => {
@@ -1073,6 +1112,9 @@ function Portal() {
   }, [isSignedIn, member.id, openAskConversation]);
 
   const openMessageConversation = useCallback(async (conversationId: string) => {
+    const generation = messageCatchUpGeneration.current + 1;
+    messageCatchUpGeneration.current = generation;
+    activeMessageConversationIdRef.current = conversationId;
     setActiveMessageConversationId(conversationId);
     setActiveMessageConversation(null);
     setDraftMessageRecipient(null);
@@ -1088,6 +1130,12 @@ function Portal() {
 
     try {
       const response = await getMessageConversation(conversationId, { limit: 50 });
+      if (
+        generation !== messageCatchUpGeneration.current ||
+        activeMessageConversationIdRef.current !== conversationId
+      ) {
+        return;
+      }
       setActiveMessageConversation(response.conversation);
       setMessageItems(response.messages);
       setMessageHasOlder(response.messages.length === 50 && (response.messages[0]?.ordinal ?? 0) > 1);
@@ -1095,11 +1143,12 @@ function Portal() {
         void markMessageConversationRead(conversationId, response.latestOrdinal).catch(() => undefined);
       }
     } catch (cause) {
+      if (generation !== messageCatchUpGeneration.current) return;
       setMessageConversationError(
         cause instanceof Error ? cause : new Error('The conversation could not be loaded.')
       );
     } finally {
-      setMessageConversationLoading(false);
+      if (generation === messageCatchUpGeneration.current) setMessageConversationLoading(false);
     }
   }, []);
 
@@ -1114,6 +1163,8 @@ function Portal() {
           await openMessageConversation(result.conversationId);
           return;
         }
+        messageCatchUpGeneration.current += 1;
+        activeMessageConversationIdRef.current = null;
         setActiveMessageConversationId(null);
         setActiveMessageConversation(null);
         setDraftMessageRecipient(result.recipient);
@@ -1158,6 +1209,8 @@ function Portal() {
             hasLeft: false,
           } satisfies MessagingParticipant;
         });
+        messageCatchUpGeneration.current += 1;
+        activeMessageConversationIdRef.current = null;
         setActiveMessageConversationId(null);
         setActiveMessageConversation(null);
         setDraftMessageRecipient(null);
@@ -1176,6 +1229,9 @@ function Portal() {
   );
 
   const closeMessageConversation = useCallback(() => {
+    Keyboard.dismiss();
+    messageCatchUpGeneration.current += 1;
+    activeMessageConversationIdRef.current = null;
     setActiveMessageConversationId(null);
     setActiveMessageConversation(null);
     setDraftMessageRecipient(null);
@@ -1318,6 +1374,10 @@ function Portal() {
           lastReadOrdinal: response.message.ordinal,
         };
 
+        if (!activeMessageConversationId) {
+          messageCatchUpGeneration.current += 1;
+          activeMessageConversationIdRef.current = response.conversationId;
+        }
         setActiveMessageConversationId(response.conversationId);
         setActiveMessageConversation(committedDetail);
         setDraftMessageRecipient(null);
@@ -1363,6 +1423,180 @@ function Portal() {
       messageConversationsQuery.refetch,
     ]
   );
+
+  const editActiveMessage = useCallback(async (messageId: string, content: string) => {
+    const conversationId = activeMessageConversationIdRef.current;
+    if (!conversationId) throw new Error('This conversation is no longer available.');
+    if (messageMutationPendingIdRef.current) throw new Error('Another message update is still in progress.');
+    messageMutationPendingIdRef.current = messageId;
+    setMessageMutationPendingId(messageId);
+    try {
+      const response = await editMemberMessage(messageId, content);
+      if (
+        response.conversationId !== conversationId ||
+        response.message.conversationId !== conversationId ||
+        response.message.id !== messageId
+      ) {
+        throw new Error('The message update returned invalid conversation data.');
+      }
+      if (activeMessageConversationIdRef.current === conversationId) {
+        setMessageItems((current) => replaceMessageById(current, response.message));
+      }
+      setMessageConversations((current) =>
+        replaceConversationLastMessage(current, response.message)
+      );
+      messageConversationsQuery.refetch();
+    } finally {
+      if (messageMutationPendingIdRef.current === messageId) {
+        messageMutationPendingIdRef.current = null;
+      }
+      setMessageMutationPendingId((current) => current === messageId ? null : current);
+    }
+  }, [messageConversationsQuery.refetch]);
+
+  const unsendActiveMessage = useCallback(async (messageId: string) => {
+    const conversationId = activeMessageConversationIdRef.current;
+    if (!conversationId) throw new Error('This conversation is no longer available.');
+    if (messageMutationPendingIdRef.current) throw new Error('Another message update is still in progress.');
+    messageMutationPendingIdRef.current = messageId;
+    setMessageMutationPendingId(messageId);
+    try {
+      const response = await unsendMemberMessage(messageId);
+      if (
+        response.conversationId !== conversationId ||
+        response.message.conversationId !== conversationId ||
+        response.message.id !== messageId
+      ) {
+        throw new Error('The message update returned invalid conversation data.');
+      }
+      if (activeMessageConversationIdRef.current === conversationId) {
+        setMessageItems((current) => replaceMessageById(current, response.message));
+      }
+      setMessageConversations((current) =>
+        replaceConversationLastMessage(current, response.message)
+      );
+      messageConversationsQuery.refetch();
+    } finally {
+      if (messageMutationPendingIdRef.current === messageId) {
+        messageMutationPendingIdRef.current = null;
+      }
+      setMessageMutationPendingId((current) => current === messageId ? null : current);
+    }
+  }, [messageConversationsQuery.refetch]);
+
+  const catchUpActiveMessageConversation = useCallback(async (event?: MessagingRealtimeEvent) => {
+    const conversationId = event?.conversationId ?? activeMessageConversationIdRef.current;
+    if (!conversationId || activeMessageConversationIdRef.current !== conversationId) return;
+    const generation = messageCatchUpGeneration.current;
+    const latestOrdinal = messageItemsRef.current.at(-1)?.ordinal ?? 0;
+
+    try {
+      const query = event?.type === 'message.created' && latestOrdinal > 0
+        ? { afterOrdinal: latestOrdinal, limit: 50 }
+        : event?.type === 'message.updated'
+          ? messageUpdatedWindowQuery(messageItemsRef.current, event.messageId)
+          : { limit: 50 };
+      const response = await getMessageConversation(conversationId, query);
+      if (
+        generation !== messageCatchUpGeneration.current ||
+        activeMessageConversationIdRef.current !== conversationId
+      ) {
+        return;
+      }
+      setActiveMessageConversation(response.conversation);
+      setMessageItems((current) => mergeMessages(current, response.messages));
+    } catch (cause) {
+      if (event?.type !== 'conversation.member_left') return;
+      if (
+        generation !== messageCatchUpGeneration.current ||
+        activeMessageConversationIdRef.current !== conversationId
+      ) {
+        return;
+      }
+      // Membership loss is security-sensitive: do not retain stale private content.
+      closeMessageConversation();
+      setMessageConversationError(
+        cause instanceof Error ? cause : new Error('This conversation is no longer available.')
+      );
+    }
+  }, [closeMessageConversation]);
+
+  const handleMessagingRealtimeEvent = useCallback((event: MessagingRealtimeEvent) => {
+    messageConversationsQuery.refetch();
+    if (event.conversationId === activeMessageConversationIdRef.current) {
+      void catchUpActiveMessageConversation(event);
+    }
+  }, [catchUpActiveMessageConversation, messageConversationsQuery.refetch]);
+
+  useEffect(() => {
+    messagingRealtimeHandlerRef.current = handleMessagingRealtimeEvent;
+  }, [handleMessagingRealtimeEvent]);
+
+  useEffect(() => {
+    if (!isSignedIn || !member.id) return;
+    let subscription: ReturnType<typeof subscribeToMessaging> = null;
+    let disposed = false;
+
+    const recover = () => {
+      messageConversationsQuery.refetch();
+      void catchUpActiveMessageConversation();
+    };
+    const close = () => {
+      const current = subscription;
+      subscription = null;
+      if (current) void current.close();
+    };
+    const start = () => {
+      if (disposed || subscription) return;
+      subscription = subscribeToMessaging({
+        memberId: member.id,
+        onEvent: (event) => messagingRealtimeHandlerRef.current(event),
+        onSubscribed: recover,
+        onRecoveryNeeded: recover,
+      });
+    };
+
+    if (AppState.currentState === 'active') start();
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        recover();
+        start();
+      } else {
+        close();
+      }
+    });
+    return () => {
+      disposed = true;
+      appStateSubscription.remove();
+      close();
+    };
+  }, [catchUpActiveMessageConversation, isSignedIn, member.id, messageConversationsQuery.refetch]);
+
+  const markActiveMessageConversationLatestRead = useCallback((ordinal: number) => {
+    const conversationId = activeMessageConversationIdRef.current;
+    if (!conversationId || ordinal < 1 || ordinal <= lastMessageReadOrdinalRef.current) return;
+    const previousOrdinal = lastMessageReadOrdinalRef.current;
+    lastMessageReadOrdinalRef.current = ordinal;
+    setActiveMessageConversation((current) =>
+      current?.id === conversationId
+        ? { ...current, lastReadOrdinal: Math.max(current.lastReadOrdinal, ordinal) }
+        : current
+    );
+    setMessageConversations((current) => current.map((conversation) =>
+      conversation.id === conversationId
+        ? { ...conversation, lastReadOrdinal: Math.max(conversation.lastReadOrdinal, ordinal), unreadCount: 0 }
+        : conversation
+    ));
+    void markMessageConversationRead(conversationId, ordinal).catch(() => {
+      if (lastMessageReadOrdinalRef.current === ordinal) {
+        lastMessageReadOrdinalRef.current = previousOrdinal;
+        setActiveMessageConversation((current) =>
+          current?.id === conversationId ? { ...current, lastReadOrdinal: previousOrdinal } : current
+        );
+      }
+      messageConversationsQuery.refetch();
+    });
+  }, [messageConversationsQuery.refetch]);
 
   const performSignOut = useCallback(async () => {
     setProfileSheetOpen(false);
@@ -1444,6 +1678,18 @@ function Portal() {
   useEffect(() => {
     groupDetailsRef.current = groupDetails;
   }, [groupDetails]);
+
+  useEffect(() => {
+    activeMessageConversationIdRef.current = activeMessageConversationId;
+  }, [activeMessageConversationId]);
+
+  useEffect(() => {
+    messageItemsRef.current = messageItems;
+  }, [messageItems]);
+
+  useEffect(() => {
+    lastMessageReadOrdinalRef.current = activeMessageConversation?.lastReadOrdinal ?? 0;
+  }, [activeMessageConversation?.id, activeMessageConversation?.lastReadOrdinal]);
 
   const setMutationPending = useCallback((key: string, pending: boolean) => {
     setPendingMutations((current) => {
@@ -1623,7 +1869,12 @@ function Portal() {
   );
 
   const loadGroupFeed = useCallback(
-    (id: string, controls: WorkingGroupFeedControls, cursor?: string | null) => {
+    (
+      id: string,
+      controls: WorkingGroupFeedControls,
+      cursor?: string | null,
+      preserveLoadedItems = false
+    ) => {
       const group = groups.find((candidate) => candidate.id === id);
       if (!group) return;
       const append = !!cursor;
@@ -1643,7 +1894,7 @@ function Portal() {
         },
       }));
 
-      void getWorkingGroupThreadFeed(group.slug ?? group.id, id, {
+      return getWorkingGroupThreadFeed(group.slug ?? group.id, id, {
         ...controls,
         query: controls.query.trim() || undefined,
         limit: 20,
@@ -1651,17 +1902,20 @@ function Portal() {
         snapshotAt: append ? currentDetail?.snapshotAt ?? undefined : undefined,
       })
         .then((feed) => {
-          if (feedRequestGeneration.current[id] !== generation) return;
+          if (feedRequestGeneration.current[id] !== generation) return false;
           setGroupDetails((prev) => {
             const current = prev[id] ?? EMPTY_GROUP_DETAIL;
             const existingIds = new Set(current.items.map((entry) => entry.post.id));
+            const freshIds = new Set(feed.items.map((entry) => entry.post.id));
             return {
               ...prev,
               [id]: {
                 ...current,
                 items: append
                   ? [...current.items, ...feed.items.filter((entry) => !existingIds.has(entry.post.id))]
-                  : feed.items,
+                  : preserveLoadedItems
+                    ? [...feed.items, ...current.items.filter((entry) => !freshIds.has(entry.post.id))]
+                    : feed.items,
                 nextCursor: feed.nextCursor,
                 snapshotAt: feed.snapshotAt,
                 totalMatching: feed.totalMatching,
@@ -1671,9 +1925,10 @@ function Portal() {
               },
             };
           });
+          return true;
         })
         .catch((cause) => {
-          if (feedRequestGeneration.current[id] !== generation) return;
+          if (feedRequestGeneration.current[id] !== generation) return false;
           setGroupDetails((prev) => ({
             ...prev,
             [id]: {
@@ -1683,6 +1938,7 @@ function Portal() {
               error: cause instanceof Error ? cause : new Error(String(cause)),
             },
           }));
+          return false;
         });
     },
     [groups]
@@ -1705,13 +1961,131 @@ function Portal() {
 
   const applyGroupFeedControls = useCallback((id: string, controls: WorkingGroupFeedControls) => {
     setFeedControls((current) => ({ ...current, [id]: controls }));
-    loadGroupFeed(id, controls);
+    setGroupsWithNewPosts((current) => ({ ...current, [id]: false }));
+    void loadGroupFeed(id, controls);
   }, [loadGroupFeed]);
 
   useEffect(() => {
     if (!groupId || groupDetails[groupId]) return;
     loadGroupDetail(groupId);
   }, [groupDetails, groupId, loadGroupDetail]);
+
+  const catchUpWorkingGroupFeed = useCallback(async (id: string) => {
+    const group = groups.find((candidate) => candidate.id === id);
+    const current = groupDetailsRef.current[id];
+    if (!group || !current) return;
+    const controls = feedControls[id] ?? DEFAULT_FEED_CONTROLS;
+
+    try {
+      const fresh = await getWorkingGroupThreadFeed(group.slug ?? group.id, id, {
+        ...controls,
+        query: controls.query.trim() || undefined,
+        limit: 20,
+      });
+      if (groupId !== id) return;
+      const currentIds = new Set(current.items.map((entry) => entry.post.id));
+      if (fresh.items.some((entry) => !currentIds.has(entry.post.id))) {
+        setGroupsWithNewPosts((state) => ({ ...state, [id]: true }));
+      }
+
+      const freshById = new Map(fresh.items.map((entry) => [entry.post.id, entry]));
+      setGroupDetails((state) => {
+        const detail = state[id];
+        if (!detail) return state;
+        return {
+          ...state,
+          [id]: {
+            ...detail,
+            items: detail.items.map((entry) => freshById.get(entry.post.id) ?? entry),
+          },
+        };
+      });
+    } catch {
+      // The existing feed remains usable; the channel reconnect will retry catch-up.
+    }
+  }, [feedControls, groupId, groups]);
+
+  const handleWorkingGroupRealtimeEvent = useCallback((event: WorkingGroupFeedRealtimeEvent) => {
+    const group = groups.find((candidate) => (candidate.slug ?? candidate.id) === event.groupSlug);
+    if (!group || rememberBoundedId(workingGroupRealtimeEventIds.current, event.eventId)) return;
+
+    if (event.changeType === 'created') {
+      setGroupsWithNewPosts((state) => ({ ...state, [group.id]: true }));
+      return;
+    }
+    if (event.changeType === 'deleted') {
+      setGroupDetails((state) => {
+        const detail = state[group.id];
+        if (!detail) return state;
+        return {
+          ...state,
+          [group.id]: {
+            ...detail,
+            items: detail.items.filter((entry) => entry.post.id !== event.itemId),
+            totalMatching: Math.max(0, detail.totalMatching - 1),
+          },
+        };
+      });
+      if (threadId === event.itemId) setThreadId(null);
+      return;
+    }
+
+    void getWorkingGroupFeedItemDetail(event.groupSlug, event.itemType, event.itemId)
+      .then((response) => {
+        const entry = workingGroupFeedItemResponseToEntry(response, group.id);
+        setGroupDetails((state) => replaceThreadInGroupDetails(state, entry));
+      })
+      .catch(() => {
+        // A later broadcast or foreground catch-up will reconcile transient failures.
+      });
+  }, [groups, threadId]);
+
+  useEffect(() => {
+    workingGroupRealtimeHandlerRef.current = handleWorkingGroupRealtimeEvent;
+  }, [handleWorkingGroupRealtimeEvent]);
+
+  useEffect(() => {
+    if (!isSignedIn || !groupId) return;
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (!group) return;
+    const slug = group.slug ?? group.id;
+    let subscription: ReturnType<typeof subscribeToWorkingGroupFeed> = null;
+    let disposed = false;
+
+    const close = () => {
+      const current = subscription;
+      subscription = null;
+      if (current) void current.close();
+    };
+    const start = () => {
+      if (disposed || subscription) return;
+      subscription = subscribeToWorkingGroupFeed({
+        groupSlug: slug,
+        onEvent: (event) => workingGroupRealtimeHandlerRef.current(event),
+        onSubscribed: () => void catchUpWorkingGroupFeed(group.id),
+        onRecoveryNeeded: () => void catchUpWorkingGroupFeed(group.id),
+      });
+    };
+
+    if (AppState.currentState === 'active') start();
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') start();
+      else close();
+    });
+    return () => {
+      disposed = true;
+      appStateSubscription.remove();
+      close();
+    };
+  }, [catchUpWorkingGroupFeed, groupId, groups, isSignedIn]);
+
+  const showWorkingGroupNewPosts = useCallback(async (id: string) => {
+    if (refreshingGroupNewPosts[id]) return;
+    setRefreshingGroupNewPosts((state) => ({ ...state, [id]: true }));
+    const loaded = await loadGroupFeed(id, feedControls[id] ?? DEFAULT_FEED_CONTROLS, null, true);
+    if (loaded) setGroupsWithNewPosts((state) => ({ ...state, [id]: false }));
+    setRefreshingGroupNewPosts((state) => ({ ...state, [id]: false }));
+  }, [feedControls, loadGroupFeed, refreshingGroupNewPosts]);
 
   /**
    * The member's own organization, for their profile's Organization card.
@@ -2688,7 +3062,10 @@ function Portal() {
       {status === 'restoring' ? (
         <View style={styles.blank} />
       ) : !isSignedIn ? (
-        <SignInScreen onSignedIn={() => setTab('home')} />
+        <SignInScreen
+          onSignedIn={() => setTab('home')}
+          onForgotPassword={openForgotPassword}
+        />
       ) : (
         <>
           <GestureDetector gesture={tabSwipe}>
@@ -3101,6 +3478,7 @@ function Portal() {
                     onOpenShowNotesLink={(href) => void Linking.openURL(href)}
                     onDownloadPodcastAudio={downloadPodcastAudio}
                     onDownloadPodcastTranscript={downloadPodcastTranscript}
+                    onSaveResource={saveResource}
                     onApplyToJob={(j) => j.applyUrl && void Linking.openURL(j.applyUrl)}
                     onGoNews={() => {
                       setNewsReaderOrigin('resources');
@@ -3137,6 +3515,8 @@ function Portal() {
                 selectedGroupNextCursor={selectedGroupDetail?.nextCursor ?? null}
                 selectedGroupTotalMatching={selectedGroupDetail?.totalMatching ?? 0}
                 selectedGroupFeedControls={groupId ? feedControls[groupId] ?? DEFAULT_FEED_CONTROLS : DEFAULT_FEED_CONTROLS}
+                hasNewGroupPosts={groupId ? !!groupsWithNewPosts[groupId] : false}
+                refreshingNewGroupPosts={groupId ? !!refreshingGroupNewPosts[groupId] : false}
                 selectedGroupCoLeads={selectedGroupDetail?.coLeads ?? []}
                 selectedGroupMembers={selectedGroupDetail?.members ?? []}
                 selectedGroupMembershipRole={selectedGroupDetail?.membershipRole ?? null}
@@ -3158,6 +3538,7 @@ function Portal() {
                 onRemoveResource={removeApprovedResource}
                 onLoadMoreGroupFeed={loadMoreGroupFeed}
                 onApplyGroupFeedControls={applyGroupFeedControls}
+                onShowNewGroupPosts={() => groupId ? showWorkingGroupNewPosts(groupId) : Promise.resolve()}
                 groupId={groupId}
                 onOpenGroup={openGroup}
                 onCloseGroup={() => setGroupId(null)}
@@ -3232,6 +3613,7 @@ function Portal() {
                   member={member}
                   initialOrgId={directoryRequest?.orgId ?? null}
                   initialTab={directoryRequest?.openMessages ? 'messages' : 'directory'}
+                  isActive={tab === 'directory'}
                   onOpenJob={(job) => openInResources('job', job.id)}
                   onOpenMemberProfile={openDirectoryProfile}
                   conversations={messageConversations}
@@ -3255,6 +3637,7 @@ function Portal() {
                   loadingOlderMessages={messageLoadingOlder}
                   hasOlderMessages={messageHasOlder}
                   messageActionPending={messageActionPending}
+                  messageMutationPendingId={messageMutationPendingId}
                   onOpenConversation={(id) => void openMessageConversation(id)}
                   onStartMessage={(id) => void startMessageConversation(id)}
                   onStartGroupMessage={startGroupMessageConversation}
@@ -3263,9 +3646,12 @@ function Portal() {
                   onSendMessage={sendMessage}
                   onLoadOlderMessages={loadOlderMessages}
                   onSetMessageReaction={toggleMessageReaction}
+                  onEditMessage={editActiveMessage}
+                  onUnsendMessage={unsendActiveMessage}
                   onRenameConversation={renameActiveMessageConversation}
                   onAddConversationMembers={addActiveMessageConversationMembers}
                   onLeaveConversation={leaveActiveMessageConversation}
+                  onReachLatestMessage={markActiveMessageConversationLatestRead}
                 />
               </DataGate>
             </View>
@@ -3382,9 +3768,9 @@ function Portal() {
                     setMoreView('events');
                     setTab('more');
                   }}
-                  onOpenOrganization={(organizationSlug) => {
+                  onOpenOrganization={(organizationId) => {
                     setDirectoryRequest((previous) => ({
-                      orgId: organizationSlug,
+                      orgId: organizationId,
                       n: (previous?.n ?? 0) + 1,
                     }));
                     setProfileOpen(false);
@@ -3464,7 +3850,6 @@ function Portal() {
               mentionMembersByGroup={Object.fromEntries(
                 groups.map((group) => [group.id, groupDetails[group.id]?.members ?? []])
               )}
-              onSelectGroup={loadGroupMetadata}
               onSearchTags={searchWorkingGroupTags}
               onClose={() => setComposerOpen(false)}
               onCreate={(draft) => createPost(draft, member)}
@@ -3634,12 +4019,6 @@ function firstStringValue(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
 }
 
-function mergeMessages(current: MessageItem[], incoming: MessageItem[]): MessageItem[] {
-  const byId = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) byId.set(message.id, message);
-  return [...byId.values()].sort((left, right) => left.ordinal - right.ordinal);
-}
-
 function updateMessageReaction(
   messages: MessageItem[],
   messageId: string,
@@ -3679,6 +4058,8 @@ function createClientNonce(): string {
 }
 
 export default function App() {
+  useOneSignalIntegration();
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,

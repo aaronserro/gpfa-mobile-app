@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, type ReactNode } from 'react';
+import { Image as ExpoImage } from 'expo-image';
 import {
   Animated,
   Easing,
@@ -395,7 +396,7 @@ export function Avatar({
   style,
 }: {
   initials: string;
-  /** Portrait to show instead of the initials. Raster only — RN's Image can't decode SVG. */
+  /** Portrait to show instead of the initials. */
   photoUrl?: string;
   size?: number;
   /** Anchor-surface override: translucent fill and light text, for the header. */
@@ -421,7 +422,14 @@ export function Avatar({
       ]}
     >
       {photoUrl ? (
-        <Image source={{ uri: photoUrl }} style={styles.fill} resizeMode="cover" accessibilityIgnoresInvertColors />
+        <ExpoImage
+          source={photoUrl}
+          style={styles.fill}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={160}
+          accessibilityIgnoresInvertColors
+        />
       ) : (
         <Text
           style={{
@@ -447,7 +455,7 @@ export function OrgMark({
   size = 36,
 }: {
   initials: string;
-  /** Raster logo. RN's Image can't decode SVG, so an .svg URL renders nothing. */
+  /** Organization logo, including supported SVG sources. */
   logoUrl?: string;
   size?: number;
 }) {
@@ -466,10 +474,12 @@ export function OrgMark({
       ]}
     >
       {logoUrl ? (
-        <Image
-          source={{ uri: logoUrl }}
+        <ExpoImage
+          source={logoUrl}
           style={{ width: size * 0.77, height: size * 0.62 }}
-          resizeMode="contain"
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          transition={160}
           accessibilityIgnoresInvertColors
         />
       ) : (

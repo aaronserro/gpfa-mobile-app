@@ -5,6 +5,15 @@ const STORAGE_VERSION = 1;
 
 export type PodcastPositions = Record<string, number | undefined>;
 
+export function withoutPodcastPosition(
+  positions: PodcastPositions,
+  slug: string
+): PodcastPositions {
+  const next = { ...positions };
+  delete next[slug];
+  return next;
+}
+
 interface StoredPodcastProgress {
   version: number;
   positionsBySlug: Record<string, number>;

@@ -4,15 +4,15 @@ import test from 'node:test';
 import {
   ALL_RESOURCE_TYPES,
   filterLibraryResources,
-  formatBytes,
   relatedResources,
-  resourceFileFacts,
   resourceTypeCounts,
 } from '../src/lib/library-resources';
 import {
   resourceDownloadFilename,
   resourceDownloadHeaders,
   resourceDownloadMedia,
+  resourceCanPreview,
+  resourcePreviewKind,
 } from '../src/api/resource-download-policy';
 import type { LibraryResource } from '../src/api/types';
 
@@ -47,25 +47,6 @@ test('library filtering combines type and full-text search', () => {
     ['Explainer', 1],
     ['Template', 2],
   ]);
-});
-
-test('file facts use authoritative filename and byte size', () => {
-  const file = resource({
-    artifact: {
-      kind: 'file',
-      href: 'https://api.gpfa.org/api/content-assets/a',
-      fileName: 'report.final.pdf',
-      contentType: 'application/pdf',
-      byteSize: 151263,
-      previewable: true,
-    },
-  });
-
-  assert.equal(formatBytes(0), '0 B');
-  assert.equal(formatBytes(151263), '148 KB');
-  assert.equal(formatBytes(1_572_864), '1.5 MB');
-  assert.equal(formatBytes(undefined), null);
-  assert.equal(resourceFileFacts(file), 'PDF · 148 KB');
 });
 
 test('related resources prioritize shared tags then preserve stable newest order', () => {
@@ -114,4 +95,59 @@ test('download policy sanitizes filenames and limits bearer headers to asset rou
     mimeType: 'application/pdf',
     UTI: 'com.adobe.pdf',
   });
+});
+
+test('resource preview policy prefers MIME type and safely falls back to extensions', () => {
+  assert.equal(
+    resourcePreviewKind({
+      href: 'https://api.gpfa.org/api/content-assets/a',
+      fileName: 'report.pdf',
+      contentType: 'application/pdf; charset=binary',
+      previewable: false,
+    }),
+    'pdf'
+  );
+  assert.equal(
+    resourcePreviewKind({
+      href: 'https://api.gpfa.org/api/content-assets/b',
+      fileName: 'photo.pdf',
+      contentType: 'image/jpeg',
+      previewable: true,
+    }),
+    'image'
+  );
+  assert.equal(
+    resourcePreviewKind({
+      href: 'https://api.gpfa.org/api/content-assets/c',
+      fileName: 'notes.md',
+      previewable: false,
+    }),
+    'text'
+  );
+  assert.equal(
+    resourcePreviewKind({
+      href: 'https://api.gpfa.org/api/content-assets/d',
+      fileName: 'page.html',
+      contentType: 'text/html',
+      previewable: true,
+    }),
+    'web'
+  );
+  assert.equal(
+    resourcePreviewKind({
+      href: 'https://api.gpfa.org/api/content-assets/e',
+      fileName: 'report.pdf',
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      previewable: true,
+    }),
+    'external'
+  );
+  assert.equal(
+    resourceCanPreview({
+      href: 'https://api.gpfa.org/api/content-assets/f',
+      fileName: 'report.pdf',
+      previewable: false,
+    }),
+    true
+  );
 });

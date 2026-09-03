@@ -11,6 +11,7 @@ import {
   centeredTranscriptOffset,
 } from '../src/components/podcast/transcript';
 import { podcastStartPosition } from '../src/components/podcast/playback-position';
+import { withoutPodcastPosition } from '../src/components/podcast/progressStorage';
 import { memberDirectoryDestination } from '../src/lib/member-directory-route';
 import {
   distinctEpisodeShowNotes,
@@ -39,6 +40,14 @@ test('transcript timestamps override resume progress during source loading', () 
   assert.equal(podcastStartPosition(300, -5, 600), 0);
   assert.equal(podcastStartPosition(300, 900, 600), 0);
   assert.equal(podcastStartPosition(300, 42, 0), 42);
+});
+
+test('closing a podcast clears only that episode resume position', () => {
+  const positions = { first: 42, second: 96 };
+
+  assert.deepEqual(withoutPodcastPosition(positions, 'first'), { second: 96 });
+  assert.deepEqual(withoutPodcastPosition(positions, 'missing'), positions);
+  assert.deepEqual(positions, { first: 42, second: 96 });
 });
 
 test('transcript following centers a segment without scrolling above the sheet', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Groups tab, level two: one working group, across Activity, About, Resources,
@@ -88,6 +88,9 @@ export interface GroupViewProps {
   onTab: (tab: GroupTab) => void;
   feedControls: WorkingGroupFeedControls;
   onApplyFeedControls: (controls: WorkingGroupFeedControls) => void;
+  hasNewPosts: boolean;
+  refreshingNewPosts: boolean;
+  onShowNewPosts: () => Promise<void>;
   mutationNotice: MutationNoticeValue | null;
   onDismissMutationNotice: () => void;
   pendingMutations: Record<string, boolean | undefined>;
@@ -141,6 +144,9 @@ export default function GroupView({
   onTab,
   feedControls,
   onApplyFeedControls,
+  hasNewPosts,
+  refreshingNewPosts,
+  onShowNewPosts,
   mutationNotice,
   onDismissMutationNotice,
   pendingMutations,
@@ -172,6 +178,10 @@ export default function GroupView({
   const [memberQuery, setMemberQuery] = useState('');
   const [feedQuery, setFeedQuery] = useState(feedControls.query);
   const [openFeedFilter, setOpenFeedFilter] = useState<FeedFilterAxis | null>(null);
+  const feedScrollRef = useRef<ScrollView>(null);
+  const feedScrollOffset = useRef(0);
+  const feedPostLayouts = useRef(new Map<string, { y: number; height: number }>());
+  const pendingFeedAnchor = useRef<{ postId: string | null; offset: number; fallbackY: number } | null>(null);
 
   useEffect(() => {
     setFeedQuery(feedControls.query);
@@ -196,6 +206,32 @@ export default function GroupView({
     ['members', 'Members'],
     ...(canModerate ? ([['moderation', 'Moderation']] as [GroupTab, string][]) : []),
   ];
+
+  const showNewPosts = async () => {
+    const scrollY = feedScrollOffset.current;
+    const anchor = [...feedPostLayouts.current.entries()]
+      .filter(([, layout]) => layout.y + layout.height >= scrollY)
+      .sort((left, right) => left[1].y - right[1].y)[0];
+    pendingFeedAnchor.current = {
+      postId: anchor?.[0] ?? null,
+      offset: anchor ? scrollY - anchor[1].y : 0,
+      fallbackY: scrollY,
+    };
+    feedPostLayouts.current.clear();
+    await onShowNewPosts();
+    requestAnimationFrame(restoreFeedAnchor);
+  };
+
+  const restoreFeedAnchor = () => {
+    const anchor = pendingFeedAnchor.current;
+    if (!anchor) return;
+    const layout = anchor.postId ? feedPostLayouts.current.get(anchor.postId) : null;
+    pendingFeedAnchor.current = null;
+    feedScrollRef.current?.scrollTo({
+      y: Math.max(0, layout ? layout.y + anchor.offset : anchor.fallbackY),
+      animated: false,
+    });
+  };
 
   return (
     <View style={styles.fill}>
@@ -250,11 +286,34 @@ export default function GroupView({
       <View style={styles.fill}>
         {tab === 'posts' && (
           <>
+            {hasNewPosts && (
+              <View style={[styles.newPostsBar, { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline }]}
+                accessibilityLiveRegion="polite">
+                <Pressable
+                  onPress={() => void showNewPosts()}
+                  disabled={refreshingNewPosts}
+                  accessibilityRole="button"
+                  accessibilityLabel={refreshingNewPosts ? 'Refreshing new posts' : 'Show new posts'}
+                  style={[styles.newPostsButton, { backgroundColor: t.surfaceAnchor }]}
+                >
+                  <Text style={[styles.newPostsText, { color: t.inkInverse }]}>
+                    {refreshingNewPosts ? 'Refreshing…' : 'New Posts'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
             <ScrollView
+              ref={feedScrollRef}
               contentContainerStyle={styles.list}
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={400}
+              onContentSizeChange={() => {
+                if (pendingFeedAnchor.current && !refreshingNewPosts) {
+                  requestAnimationFrame(restoreFeedAnchor);
+                }
+              }}
               onScroll={({ nativeEvent }) => {
+                feedScrollOffset.current = nativeEvent.contentOffset.y;
                 if (!hasMore || loadingMore || !onLoadMore) return;
                 const distanceFromBottom =
                   nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y;
@@ -363,21 +422,27 @@ export default function GroupView({
               ) : (
                 <View style={styles.cards}>
                   {posts.map((p) => (
-                    <PostCard
+                    <View
                       key={p.id}
-                      post={p}
-                      replyCount={replyCounts[p.id] ?? p.replies.length}
-                      upvoted={!!upvoted[p.id]}
-                      upvotePending={!!pendingMutations[`upvote:${p.id}`]}
-                      onToggleUpvote={() => onToggleUpvote(p.id)}
-                      reposted={reposted[p.id] ?? p.hasReposted ?? false}
-                      repostPending={!!pendingMutations[`repost:${p.id}`]}
-                      repostCount={optimisticRepostCount(p, reposted[p.id])}
-                      onToggleRepost={() => onToggleRepost(p.id)}
-                      showTags={showTags}
-                      onOpen={() => onOpenPost(p.id)}
-                      onOpenAuthor={p.authorId ? () => onOpenMemberProfile(p.authorId!) : undefined}
-                    />
+                      onLayout={({ nativeEvent }) => {
+                        feedPostLayouts.current.set(p.id, nativeEvent.layout);
+                      }}
+                    >
+                      <PostCard
+                        post={p}
+                        replyCount={replyCounts[p.id] ?? p.replies.length}
+                        upvoted={!!upvoted[p.id]}
+                        upvotePending={!!pendingMutations[`upvote:${p.id}`]}
+                        onToggleUpvote={() => onToggleUpvote(p.id)}
+                        reposted={reposted[p.id] ?? p.hasReposted ?? false}
+                        repostPending={!!pendingMutations[`repost:${p.id}`]}
+                        repostCount={optimisticRepostCount(p, reposted[p.id])}
+                        onToggleRepost={() => onToggleRepost(p.id)}
+                        showTags={showTags}
+                        onOpen={() => onOpenPost(p.id)}
+                        onOpenAuthor={p.authorId ? () => onOpenMemberProfile(p.authorId!) : undefined}
+                      />
+                    </View>
                   ))}
                   {(hasMore || loadingMore) && (
                     <View style={[styles.moreRow, { borderColor: t.ruleHairline }]}>
@@ -1134,6 +1199,18 @@ const styles = StyleSheet.create({
   tab: { paddingTop: 9, paddingBottom: 10, paddingHorizontal: 14, borderBottomWidth: 2 },
   tabLabel: { fontFamily: sans(600), fontSize: 12.5 },
 
+  newPostsBar: {
+    position: 'absolute',
+    zIndex: 2,
+    top: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    paddingVertical: 8,
+  },
+  newPostsButton: { minHeight: 34, justifyContent: 'center', borderRadius: 17, paddingHorizontal: 18 },
+  newPostsText: { fontFamily: sans(600), fontSize: 12 },
   list: { paddingBottom: 96 },
   feedControls: { paddingTop: 12, gap: 8 },
   feedSearch: {

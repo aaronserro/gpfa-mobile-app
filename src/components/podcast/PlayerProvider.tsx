@@ -20,6 +20,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import {
   loadPodcastPositions,
   savePodcastPositions,
+  withoutPodcastPosition,
   type PodcastPositions,
 } from './progressStorage';
 import { podcastStartPosition } from './playback-position';
@@ -42,6 +43,11 @@ export type PodcastPlaybackPhase =
   | 'playing'
   | 'paused'
   | 'error';
+
+export interface PodcastStopOptions {
+  /** Remove the active episode's resume position instead of preserving it. */
+  resetProgress?: boolean;
+}
 
 function tracePlayback(
   slug: string,
@@ -78,7 +84,7 @@ export interface PodcastPlayerValue {
   seek: (seconds: number) => void;
   skip: (delta: number) => void;
   retry: () => void;
-  stop: () => void;
+  stop: (options?: PodcastStopOptions) => void;
 }
 
 export interface PodcastTimelineValue {
@@ -464,7 +470,8 @@ export function PodcastPlayerProvider({ children }: { children: ReactNode }) {
     seek(statusRef.current.currentTime + delta);
   }, [seek]);
 
-  const stop = useCallback(() => {
+  const stop = useCallback((options: PodcastStopOptions = {}) => {
+    const activeSlug = episode?.slug;
     generationRef.current += 1;
     clearLoadTimeout();
     pendingLoadRef.current = null;
@@ -483,13 +490,20 @@ export function PodcastPlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       // The provider state remains authoritative after sign-out/stop.
     }
-    publishPositions();
-    void savePodcastPositions(positionsRef.current);
+    if (options.resetProgress && activeSlug) {
+      const next = withoutPodcastPosition(positionsRef.current, activeSlug);
+      positionsRef.current = next;
+      setPositions(next);
+      void savePodcastPositions(next);
+    } else {
+      publishPositions();
+      void savePodcastPositions(positionsRef.current);
+    }
     setEpisode(null);
     setLoading(false);
     setStartupPhase(null);
     setError(null);
-  }, [clearLoadTimeout, player, publishPositions]);
+  }, [clearLoadTimeout, episode?.slug, player, publishPositions]);
 
   useEffect(() => {
     if (!isSignedIn && episode) stop();

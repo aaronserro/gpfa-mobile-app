@@ -56,6 +56,8 @@ export interface DirectoryScreenProps {
   initialOrgId?: string | null;
   /** Starts on Messages when navigation has already resolved a conversation. */
   initialTab?: DirectoryTab;
+  /** False while another top-level portal tab is covering this mounted screen. */
+  isActive?: boolean;
   /** Opens a role on the job board. Absent leaves a profile's job rows inert. */
   onOpenJob?: (job: JobListing) => void;
   /** Opens the selected member's full profile. */
@@ -73,6 +75,7 @@ export interface DirectoryScreenProps {
   loadingOlderMessages: boolean;
   hasOlderMessages: boolean;
   messageActionPending: boolean;
+  messageMutationPendingId: string | null;
   onOpenConversation: (conversationId: string) => void;
   onStartMessage: (memberId: string) => void;
   onStartGroupMessage: (memberIds: string[]) => Promise<void>;
@@ -81,9 +84,12 @@ export interface DirectoryScreenProps {
   onSendMessage: (content: string) => Promise<void>;
   onLoadOlderMessages: () => Promise<void>;
   onSetMessageReaction: (messageId: string, emoji: MessageReaction, active: boolean) => Promise<void>;
+  onEditMessage: (messageId: string, content: string) => Promise<void>;
+  onUnsendMessage: (messageId: string) => Promise<void>;
   onRenameConversation: (title: string) => Promise<void>;
   onAddConversationMembers: (participantIds: string[]) => Promise<void>;
   onLeaveConversation: () => Promise<void>;
+  onReachLatestMessage: (ordinal: number) => void;
 }
 
 export default function DirectoryScreen({
@@ -94,6 +100,7 @@ export default function DirectoryScreen({
   jobs,
   initialOrgId = null,
   initialTab = 'directory',
+  isActive = true,
   onOpenJob,
   onOpenMemberProfile,
   conversations,
@@ -109,6 +116,7 @@ export default function DirectoryScreen({
   loadingOlderMessages,
   hasOlderMessages,
   messageActionPending,
+  messageMutationPendingId,
   onOpenConversation,
   onStartMessage,
   onStartGroupMessage,
@@ -117,9 +125,12 @@ export default function DirectoryScreen({
   onSendMessage,
   onLoadOlderMessages,
   onSetMessageReaction,
+  onEditMessage,
+  onUnsendMessage,
   onRenameConversation,
   onAddConversationMembers,
   onLeaveConversation,
+  onReachLatestMessage,
 }: DirectoryScreenProps) {
   const { t } = useTheme();
 
@@ -248,6 +259,7 @@ export default function DirectoryScreen({
           draftRecipient={draftRecipient}
           draftGroupParticipants={draftGroupParticipants}
           messages={messages}
+          threadVisible={isActive}
           loading={messagesLoading}
           error={messagesError}
           sending={messageSending}
@@ -256,6 +268,7 @@ export default function DirectoryScreen({
           loadingOlderMessages={loadingOlderMessages}
           hasOlderMessages={hasOlderMessages}
           actionPending={messageActionPending}
+          messageMutationPendingId={messageMutationPendingId}
           onOpenConversation={onOpenConversation}
           onStartMessage={openMessagesFor}
           onStartGroupMessage={onStartGroupMessage}
@@ -264,9 +277,12 @@ export default function DirectoryScreen({
           onSend={onSendMessage}
           onLoadOlder={onLoadOlderMessages}
           onSetReaction={onSetMessageReaction}
+          onEditMessage={onEditMessage}
+          onUnsendMessage={onUnsendMessage}
           onRename={onRenameConversation}
           onAddMembers={onAddConversationMembers}
           onLeave={onLeaveConversation}
+          onReachLatest={onReachLatestMessage}
         />
       ) : (
       <ScrollView
