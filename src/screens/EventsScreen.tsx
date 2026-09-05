@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowRight, CalendarDots, CheckCircle, DownloadSimple, MapPin } from '../ds/icons';
 import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
@@ -176,16 +177,18 @@ function EventDetail({
   event: MobileEventPreview;
   onOpenMemberProfile: (memberId: string) => void;
   onBack: () => void;
-  onRsvp: (state: EventRsvpState) => void;
+  onRsvp: (state: EventRsvpState) => void | Promise<void>;
   onAddToCalendar: () => void | Promise<void>;
   onDownloadIcs: () => void | Promise<void>;
 }) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [rsvpPending, setRsvpPending] = useState(false);
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="Event details" onBack={onBack} backLabel="Back to events" />
-      <ScrollView contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.fill} contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.detailLead}>
           <View style={styles.metaLine}>
             <Text style={[styles.eventType, { color: t.brandAmber }]}>{event.type}</Text>
@@ -251,18 +254,35 @@ function EventDetail({
       </ScrollView>
 
       {event.status === 'upcoming' && event.registrationOpen && (
-        <View style={[styles.actionBar, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+        <View style={[styles.actionBar, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={styles.eventBody}>
             <Text style={[styles.actionTitle, { color: t.inkStrong }]}>Your RSVP</Text>
             <Text style={[styles.actionMeta, { color: t.inkMuted }]}>{rsvpLabel(event.rsvp)}</Text>
           </View>
           <Pressable
-            onPress={() => onRsvp(event.rsvp === 'attending' ? 'not-attending' : 'attending')}
-            style={[styles.primaryAction, { backgroundColor: event.rsvp === 'attending' ? t.surfaceSoft : t.surfaceAnchor }]}
+            disabled={rsvpPending}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: rsvpPending, busy: rsvpPending }}
+            onPress={async () => {
+              if (rsvpPending) return;
+              setRsvpPending(true);
+              try {
+                await onRsvp(event.rsvp === 'attending' ? 'not-attending' : 'attending');
+              } finally {
+                setRsvpPending(false);
+              }
+            }}
+            style={({ pressed }) => [
+              styles.primaryAction,
+              {
+                backgroundColor: event.rsvp === 'attending' ? t.surfaceSoft : t.surfaceAnchor,
+                opacity: rsvpPending ? 0.55 : pressed ? 0.82 : 1,
+              },
+            ]}
           >
             <CheckCircle size={17} color={event.rsvp === 'attending' ? t.brandGreen : t.inkInverse} />
             <Text style={[styles.primaryActionText, { color: event.rsvp === 'attending' ? t.brandGreen : t.inkInverse }]}>
-              {event.rsvp === 'attending' ? 'Change RSVP' : 'Attend'}
+              {rsvpPending ? 'Saving…' : event.rsvp === 'attending' ? 'Change RSVP' : 'Attend'}
             </Text>
           </Pressable>
         </View>
@@ -342,7 +362,7 @@ const styles = StyleSheet.create({
   empty: { marginHorizontal: 20, borderWidth: 1, borderRadius: 9, alignItems: 'center', padding: 28 },
   emptyTitle: { marginTop: 10, fontFamily: sans(600), fontSize: 15 },
   emptyCopy: { marginTop: 4, textAlign: 'center', fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
-  detailScroll: { padding: 20, paddingBottom: 120 },
+  detailScroll: { padding: 20, paddingBottom: 24 },
   detailLead: { marginBottom: 22 },
   detailTitle: { fontFamily: sans(600), fontSize: 25, lineHeight: 30, letterSpacing: trackDisplay(25) },
   detailSummary: { marginTop: 12, fontFamily: sans(400), fontSize: 14, lineHeight: 22 },
@@ -361,7 +381,7 @@ const styles = StyleSheet.create({
   secondaryActionText: { fontFamily: sans(600), fontSize: 13 },
   calendarActions: { flexDirection: 'row', gap: 10 },
   calendarAction: { flex: 1, paddingHorizontal: 8 },
-  actionBar: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  actionBar: { borderTopWidth: 1, paddingHorizontal: 20, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 14 },
   actionTitle: { fontFamily: sans(600), fontSize: 13 },
   actionMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   primaryAction: { minHeight: 44, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16 },

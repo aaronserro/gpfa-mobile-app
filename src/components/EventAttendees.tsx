@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MobileEventAttendee } from '../api/types';
 import { CaretDown } from '../ds/icons';
 import { Avatar } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { mono, sans } from '../ds/tokens';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 const STACK_LIMIT = 3;
 
@@ -29,6 +30,7 @@ export function EventAttendees({
   onOpenMemberProfile: (memberId: string) => void;
 }) {
   const { t } = useTheme();
+  const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const unnamed = Math.max(0, count - attendees.length);
   const countLabel = `${count} ${count === 1 ? 'member' : 'members'} attending`;
@@ -55,7 +57,10 @@ export function EventAttendees({
     <View>
       <Text style={[styles.label, { color: t.inkMuted }]}>Attending</Text>
       <Pressable
-        onPress={() => setOpen((current) => !current)}
+        onPress={() => {
+          if (!reducedMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setOpen((current) => !current);
+        }}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={`${countLabel}. ${open ? 'Hide' : 'Show'} attendee list`}
@@ -63,12 +68,8 @@ export function EventAttendees({
       >
         <View style={styles.stack}>
           {attendees.slice(0, STACK_LIMIT).map((attendee, index) => (
-            <Pressable
+            <View
               key={`${attendee.name}-${index}`}
-              onPress={attendee.id ? () => onOpenMemberProfile(attendee.id!) : undefined}
-              disabled={!attendee.id}
-              accessibilityRole={attendee.id ? 'button' : undefined}
-              accessibilityLabel={attendee.id ? `Open ${attendee.name}'s profile` : undefined}
               style={[
                 index > 0 && styles.overlap,
               ]}
@@ -78,7 +79,7 @@ export function EventAttendees({
                 size={30}
                 style={{ borderColor: t.surfacePaper }}
               />
-            </Pressable>
+            </View>
           ))}
         </View>
         <Text style={[styles.count, { color: t.inkStrong }]} numberOfLines={1}>
@@ -101,9 +102,10 @@ export function EventAttendees({
               disabled={!attendee.id}
               accessibilityRole={attendee.id ? 'button' : undefined}
               accessibilityLabel={attendee.id ? `Open ${attendee.name}'s profile` : undefined}
-              style={[
+              style={({ pressed }) => [
                 styles.rosterRow,
                 index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                pressed && attendee.id ? styles.pressed : null,
               ]}
             >
               <Text style={[styles.name, { color: t.inkStrong }]} numberOfLines={1}>
@@ -129,14 +131,14 @@ const styles = StyleSheet.create({
   label: { fontFamily: sans(500), fontSize: 11.5 },
   empty: { marginTop: 5, fontFamily: sans(400), fontSize: 13 },
   countOnly: { marginTop: 5, fontFamily: sans(500), fontSize: 13 },
-  summary: { minHeight: 40, marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  summary: { minHeight: 44, marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 7 },
   pressed: { opacity: 0.78 },
   stack: { flexDirection: 'row', paddingLeft: 1 },
   overlap: { marginLeft: -9 },
   count: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 12.5 },
   toggle: { fontFamily: sans(600), fontSize: 11.5 },
   roster: { marginTop: 8, borderTopWidth: 1 },
-  rosterRow: { minHeight: 37, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rosterRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 12.5 },
   org: { maxWidth: '42%', fontFamily: mono(500), fontSize: 9.5, letterSpacing: 0.4 },
   more: { paddingVertical: 9, fontFamily: sans(400), fontSize: 12.5 },

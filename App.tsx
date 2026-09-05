@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import { Alert, Animated, AppState, Keyboard, Linking, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 // Imported per weight, not from the package root — the root index re-exports
@@ -200,6 +201,7 @@ import type {
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import { MemberProvider } from './src/auth/MemberProvider';
 import DataGate from './src/components/DataGate';
+import { ScreenEnter } from './src/ds/primitives';
 import { openForumAttachment as openForumAttachmentFile } from './src/lib/forumAttachments';
 import { mergeAskMessages } from './src/lib/ask-gpfa-core';
 import {
@@ -3194,6 +3196,7 @@ function Portal() {
               importantForAccessibility={tab === 'more' ? 'auto' : 'no-hide-descendants'}
               style={[styles.tabPage, { left: screenWidth * 4, width: screenWidth }]}
             >
+            <ScreenEnter key={moreView} style={styles.screen}>
             {moreView === 'events' && (
               <DataGate loading={eventsQuery.loading} error={eventsQuery.error} onRetry={eventsQuery.refetch}>
               <EventsScreen
@@ -3488,6 +3491,7 @@ function Portal() {
                 )}
               </DataGate>
             )}
+            </ScreenEnter>
             </View>
             <View
               pointerEvents={tab === 'groups' ? 'auto' : 'none'}
@@ -3700,7 +3704,7 @@ function Portal() {
             {/* Over the tab rather than in place of it, so the tab underneath
                 keeps its scroll position while the profile is open. */}
             {profileOpen && (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+              <ScreenEnter style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
                 <DirectoryMemberProfileScreen
                   profile={
                     directoryProfileQuery.data?.id === profileTargetId
@@ -3794,7 +3798,7 @@ function Portal() {
                     setTab('more');
                   }}
                 />
-              </View>
+              </ScreenEnter>
             )}
             </View>
           </GestureDetector>
@@ -3864,14 +3868,14 @@ function Portal() {
             />
           )}
           {resourceViewer && (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+            <ScreenEnter style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
               <ResourceViewer
                 resource={resourceViewer.resource}
                 accessToken={resourceViewer.accessToken}
                 onSave={saveResource}
                 onClose={() => setResourceViewer(null)}
               />
-            </View>
+            </ScreenEnter>
           )}
         </>
       )}
@@ -4075,16 +4079,18 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <ThemeProvider initialDark={DARK_MODE}>
-          <AuthProvider>
-            {/* Above Portal so the now-playing bar survives tab switches. */}
-            <PodcastPlayerProvider>
-              <Portal />
-            </PodcastPlayerProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <ThemeProvider initialDark={DARK_MODE}>
+            <AuthProvider>
+              {/* Above Portal so the now-playing bar survives tab switches. */}
+              <PodcastPlayerProvider>
+                <Portal />
+              </PodcastPlayerProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

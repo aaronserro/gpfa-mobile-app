@@ -5,14 +5,15 @@
  * three routes, all of which land on the full profile — the sheet is a shortcut
  * into it, not a second place to read the same facts.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowSquareOut, Buildings, CaretRight, Repeat, User, X, type Icon } from '../ds/icons';
 import { Avatar } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
+import { useSheetTransition } from '../hooks/useSheetTransition';
 import { initials as initialsOf } from '../lib/format';
 import type { Member } from '../api/types';
 
@@ -37,29 +38,22 @@ export default function MemberSheet({
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
 
-  // gpfaScrim (180ms) and gpfaSheet (280ms) from the design, run off one clock.
-  // The design slides the sheet by 102% of its own height; RN's native driver
-  // takes points, so the rise starts once layout has reported that height.
-  const p = useRef(new Animated.Value(0)).current;
   const [height, setHeight] = useState(0);
-  useEffect(() => {
-    if (!height) return;
-    const a = Animated.timing(p, {
-      toValue: 1,
-      duration: 280,
-      easing: Easing.bezier(0.22, 0.61, 0.36, 1),
-      useNativeDriver: true,
-    });
-    a.start();
-    return () => a.stop();
-  }, [height, p]);
+  const { closing, progress, requestClose } = useSheetTransition(onClose, height);
 
   const meta = [member.org, member.role].filter(Boolean).join(' · ').toUpperCase();
 
   return (
     <View style={styles.wrap}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: p }]}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close profile menu" />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose()}
+          disabled={closing}
+          accessibilityRole="button"
+          accessibilityLabel="Close profile menu"
+          accessibilityState={{ disabled: closing }}
+        />
       </Animated.View>
 
       <Animated.View
@@ -75,7 +69,7 @@ export default function MemberSheet({
             opacity: height ? 1 : 0,
             transform: [
               {
-                translateY: p.interpolate({
+                translateY: progress.interpolate({
                   inputRange: [0, 1],
                   outputRange: [height * 1.02, 0],
                 }),
@@ -99,7 +93,8 @@ export default function MemberSheet({
             )}
           </View>
           <Pressable
-            onPress={onClose}
+            onPress={() => requestClose()}
+            disabled={closing}
             accessibilityRole="button"
             accessibilityLabel="Close"
             hitSlop={8}
@@ -110,22 +105,22 @@ export default function MemberSheet({
         </View>
 
         <View style={{ borderTopWidth: 1, borderTopColor: t.ruleHairline }}>
-          <Row icon={User} label="View profile" onPress={onOpenProfile} />
+          <Row icon={User} label="View profile" onPress={() => requestClose(onOpenProfile)} />
           <Row
             icon={Repeat}
             label="Reposts"
             trailing={String(repostCount)}
-            onPress={onOpenProfile}
+            onPress={() => requestClose(onOpenProfile)}
             divided
           />
           <Row
             icon={Buildings}
             label={`${member.org} organization`}
-            onPress={onOpenProfile}
+            onPress={() => requestClose(onOpenProfile)}
             divided
           />
           {!!onSignOut && (
-            <Row icon={ArrowSquareOut} label="Sign out" onPress={onSignOut} divided />
+            <Row icon={ArrowSquareOut} label="Sign out" onPress={() => requestClose(onSignOut)} divided />
           )}
         </View>
       </Animated.View>

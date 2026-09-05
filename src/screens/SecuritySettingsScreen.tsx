@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
@@ -49,7 +49,13 @@ export default function SecuritySettingsScreen({
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="Security & identity" onBack={onBack} backLabel="Back to account" />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <Text style={[styles.heading, { color: t.inkStrong }]}>Mention handle</Text>
         <Text style={[styles.description, { color: t.inkMuted }]}>Members use this public handle to mention you in discussions.</Text>
         <View style={styles.handleRow}>
@@ -79,6 +85,7 @@ export default function SecuritySettingsScreen({
           onPress={() => void requestPassword()}
         />
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

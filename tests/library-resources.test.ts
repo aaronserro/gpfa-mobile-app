@@ -131,7 +131,7 @@ test('resource preview policy prefers MIME type and safely falls back to extensi
       contentType: 'text/html',
       previewable: true,
     }),
-    'web'
+    'html'
   );
   assert.equal(
     resourcePreviewKind({

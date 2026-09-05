@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   ScrollView,
@@ -33,6 +34,7 @@ import {
   X,
 } from '../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import { useSheetTransition } from '../hooks/useSheetTransition';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import Waveform, { fallbackPeaks } from '../components/podcast/Waveform';
@@ -1182,12 +1184,45 @@ function Sheet_({
 }) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
   return (
     <View style={styles.sheetWrap}>
-      <Pressable style={styles.scrim} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: t.surfacePaper }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose()}
+          disabled={closing}
+          accessibilityRole="button"
+          accessibilityLabel="Close resource details"
+          accessibilityState={{ disabled: closing }}
+        />
+      </Animated.View>
+      <Animated.View
+        onLayout={(event) => setSheetHeight((height) => height || event.nativeEvent.layout.height)}
+        style={[
+          styles.sheet,
+          {
+            backgroundColor: t.surfacePaper,
+            opacity: sheetHeight ? 1 : 0,
+            transform: [{
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [sheetHeight * 1.02, 0],
+              }),
+            }],
+          },
+        ]}
+      >
         <View style={[styles.sheetHead, { borderBottomColor: t.ruleHairline }]}>
-          <Pressable onPress={onClose} accessibilityLabel="Close" hitSlop={10}>
+          <Pressable
+            onPress={() => requestClose()}
+            disabled={closing}
+            accessibilityRole="button"
+            accessibilityLabel="Close resource details"
+            accessibilityState={{ disabled: closing }}
+            hitSlop={10}
+          >
             <X size={16} color={t.inkMuted} />
           </Pressable>
         </View>
@@ -1203,7 +1238,7 @@ function Sheet_({
         >
           {children}
         </ScrollView>
-      </View>
+      </Animated.View>
     </View>
   );
 }

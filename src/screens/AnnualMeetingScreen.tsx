@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowRight, CalendarDots, CheckCircle, MapPin } from '../ds/icons';
-import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import { Badge, MastheadMeta, ScreenEnter, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type {
@@ -10,6 +11,7 @@ import type {
   AnnualMeetingPreview,
   AnnualMeetingRegistrationInput,
 } from '../api/types';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 export default function AnnualMeetingScreen({
   meeting,
@@ -21,12 +23,14 @@ export default function AnnualMeetingScreen({
   onSubmitRegistration: (input: AnnualMeetingRegistrationInput) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const reducedMotion = useReducedMotion();
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [expandedDay, setExpandedDay] = useState(meeting.agenda[0]?.id ?? '');
   const registered = meeting.registrationStatus !== 'Not registered';
 
   if (registrationOpen) {
     return (
+      <ScreenEnter style={styles.fill}>
       <RegistrationForm
         meeting={meeting}
         registered={registered}
@@ -36,6 +40,7 @@ export default function AnnualMeetingScreen({
           setRegistrationOpen(false);
         }}
       />
+      </ScreenEnter>
     );
   }
 
@@ -86,7 +91,15 @@ export default function AnnualMeetingScreen({
               const expanded = day.id === expandedDay;
               return (
                 <View key={day.id} style={index > 0 ? { borderTopWidth: 1, borderTopColor: t.ruleHairline } : undefined}>
-                  <Pressable onPress={() => setExpandedDay(expanded ? '' : day.id)} style={styles.dayHeader}>
+                  <Pressable
+                    onPress={() => {
+                      if (!reducedMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setExpandedDay(expanded ? '' : day.id);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded }}
+                    style={({ pressed }) => [styles.dayHeader, pressed && { opacity: 0.76 }]}
+                  >
                     <View style={styles.flex}>
                       <Text style={[styles.dayLabel, { color: t.inkStrong }]}>{day.label}</Text>
                       <MastheadMeta size={9.5}>{day.date}</MastheadMeta>
@@ -143,6 +156,7 @@ function RegistrationForm({
   onSubmit: (input: AnnualMeetingRegistrationInput) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
   const [answers, setAnswers] = useState<Record<string, AnnualMeetingAnswerValue>>(() =>
     Object.fromEntries(meeting.answers.map((answer) => [answer.fieldId, answer.value]))
   );
@@ -163,7 +177,8 @@ function RegistrationForm({
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title={registered ? 'Your registration' : 'Register'} onBack={leave} backLabel="Back to Annual Meeting" />
-      <ScrollView contentContainerStyle={styles.formScroll} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={styles.fill} contentContainerStyle={styles.formScroll} keyboardShouldPersistTaps="handled">
         <MastheadMeta size={10}>{meeting.dateLabel.toUpperCase()}</MastheadMeta>
         <Text style={[styles.formTitle, { color: t.inkStrong }]}>{meeting.title}</Text>
         <Text style={[styles.formIntro, { color: t.inkMuted }]}>Your name, work email and organization come from your GPFA member profile.</Text>
@@ -222,7 +237,7 @@ function RegistrationForm({
         </View>
       </ScrollView>
 
-      <View style={[styles.formFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+      <View style={[styles.formFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.flex}>
           <Text style={[styles.formFooterTitle, { color: t.inkStrong }]}>{registered ? 'Registered' : 'Registration open'}</Text>
           <Text style={[styles.formFooterMeta, { color: t.inkMuted }]}>{meeting.dateLabel}</Text>
@@ -252,6 +267,7 @@ function RegistrationForm({
           </Text>
         </Pressable>
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -363,7 +379,7 @@ const styles = StyleSheet.create({
   logisticsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14 },
   logisticsTitle: { fontFamily: sans(600), fontSize: 13.5 },
   logisticsDetail: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
-  formScroll: { padding: 20, paddingBottom: 120 },
+  formScroll: { padding: 20, paddingBottom: 24 },
   formTitle: { marginTop: 8, fontFamily: sans(600), fontSize: 23, lineHeight: 28, letterSpacing: trackDisplay(23) },
   formIntro: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
   formQuestion: { marginTop: 26 },
@@ -378,7 +394,7 @@ const styles = StyleSheet.create({
   textInput: { minHeight: 48 },
   receiptNote: { marginTop: 24, borderRadius: 8, flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 13 },
   receiptCopy: { flex: 1, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
-  formFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 12 },
+  formFooter: { borderTopWidth: 1, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 12 },
   formFooterTitle: { fontFamily: sans(600), fontSize: 12.5 },
   formFooterMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 10.5 },
   submitButton: { minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },

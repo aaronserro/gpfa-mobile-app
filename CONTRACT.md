@@ -1296,8 +1296,14 @@ the **only** sort key the Newest/Oldest toggle uses — omit it and ordering is
 undefined. `type` drives the chip colour and the corner glyph, so send one of
 the seven values above. New resource actions use `artifact`: PDFs, images, and
 safe text formats use native renderers selected from `contentType` (with
-`fileName` extension as a fallback); server-approved HTML uses the authenticated
-WebView; unsupported or conflicting formats use the native save/share sheet.
+`fileName` extension as a fallback). Server-approved HTML is fetched with the
+same scoped credentials and parsed into a native document made from React Native
+text, view, list, table, code, and image components. HTML links are inert, and
+scripts, forms, iframes, canvas, arbitrary source CSS, media players, and other
+browser-only content are omitted. Supported embedded images may receive bearer
+credentials only when their resolved URL is a configured GPFA origin under
+`/api/content-assets/`; credentials never cross origins. Unsupported or
+conflicting formats use the native save/share sheet.
 All files can be downloaded to temporary cache, and external links open through
 the operating system without GPFA credentials. Bearer credentials are attached
 only to configured GPFA origins whose path begins `/api/content-assets/`.

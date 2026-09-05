@@ -214,7 +214,13 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
         },
       ]}
     >
-      <Pressable onPress={hasAction ? onOpen : undefined} disabled={!hasAction}>
+      <Pressable
+        onPress={onOpen}
+        disabled={!hasAction}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !hasAction }}
+        style={({ pressed }) => ({ opacity: pressed && hasAction ? 0.78 : 1 })}
+      >
         <View style={[styles.hero, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
           {!!story.imageUrl && (
             <Image

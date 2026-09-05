@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +14,7 @@ import type { MemberNotification } from '../api/types';
 import { ArrowClockwise, Bell, CheckCircle, Trash, X } from '../ds/icons';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
+import { useSheetTransition } from '../hooks/useSheetTransition';
 
 export default function NotificationsSheet({
   notifications,
@@ -43,28 +43,23 @@ export default function NotificationsSheet({
 }) {
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
-  const p = useRef(new Animated.Value(0)).current;
   const [height, setHeight] = useState(0);
+  const { closing, progress, requestClose } = useSheetTransition(onClose, height);
   const unread = notifications.filter((n) => !n.read).length;
   const pending = new Set(pendingIds);
   const hasPending = pendingIds.length > 0;
 
-  useEffect(() => {
-    if (!height) return;
-    const animation = Animated.timing(p, {
-      toValue: 1,
-      duration: 280,
-      easing: Easing.bezier(0.22, 0.61, 0.36, 1),
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [height, p]);
-
   return (
     <View style={styles.wrap}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: p }]}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close notifications" />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose()}
+          disabled={closing}
+          accessibilityRole="button"
+          accessibilityLabel="Close notifications"
+          accessibilityState={{ disabled: closing }}
+        />
       </Animated.View>
 
       <Animated.View
@@ -78,7 +73,7 @@ export default function NotificationsSheet({
             opacity: height ? 1 : 0,
             transform: [
               {
-                translateY: p.interpolate({
+                translateY: progress.interpolate({
                   inputRange: [0, 1],
                   outputRange: [height * 1.02, 0],
                 }),
@@ -138,7 +133,8 @@ export default function NotificationsSheet({
             </Pressable>
           )}
           <Pressable
-            onPress={onClose}
+            onPress={() => requestClose()}
+            disabled={closing}
             accessibilityRole="button"
             accessibilityLabel="Close"
             hitSlop={8}
@@ -193,7 +189,7 @@ export default function NotificationsSheet({
               >
                 <View style={styles.itemRow}>
                   <Pressable
-                    onPress={() => onOpen(notification)}
+                    onPress={() => requestClose(() => onOpen(notification))}
                     disabled={pending.has(notification.id)}
                     accessibilityRole="button"
                     accessibilityLabel={`Open notification: ${notification.title}`}

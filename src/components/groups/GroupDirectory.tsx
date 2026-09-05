@@ -74,7 +74,13 @@ export default function GroupDirectory({
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.directoryControls}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortStrip}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            directionalLockEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sortStrip}
+          >
             {SORTS.map((option) => {
               const active = option.id === sort;
               return (

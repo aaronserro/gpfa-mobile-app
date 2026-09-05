@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useMember } from '../auth/MemberProvider';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { Bell, CaretLeft, Moon, Sun } from './icons';
 import { useTheme } from './ThemeProvider';
 import { alpha, mono, sans, topPad, trackDisplay, HEADER_TOP } from './tokens';
@@ -35,7 +36,12 @@ interface FadeUpProps {
 /** .fade-up — 480ms, 8px rise, --fade-ease. */
 export function FadeUp({ delay = 0, style, children }: FadeUpProps) {
   const p = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
+    if (reducedMotion) {
+      p.setValue(1);
+      return;
+    }
     const a = Animated.timing(p, {
       toValue: 1,
       duration: 480,
@@ -45,12 +51,49 @@ export function FadeUp({ delay = 0, style, children }: FadeUpProps) {
     });
     a.start();
     return () => a.stop();
-  }, [delay, p]);
+  }, [delay, p, reducedMotion]);
   return (
     <Animated.View
       style={[
         style,
         { opacity: p, transform: [{ translateY: p.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A quick native-feeling entrance for state-driven sub-screens. */
+export function ScreenEnter({ style, children }: Omit<FadeUpProps, 'delay'>) {
+  const p = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (reducedMotion) {
+      p.setValue(1);
+      return;
+    }
+    const animation = Animated.timing(p, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.bezier(0.22, 0.61, 0.36, 1),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [p, reducedMotion]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: p,
+          transform: [
+            { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+          ],
+        },
       ]}
     >
       {children}
@@ -187,13 +230,25 @@ export function ScreenHeader({
       >
         <View style={headerStyles.topRow}>
           {!!onBack && (
-            <Pressable onPress={onBack} accessibilityLabel={backLabel} hitSlop={8}>
+            <Pressable
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel={backLabel}
+              hitSlop={8}
+              style={({ pressed }) => (pressed ? headerStyles.pressed : null)}
+            >
               <CaretLeft size={19} color={t.brandGreenOnDark} />
             </Pressable>
           )}
           <View style={headerStyles.spacer} />
           {actions}
-          <Pressable onPress={toggle} accessibilityLabel="Toggle dark mode" hitSlop={8}>
+          <Pressable
+            onPress={toggle}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle dark mode"
+            hitSlop={8}
+            style={({ pressed }) => (pressed ? headerStyles.pressed : null)}
+          >
             {isDark ? <Sun size={20} color="#fff" /> : <Moon size={20} color="#fff" />}
           </Pressable>
           <Pressable
@@ -276,6 +331,7 @@ const headerStyles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   badgeText: { fontFamily: mono(600), fontSize: 9, lineHeight: 12, color: '#07171b' },
+  pressed: { opacity: 0.7 },
   title: {
     fontFamily: sans(600),
     fontSize: 22,
@@ -550,25 +606,32 @@ export function RelevanceDot({ level, style }: { level: Relevance; style?: Style
 /** .live-dot — 1.8s expanding halo behind a static red dot. */
 export function LiveDot() {
   const p = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
+    if (reducedMotion) {
+      p.setValue(0);
+      return;
+    }
     const a = Animated.loop(
       Animated.timing(p, { toValue: 1, duration: 1800, easing: Easing.out(Easing.ease), useNativeDriver: true })
     );
     a.start();
     return () => a.stop();
-  }, [p]);
+  }, [p, reducedMotion]);
 
   return (
     <View style={styles.liveWrap}>
-      <Animated.View
-        style={[
-          styles.liveHalo,
-          {
-            opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
-            transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
-          },
-        ]}
-      />
+      {!reducedMotion && (
+        <Animated.View
+          style={[
+            styles.liveHalo,
+            {
+              opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
+              transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
+            },
+          ]}
+        />
+      )}
       <View style={styles.liveDot} />
     </View>
   );

@@ -289,6 +289,7 @@ export default function DirectoryScreen({
         style={{ backgroundColor: t.surfacePaper }}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {matchedOrgs.map((o) => (

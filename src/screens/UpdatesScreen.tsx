@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowRight, CalendarDots, CheckCircle, Megaphone } from '../ds/icons';
-import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import { Badge, MastheadMeta, ScreenEnter, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type {
@@ -210,6 +211,7 @@ function SurveyFlow({
   onSubmit: (surveyId: string, answers: MobileSurveyAnswer[]) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const statements = useMemo(
     () => survey.questions.flatMap((question) =>
@@ -268,13 +270,14 @@ function SurveyFlow({
       <View style={[styles.progressTrack, { backgroundColor: t.surfaceSoft }]}>
         <View style={[styles.progressFill, { backgroundColor: t.brandGreen, width: `${statements.length ? ((step + 1) / statements.length) * 100 : 0}%` }]} />
       </View>
-      <ScrollView contentContainerStyle={styles.surveyScroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={styles.fill} contentContainerStyle={styles.surveyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <MastheadMeta size={10}>{`STATEMENT ${step + 1} OF ${statements.length} · ${survey.closesLabel}`}</MastheadMeta>
         <Text style={[styles.surveyTitle, { color: t.inkStrong }]}>{survey.title}</Text>
         <Text style={[styles.surveyDescription, { color: t.inkMuted }]}>{step === 0 ? survey.description : 'Choose the response that best reflects your organization.'}</Text>
 
         {!!current && (
-          <View style={styles.questionBlock}>
+          <ScreenEnter key={current.statement.id} style={styles.questionBlock}>
             <Text style={[styles.questionPrompt, { color: t.inkStrong }]}>{current.question.prompt}</Text>
             <Text style={[styles.surveyDescription, { color: t.inkMuted }]}>{current.statement.text}</Text>
             <View style={styles.optionList}>
@@ -320,11 +323,11 @@ function SurveyFlow({
                 style={[styles.otherInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
               />
             )}
-          </View>
+          </ScreenEnter>
         )}
       </ScrollView>
 
-      <View style={[styles.surveyFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+      <View style={[styles.surveyFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 12) }]}>
         <Text style={[styles.footerCount, { color: t.inkMuted }]}>{answeredCount} of {statements.length} answered</Text>
         {step > 0 && (
           <Pressable onPress={() => setStep((current) => current - 1)} style={styles.textButton}>
@@ -356,6 +359,7 @@ function SurveyFlow({
           </Text>
         </Pressable>
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -399,7 +403,7 @@ const styles = StyleSheet.create({
   paragraph: { marginBottom: 16, fontFamily: sans(400), fontSize: 14, lineHeight: 23 },
   progressTrack: { height: 3 },
   progressFill: { height: 3 },
-  surveyScroll: { padding: 20, paddingBottom: 120 },
+  surveyScroll: { padding: 20, paddingBottom: 24 },
   surveyTitle: { marginTop: 10, fontFamily: sans(600), fontSize: 23, lineHeight: 28, letterSpacing: trackDisplay(23) },
   surveyDescription: { marginTop: 8, fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
   questionBlock: { marginTop: 30 },
@@ -410,7 +414,7 @@ const styles = StyleSheet.create({
   radioFill: { width: 10, height: 10, borderRadius: 5 },
   optionLabel: { flex: 1, fontFamily: sans(500), fontSize: 13.5, lineHeight: 19 },
   otherInput: { marginTop: 12, minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 13 },
-  surveyFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 72, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 12 },
+  surveyFooter: { minHeight: 72, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 12 },
   footerCount: { flex: 1, fontFamily: mono(400), fontSize: 9.5 },
   textButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 8 },
   textButtonLabel: { fontFamily: sans(600), fontSize: 12.5 },

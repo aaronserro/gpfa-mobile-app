@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +16,7 @@ import { FileText, Link, Paperclip, X } from '../../ds/icons';
 import { Input } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
+import { useSheetTransition } from '../../hooks/useSheetTransition';
 import type {
   WorkingGroupResourceSubmissionFile,
   WorkingGroupResourceSubmissionInput,
@@ -72,12 +74,15 @@ export default function ResourceSubmissionComposer({
   const [tags, setTags] = useState('');
   const [files, setFiles] = useState<SelectedResourceFile[]>([]);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
 
   const parsedTags = useMemo(
     () => tags.split(',').map((tag) => tag.trim()).filter(Boolean),
     [tags]
   );
-  const canSubmit = title.trim().length >= 3 && (!!sourceUrl.trim() || files.length > 0) && !submitting;
+  const canSubmit = title.trim().length >= 3 && (!!sourceUrl.trim() || files.length > 0) && !submitting && !closing;
+  const dismissDisabled = submitting || closing;
 
   const pickFiles = async () => {
     setMessage(null);
@@ -136,15 +141,32 @@ export default function ResourceSubmissionComposer({
 
   return (
     <View style={styles.wrap}>
-      <Pressable style={styles.scrim} onPress={onClose} />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose()}
+          disabled={dismissDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="Close resource submission"
+          accessibilityState={{ disabled: dismissDisabled }}
+        />
+      </Animated.View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View
+        <Animated.View
+          onLayout={(event) => setSheetHeight((height) => height || event.nativeEvent.layout.height)}
           style={[
             styles.sheet,
             {
               backgroundColor: t.surfacePaper,
               borderTopColor: t.ruleHairline,
               paddingBottom: Math.max(insets.bottom, 18),
+              opacity: sheetHeight ? 1 : 0,
+              transform: [{
+                translateY: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [sheetHeight * 1.02, 0],
+                }),
+              }],
             },
           ]}
         >
@@ -155,7 +177,14 @@ export default function ResourceSubmissionComposer({
               <Text style={[styles.kicker, { color: t.inkFaint }]}>RESOURCE SUBMISSION</Text>
               <Text style={[styles.title, { color: t.inkStrong }]}>Share with {groupName}</Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+            <Pressable
+              onPress={() => requestClose()}
+              disabled={dismissDisabled}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Close resource submission"
+              accessibilityState={{ disabled: dismissDisabled }}
+            >
               <X size={18} color={t.inkMuted} />
             </Pressable>
           </View>
@@ -178,7 +207,13 @@ export default function ResourceSubmissionComposer({
             )}
 
             <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Resource type</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              directionalLockEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chips}
+            >
               {RESOURCE_TYPES.map((option) => {
                 const on = option.value === resourceType;
                 return (
@@ -298,7 +333,7 @@ export default function ResourceSubmissionComposer({
           >
             <Text style={[styles.submitText, { color: canSubmit ? '#fff' : t.inkFaint }]}>Submit Resource</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </View>
   );

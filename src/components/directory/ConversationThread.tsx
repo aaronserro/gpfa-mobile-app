@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -97,7 +97,7 @@ export default function ConversationThread({
   onReachLatest,
 }: ConversationThreadProps) {
   const { t } = useTheme();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlashListRef<MessageItem>>(null);
   const inputRef = useRef<TextInput>(null);
   const [content, setContent] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
@@ -280,7 +280,7 @@ export default function ConversationThread({
   return (
     <KeyboardAvoidingView
       style={styles.fill}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       keyboardVerticalOffset={84}
     >
       <View style={[styles.threadHeader, { borderBottomColor: t.ruleHairline }]}>
@@ -467,13 +467,23 @@ export default function ConversationThread({
           </Pressable>
         </View>
       ) : (
-        <ScrollView
+        <FlashList
           ref={scrollRef}
-          style={[styles.transcript, { backgroundColor: t.surfacePage }]}
+          data={messages}
+          keyExtractor={(message) => message.id}
+          style={{ flex: 1, backgroundColor: t.surfacePage }}
           contentContainerStyle={styles.transcriptContent}
           keyboardShouldPersistTaps="handled"
-          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          maintainVisibleContentPosition={{ startRenderingFromBottom: true }}
           scrollEventThrottle={16}
+          extraData={{
+            currentMemberId,
+            editWindowNow,
+            messageActionsId,
+            messageMutationPendingId,
+            participants,
+            reactionPickerMessageId,
+          }}
           onScroll={({ nativeEvent }) => {
             const distanceFromBottom =
               nativeEvent.contentSize.height -
@@ -485,30 +495,32 @@ export default function ConversationThread({
             const latestOrdinal = messages.at(-1)?.ordinal ?? 0;
             if (latestOrdinal > 0) onReachLatest(latestOrdinal);
           }}
-        >
-          {hasOlder && (
-            <Pressable
-              onPress={() => void onLoadOlder()}
-              disabled={loadingOlder}
-              style={[styles.loadOlder, { borderColor: t.ruleStrong, backgroundColor: t.surfacePaper }]}
-            >
-              {loadingOlder ? (
-                <ActivityIndicator size="small" color={t.brandGreen} />
-              ) : (
-                <Text style={[styles.loadOlderLabel, { color: t.inkStrong }]}>Load earlier messages</Text>
-              )}
-            </Pressable>
-          )}
-          {messages.length === 0 && (
+          ListHeaderComponent={hasOlder ? (
+            <View style={styles.loadOlderContainer}>
+              <Pressable
+                onPress={() => void onLoadOlder()}
+                disabled={loadingOlder}
+                style={[styles.loadOlder, { borderColor: t.ruleStrong, backgroundColor: t.surfacePaper }]}
+              >
+                {loadingOlder ? (
+                  <ActivityIndicator size="small" color={t.brandGreen} />
+                ) : (
+                  <Text style={[styles.loadOlderLabel, { color: t.inkStrong }]}>Load earlier messages</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+          ListEmptyComponent={(
             <View style={styles.emptyConversation}>
               <Text style={[styles.stateTitle, { color: t.inkStrong }]}>Start the conversation</Text>
               <Text style={[styles.stateText, { color: t.inkMuted }]}>Messages are private to the people in this conversation.</Text>
             </View>
           )}
-          {messages.map((message) => {
+          ItemSeparatorComponent={() => <View style={styles.messageSeparator} />}
+          renderItem={({ item: message }) => {
             if (message.kind === 'system') {
               return (
-                <Text key={message.id} style={[styles.systemMessage, { color: t.inkMuted }]}>
+                <Text style={[styles.systemMessage, { color: t.inkMuted }]}>
                   {message.content}
                 </Text>
               );
@@ -518,7 +530,7 @@ export default function ConversationThread({
             const actionsAvailable = own && isMessageWithinEditWindow(message.createdAt, editWindowNow);
             const mutationPending = messageMutationPendingId === message.id;
             return (
-              <View key={message.id} style={[styles.messageRow, own && styles.messageRowOwn]}>
+              <View style={[styles.messageRow, own && styles.messageRowOwn]}>
                 {!own && sender ? (
                   <Pressable
                     onPress={() => onOpenMemberProfile(sender.id)}
@@ -662,8 +674,8 @@ export default function ConversationThread({
                 </View>
               </View>
             );
-          })}
-        </ScrollView>
+          }}
+        />
       )}
 
       {!managing && newMessageCount > 0 && (
@@ -801,11 +813,12 @@ const styles = StyleSheet.create({
   stateText: { maxWidth: 300, textAlign: 'center', fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
   retry: { marginTop: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8 },
   retryText: { fontFamily: sans(600), fontSize: 12 },
-  transcript: { flex: 1 },
-  transcriptContent: { flexGrow: 1, justifyContent: 'flex-end', gap: 12, padding: 16 },
+  transcriptContent: { padding: 16 },
+  loadOlderContainer: { paddingBottom: 12 },
   loadOlder: { alignSelf: 'center', minHeight: 36, borderWidth: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   loadOlderLabel: { fontFamily: sans(600), fontSize: 11.5 },
   emptyConversation: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 48 },
+  messageSeparator: { height: 12 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '88%' },
   messageRowOwn: { alignSelf: 'flex-end', justifyContent: 'flex-end' },
   messageColumn: { flexShrink: 1, alignItems: 'flex-start' },

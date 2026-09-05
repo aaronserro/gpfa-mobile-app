@@ -7,7 +7,7 @@ export function resourceDownloadFilename(value: string | undefined, fallbackId: 
     .slice(-160) || 'gpfa-resource.bin';
 }
 
-export type ResourcePreviewKind = 'pdf' | 'image' | 'text' | 'web' | 'external';
+export type ResourcePreviewKind = 'pdf' | 'image' | 'text' | 'html' | 'external';
 
 type PreviewableResourceFile = {
   href: string;
@@ -41,7 +41,7 @@ export function resourcePreviewKind(file: PreviewableResourceFile): ResourcePrev
   if (mimeType === 'application/pdf') return 'pdf';
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType === 'text/html' || mimeType === 'application/xhtml+xml') {
-    return file.previewable ? 'web' : 'external';
+    return file.previewable ? 'html' : 'external';
   }
   if (mimeType.startsWith('text/') || mimeType === 'application/json') return 'text';
 
@@ -52,12 +52,32 @@ export function resourcePreviewKind(file: PreviewableResourceFile): ResourcePrev
   if (extension === 'pdf') return 'pdf';
   if (IMAGE_EXTENSIONS.has(extension)) return 'image';
   if (TEXT_EXTENSIONS.has(extension)) return 'text';
-  if (WEB_EXTENSIONS.has(extension) && file.previewable) return 'web';
+  if (WEB_EXTENSIONS.has(extension) && file.previewable) return 'html';
   return 'external';
 }
 
 export function resourceCanPreview(file: PreviewableResourceFile): boolean {
   return resourcePreviewKind(file) !== 'external';
+}
+
+export function resourceIsTrustedContentAsset(
+  url: string,
+  trustedOrigins: string[]
+): boolean {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return false;
+  }
+
+  return target.pathname.startsWith('/api/content-assets/') && trustedOrigins.some((origin) => {
+    try {
+      return new URL(origin).origin === target.origin;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function resourceDownloadHeaders(
@@ -80,7 +100,7 @@ export function resourceDownloadHeaders(
       return false;
     }
   });
-  if (trustedOrigin && target.pathname.startsWith('/api/content-assets/') && accessToken) {
+  if (resourceIsTrustedContentAsset(url, trustedOrigins) && accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
   if (trustedOrigin && target.hostname.includes('ngrok-free.')) {

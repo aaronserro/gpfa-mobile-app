@@ -214,7 +214,14 @@ function ReviewSheet({
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalWrap}>
-        <Pressable style={styles.scrim} onPress={pending ? undefined : onClose} />
+        <Pressable
+          style={styles.scrim}
+          onPress={onClose}
+          disabled={pending}
+          accessibilityRole="button"
+          accessibilityLabel="Close resource review"
+          accessibilityState={{ disabled: pending }}
+        />
         <View
           style={[
             styles.sheet,

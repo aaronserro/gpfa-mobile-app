@@ -60,9 +60,14 @@ export default function PodcastNowPlayingBar({
         <Pressable
           onPress={() => skip(-15)}
           disabled={controlsDisabled}
+          accessibilityRole="button"
           accessibilityLabel="Rewind 15 seconds"
-          style={[styles.jump, controlsDisabled && styles.disabled]}
-          hitSlop={6}
+          accessibilityState={{ disabled: controlsDisabled }}
+          style={({ pressed }) => [
+            styles.jump,
+            controlsDisabled && styles.disabled,
+            pressed && !controlsDisabled ? { backgroundColor: alpha(t.inkInverse, 0.1) } : null,
+          ]}
         >
           <ArrowCounterClockwise size={19} color={t.inkInverse} />
           <Text style={[styles.jumpLabel, { color: t.inkInverse }]}>15</Text>
@@ -71,8 +76,10 @@ export default function PodcastNowPlayingBar({
         <Pressable
           onPress={error ? retry : toggle}
           disabled={loading}
+          accessibilityRole="button"
           accessibilityLabel={error ? 'Retry episode' : isPlaying ? 'Pause episode' : 'Play episode'}
-          style={({ pressed }) => [styles.play, { backgroundColor: pressed ? t.surfaceSoft : '#fff' }]}
+          accessibilityState={{ disabled: loading, busy: loading }}
+          style={({ pressed }) => [styles.play, { backgroundColor: pressed ? t.surfaceSoft : '#fff', opacity: loading ? 0.72 : 1 }]}
         >
           {loading ? (
             <ActivityIndicator size="small" color={t.inkStrong} />
@@ -88,9 +95,14 @@ export default function PodcastNowPlayingBar({
         <Pressable
           onPress={() => skip(15)}
           disabled={controlsDisabled}
+          accessibilityRole="button"
           accessibilityLabel="Forward 15 seconds"
-          style={[styles.jump, controlsDisabled && styles.disabled]}
-          hitSlop={6}
+          accessibilityState={{ disabled: controlsDisabled }}
+          style={({ pressed }) => [
+            styles.jump,
+            controlsDisabled && styles.disabled,
+            pressed && !controlsDisabled ? { backgroundColor: alpha(t.inkInverse, 0.1) } : null,
+          ]}
         >
           <ArrowClockwise size={19} color={t.inkInverse} />
           <Text style={[styles.jumpLabel, { color: t.inkInverse }]}>15</Text>
@@ -107,6 +119,8 @@ export default function PodcastNowPlayingBar({
 
         <Pressable
           onPress={() => onOpenEpisode(episode.slug)}
+          accessibilityRole="button"
+          accessibilityLabel="Open episode details"
           style={({ pressed }) => [
             styles.action,
             {
@@ -149,9 +163,9 @@ const styles = StyleSheet.create({
     paddingBottom: 11,
   },
   jump: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -162,9 +176,9 @@ const styles = StyleSheet.create({
     fontSize: 6.5,
   },
   play: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -182,7 +196,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    height: 30,
+    minHeight: 44,
     paddingHorizontal: 10,
     borderWidth: 1,
     borderRadius: 8,
@@ -192,9 +206,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
   },
   close: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

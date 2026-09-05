@@ -5,6 +5,8 @@ import { File } from 'expo-file-system';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -135,7 +137,13 @@ export default function ProfileSettingsScreen({
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <ScreenHeader title="Edit profile" onBack={onBack} backLabel="Back to account" />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.avatarRow}>
           <Avatar initials={profile.initials ?? ''} photoUrl={profile.avatarUrl ?? undefined} size={72} />
           <View style={styles.flex}>
@@ -175,6 +183,7 @@ export default function ProfileSettingsScreen({
           <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save profile'}</Text>
         </Pressable>
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

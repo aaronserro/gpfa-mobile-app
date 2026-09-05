@@ -10,10 +10,10 @@ import { DownloadSimple } from '../ds/icons';
 import { ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans } from '../ds/tokens';
+import { ResourceHtmlRenderer } from './resource-viewer/ResourceHtmlRenderer';
 import { ResourceImageRenderer } from './resource-viewer/ResourceImageRenderer';
 import { ResourcePdfRenderer } from './resource-viewer/ResourcePdfRenderer';
 import { ResourceTextRenderer } from './resource-viewer/ResourceTextRenderer';
-import { ResourceWebRenderer } from './resource-viewer/ResourceWebRenderer';
 
 export default function ResourceViewer({
   resource,
@@ -34,6 +34,10 @@ export default function ResourceViewer({
   const [printing, setPrinting] = useState(false);
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const file = resource.artifact.kind === 'file' ? resource.artifact : null;
+  const trustedOrigins = useMemo(
+    () => [API_BASE_URL, GPFA_WEB_ORIGIN].filter(Boolean),
+    []
+  );
 
   const source = useMemo(
     () => ({
@@ -42,11 +46,11 @@ export default function ResourceViewer({
         ? resourceDownloadHeaders(
             file.href,
             accessToken,
-            [API_BASE_URL, GPFA_WEB_ORIGIN].filter(Boolean)
+            trustedOrigins
           )
         : undefined,
     }),
-    [accessToken, file]
+    [accessToken, file, trustedOrigins]
   );
   const previewKind = file ? resourcePreviewKind(file) : 'external';
   const pdfUnavailableInExpoGo =
@@ -115,16 +119,18 @@ export default function ResourceViewer({
         {canRender && !error && previewKind === 'text' ? (
           <ResourceTextRenderer uri={source.uri} headers={source.headers} onError={rendererError} />
         ) : null}
-        {canRender && !error && previewKind === 'web' ? (
-          <ResourceWebRenderer
+        {canRender && !error && previewKind === 'html' ? (
+          <ResourceHtmlRenderer
             uri={source.uri}
             headers={source.headers}
+            accessToken={accessToken}
+            trustedOrigins={trustedOrigins}
             onLoading={setLoading}
             onError={rendererError}
           />
         ) : null}
 
-        {previewKind === 'web' && loading && !error && (
+        {previewKind === 'html' && loading && !error && (
           <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: t.surfacePaper }]}>
             <ActivityIndicator color={t.brandGreen} />
           </View>

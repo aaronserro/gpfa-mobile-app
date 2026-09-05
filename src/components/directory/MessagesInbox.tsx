@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type {
   ConversationDetail,
@@ -208,11 +209,21 @@ export default function MessagesInbox({
               returnKeyType="search"
             />
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={[styles.sectionLabel, { color: t.inkMuted }]}>Members</Text>
-            {matches.map((person) => (
+          <FlashList
+            data={matches}
+            keyExtractor={(person) => person.id}
+            style={styles.fill}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            extraData={{ groupMode, resolvingGroup, resolvingMemberId, selectedMemberIds }}
+            ListHeaderComponent={(
+              <Text style={[styles.sectionLabel, { color: t.inkMuted }]}>Members</Text>
+            )}
+            ListEmptyComponent={(
+              <Text style={[styles.empty, { color: t.inkMuted }]}>No members match “{query.trim()}”.</Text>
+            )}
+            renderItem={({ item: person }) => (
               <Pressable
-                key={person.id}
                 onPress={() => {
                   if (!groupMode) {
                     onStartMessage(person.id);
@@ -275,11 +286,8 @@ export default function MessagesInbox({
                   <ChatCircle size={19} color={t.brandGreen} />
                 )}
               </Pressable>
-            ))}
-            {matches.length === 0 && (
-              <Text style={[styles.empty, { color: t.inkMuted }]}>No members match “{query.trim()}”.</Text>
             )}
-          </ScrollView>
+          />
           {groupMode && (
             <View style={[styles.groupFooter, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
               <View style={styles.groupFooterText}>
@@ -359,14 +367,17 @@ function ConversationRows({
 }) {
   const { t } = useTheme();
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
-      {conversations.map((conversation) => {
+    <FlashList
+      data={conversations}
+      keyExtractor={(conversation) => conversation.id}
+      style={styles.fill}
+      showsVerticalScrollIndicator={false}
+      renderItem={({ item: conversation }) => {
         const other = conversation.participants.find(
           (participant) => !participant.isCurrentMember && !participant.hasLeft
         );
         return (
           <Pressable
-            key={conversation.id}
             onPress={() => onOpenConversation(conversation.id)}
             style={({ pressed }) => [
               styles.row,
@@ -416,8 +427,8 @@ function ConversationRows({
             </View>
           </Pressable>
         );
-      })}
-    </ScrollView>
+      }}
+    />
   );
 }
 

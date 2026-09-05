@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -27,6 +28,7 @@ import {
   PostTimezoneField,
 } from './groups/PostDateTimeFields';
 import { pollQuestionsAreValid } from '../lib/polls';
+import { useSheetTransition } from '../hooks/useSheetTransition';
 import {
   appendTagToken,
   filterTagSuggestions,
@@ -95,6 +97,8 @@ export default function PostComposer({
   const [location, setLocation] = useState('');
   const [registrationUrl, setRegistrationUrl] = useState('');
   const [isVirtual, setIsVirtual] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
 
   const selectedGroup = groups.find((g) => g.id === groupId);
   const normalizedPollQuestions = pollQuestionDraftsToInput(pollQuestions);
@@ -139,11 +143,12 @@ export default function PostComposer({
   const canPost =
     title.trim().length > 0 &&
     (type !== 'poll' || (pollQuestionsAreValid(normalizedPollQuestions) && closesAt.getTime() > Date.now())) &&
-    (type !== 'event' || endsAt.getTime() > startsAt.getTime());
+    (type !== 'event' || endsAt.getTime() > startsAt.getTime()) &&
+    !closing;
 
   const submit = () => {
     if (!canPost) return;
-    onCreate({
+    const draft: NewPostInput = {
       groupId,
       groupSlug: selectedGroup?.slug ?? groupId,
       type,
@@ -159,31 +164,66 @@ export default function PostComposer({
       location: type === 'event' ? location.trim() || undefined : undefined,
       registrationUrl: type === 'event' ? registrationUrl.trim() || undefined : undefined,
       isVirtual: type === 'event' ? isVirtual : undefined,
-    });
+    };
+    requestClose(() => onCreate(draft));
   };
 
   return (
     <View style={styles.wrap}>
-      <Pressable style={styles.scrim} onPress={onClose} />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose()}
+          disabled={closing}
+          accessibilityRole="button"
+          accessibilityLabel="Close new post"
+          accessibilityState={{ disabled: closing }}
+        />
+      </Animated.View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View
+        <Animated.View
+          onLayout={(event) => setSheetHeight((height) => height || event.nativeEvent.layout.height)}
           style={[
             styles.sheet,
-            { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 18) },
+            {
+              backgroundColor: t.surfacePaper,
+              borderTopColor: t.ruleHairline,
+              paddingBottom: Math.max(insets.bottom, 18),
+              opacity: sheetHeight ? 1 : 0,
+              transform: [{
+                translateY: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [sheetHeight * 1.02, 0],
+                }),
+              }],
+            },
           ]}
         >
           <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
 
           <View style={styles.head}>
             <Text style={[styles.title, { color: t.inkStrong }]}>New post</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
+            <Pressable
+              onPress={() => requestClose()}
+              disabled={closing}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Close new post"
+              accessibilityState={{ disabled: closing }}
+            >
               <X size={18} color={t.inkMuted} />
             </Pressable>
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
             <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Post type</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              directionalLockEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.typeRow}
+            >
               {TYPES.map((k) => {
                 const kind = postTypeStyle(t, k);
                 const TypeIcon = TYPE_ICON[k];
@@ -337,7 +377,7 @@ export default function PostComposer({
           >
             <Text style={[styles.postText, { color: canPost ? '#fff' : t.inkFaint }]}>Post to group</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </View>
   );
