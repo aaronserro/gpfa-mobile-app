@@ -102,7 +102,9 @@ Rules that keep this working:
 4. Every later request sends `Authorization: Bearer <token>`.
 5. Before an authenticated request, an access token within 60 seconds of expiry
   is refreshed directly through Supabase Auth. A `401` also triggers one
-  refresh and one retry. Concurrent callers share one refresh operation.
+  refresh and one retry. This applies uniformly to every authenticated member
+  endpoint; individual portal calls do not bypass session recovery. Concurrent
+  callers share one refresh operation.
 6. A `403`, rejected refresh token, or second `401` clears the session and
   returns the user to sign-in. Network failures and Supabase `5xx` responses
   remain retryable and do not erase credentials.
