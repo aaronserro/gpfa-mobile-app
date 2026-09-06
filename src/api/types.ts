@@ -225,6 +225,67 @@ export interface Reply {
   attachments?: ForumAttachment[];
   /** Transient device files; uploaded before this reply is sent. */
   uploadFiles?: ForumUploadFile[];
+  /** Author deletion or moderator removal leaves a structural tombstone. */
+  deleted?: boolean;
+  /** Distinguishes a moderator tombstone from an author-deleted reply. */
+  removed?: boolean;
+}
+
+export type ForumContentTargetType = 'thread' | 'reply';
+
+export interface ForumContentReportTarget {
+  targetType: ForumContentTargetType;
+  targetId: string;
+  /** Present for reply targets so canonical thread detail can be refreshed. */
+  threadId?: string;
+}
+
+export type ForumReportCategory =
+  | 'spam'
+  | 'harassment'
+  | 'off_topic'
+  | 'sensitive_information'
+  | 'misleading'
+  | 'other';
+
+export interface ForumContentReportInput {
+  targetType: ForumContentTargetType;
+  targetId: string;
+  category: ForumReportCategory;
+  details?: string;
+}
+
+export interface ForumContentReportResponse {
+  status: 'success';
+  reportId: string;
+}
+
+export type ForumModerationDecision = 'dismiss' | 'remove';
+
+export interface ForumModerationPerson {
+  id: string;
+  name: string;
+  initials: string;
+}
+
+export interface ForumModerationQueueItem {
+  id: string;
+  workingGroupSlug: string;
+  targetType: ForumContentTargetType;
+  targetId: string;
+  threadId: string;
+  category: ForumReportCategory;
+  details: string | null;
+  reporter: ForumModerationPerson;
+  author: ForumModerationPerson;
+  targetTitle: string | null;
+  targetBody: string;
+  createdAt: string;
+}
+
+export interface ForumModerationQueueResponse {
+  status: 'success';
+  reports: ForumModerationQueueItem[];
 }
 
 /** Post kinds from the WG Forum design; each carries its own rule colour and chip. */
@@ -303,6 +364,8 @@ export interface Thread {
   canDelete?: boolean;
   canChangeStatus?: boolean;
   canReply?: boolean;
+  canReport?: boolean;
+  canModerate?: boolean;
   replies: Reply[];
 }
 
@@ -487,6 +550,8 @@ export interface WorkingGroupDetailReply {
   author: WorkingGroupDetailAuthor;
   createdAt: string;
   attachments: WorkingGroupDetailAttachment[];
+  deleted: boolean;
+  removed: boolean;
 }
 
 export interface WorkingGroupDetailPermissions {
@@ -494,6 +559,8 @@ export interface WorkingGroupDetailPermissions {
   canEdit: boolean;
   canDelete: boolean;
   canChangeStatus: boolean;
+  canReport: boolean;
+  canModerate: boolean;
 }
 
 export interface WorkingGroupThreadDetail {
@@ -1203,6 +1270,8 @@ export interface Member {
   org: string;
   /** Job title, e.g. "Assistant VP, Treasury & Liquidity". The profile omits the line without it. */
   role?: string;
+  /** Server-issued application role. Never infer this from the member's job title. */
+  appRole?: 'member' | 'admin';
   /**
    * `MemberOrg.id` — joins the member to their organization for the profile's
    * Organization card. Absent falls back to matching `org` against the

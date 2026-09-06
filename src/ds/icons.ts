@@ -40,6 +40,7 @@ export { DotsThreeIcon as DotsThree } from 'phosphor-react-native/lib/commonjs/i
 export { DesktopIcon as Desktop } from 'phosphor-react-native/lib/commonjs/icons/Desktop';
 export { FileTextIcon as FileText } from 'phosphor-react-native/lib/commonjs/icons/FileText';
 export { FireIcon as Fire } from 'phosphor-react-native/lib/commonjs/icons/Fire';
+export { FlagIcon as Flag } from 'phosphor-react-native/lib/commonjs/icons/Flag';
 export { HashIcon as Hash } from 'phosphor-react-native/lib/commonjs/icons/Hash';
 export { FileXlsIcon as FileXls } from 'phosphor-react-native/lib/commonjs/icons/FileXls';
 export { HouseIcon as House } from 'phosphor-react-native/lib/commonjs/icons/House';
@@ -58,6 +59,7 @@ export { PencilSimpleIcon as PencilSimple } from 'phosphor-react-native/lib/comm
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
 export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/Repeat';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
+export { ShieldWarningIcon as ShieldWarning } from 'phosphor-react-native/lib/commonjs/icons/ShieldWarning';
 export { SparkleIcon as Sparkle } from 'phosphor-react-native/lib/commonjs/icons/Sparkle';
 export { SunIcon as Sun } from 'phosphor-react-native/lib/commonjs/icons/Sun';
 export { TrayIcon as Tray } from 'phosphor-react-native/lib/commonjs/icons/Tray';

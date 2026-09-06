@@ -29,7 +29,9 @@ import {
   CheckCircle,
   DownloadSimple,
   FileXls,
+  Flag,
   Repeat,
+  Trash,
   X,
 } from '../../ds/icons';
 import { Avatar, Input, MastheadMeta, ScreenHeader } from '../../ds/primitives';
@@ -38,12 +40,15 @@ import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens'
 import { initials as initialsOf } from '../../lib/format';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
 import ForumFilePicker from './ForumFilePicker';
+import ForumReportSheet from './ForumReportSheet';
 import { MentionInput, MentionText } from './MentionInput';
 import PollEditor from './PollEditor';
 import PollQuestionnaire from './PollQuestionnaire';
 import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import type {
   ForumAttachment,
+  ForumContentReportInput,
+  ForumContentReportTarget,
   ForumUploadFile,
   GroupMember,
   MemberPoll,
@@ -136,6 +141,15 @@ export interface PostDetailProps {
   replyPending: boolean;
   deletingReplies: Record<string, boolean | undefined>;
   onDeleteReply: (replyId: string) => Promise<void>;
+  canReportPost: boolean;
+  canModerate: boolean;
+  reportingTarget: ForumContentReportTarget | null;
+  reportPending: boolean;
+  moderationPendingTarget: ForumContentReportTarget | null;
+  onOpenReport: (target: ForumContentReportTarget) => void;
+  onCloseReport: () => void;
+  onSubmitReport: (input: ForumContentReportInput) => Promise<boolean>;
+  onRemoveContent: (target: ForumContentReportTarget) => Promise<boolean>;
   pollEditor?: MemberPoll;
   pollEditorError?: string;
   pollLoading: boolean;
@@ -178,6 +192,15 @@ export default function PostDetail({
   replyPending,
   deletingReplies,
   onDeleteReply,
+  canReportPost,
+  canModerate,
+  reportingTarget,
+  reportPending,
+  moderationPendingTarget,
+  onOpenReport,
+  onCloseReport,
+  onSubmitReport,
+  onRemoveContent,
   pollEditor,
   pollEditorError,
   pollLoading,
@@ -252,6 +275,19 @@ export default function PostDetail({
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void onDeleteReply(replyId) },
     ]);
+  };
+
+  const confirmContentRemoval = (target: ForumContentReportTarget, label: string) => {
+    Alert.alert(
+      `Remove ${label}?`,
+      target.targetType === 'thread'
+        ? 'This post will be removed from member views. The audit record will be preserved.'
+        : 'This reply will become an empty moderator tombstone so the discussion structure is preserved.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => void onRemoveContent(target) },
+      ]
+    );
   };
 
   return (
@@ -545,6 +581,32 @@ export default function PostDetail({
                 <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{threadDeletePending ? 'Deleting…' : 'Delete'}</Text>
               </Pressable>
             )}
+            {type !== 'poll' && canReportPost && (
+              <Pressable
+                onPress={() => onOpenReport({ targetType: 'thread', targetId: post.id, threadId: post.id })}
+                disabled={reportPending}
+                accessibilityRole="button"
+                accessibilityLabel="Report post"
+                accessibilityState={{ disabled: reportPending }}
+                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+              >
+                <Flag size={13} color={t.inkMuted} />
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Report</Text>
+              </Pressable>
+            )}
+            {type !== 'poll' && canModerate && post.authorId !== memberId && (
+              <Pressable
+                onPress={() => confirmContentRemoval({ targetType: 'thread', targetId: post.id, threadId: post.id }, 'post')}
+                disabled={moderationPendingTarget?.targetType === 'thread' && moderationPendingTarget.targetId === post.id}
+                accessibilityRole="button"
+                accessibilityLabel="Remove post as moderator"
+                accessibilityState={{ disabled: moderationPendingTarget?.targetType === 'thread' && moderationPendingTarget.targetId === post.id }}
+                style={[styles.manageBtn, { borderColor: t.brandBrick }]}
+              >
+                <Trash size={13} color={t.brandBrickInk} />
+                <Text style={[styles.manageBtnText, { color: t.brandBrickInk }]}>Remove</Text>
+              </Pressable>
+            )}
             {canManagePoll && post.lifecycle !== 'closed' && !pollEditor && (
               <Pressable
                 onPress={() => void onOpenPollEditor()}
@@ -624,7 +686,7 @@ export default function PostDetail({
                   <View style={styles.flex}>
                     <ReplyBody
                       node={node}
-                      onReplyTo={node.reply.id ? () => {
+                      onReplyTo={!node.reply.deleted && node.reply.id ? () => {
                         setReplyTarget({
                           id: node.reply.id!,
                           authorName: node.reply.a,
@@ -632,7 +694,14 @@ export default function PostDetail({
                         });
                         requestAnimationFrame(() => replyInputRef.current?.focus());
                       } : undefined}
-                      onDelete={canReply && node.reply.id && node.reply.authorId === memberId ? () => confirmReplyDelete(node.reply.id!) : undefined}
+                      onDelete={!node.reply.deleted && canReply && node.reply.id && node.reply.authorId === memberId ? () => confirmReplyDelete(node.reply.id!) : undefined}
+                      onReport={!node.reply.deleted && canReportPost && node.reply.id && node.reply.authorId !== memberId
+                        ? () => onOpenReport({ targetType: 'reply', targetId: node.reply.id!, threadId: post.id })
+                        : undefined}
+                      onRemove={!node.reply.deleted && canModerate && node.reply.id && node.reply.authorId !== memberId
+                        ? () => confirmContentRemoval({ targetType: 'reply', targetId: node.reply.id!, threadId: post.id }, 'reply')
+                        : undefined}
+                      moderationPending={!!node.reply.id && moderationPendingTarget?.targetType === 'reply' && moderationPendingTarget.targetId === node.reply.id}
                       deleting={!!node.reply.id && !!deletingReplies[`reply:delete:${node.reply.id}`]}
                       onOpenAttachment={onOpenAttachment}
                       onOpenAuthor={node.reply.authorId ? () => onOpenMemberProfile(node.reply.authorId!) : undefined}
@@ -651,7 +720,14 @@ export default function PostDetail({
                             <ReplyBody
                               node={child}
                               nested
-                              onDelete={canReply && child.reply.id && child.reply.authorId === memberId ? () => confirmReplyDelete(child.reply.id!) : undefined}
+                              onDelete={!child.reply.deleted && canReply && child.reply.id && child.reply.authorId === memberId ? () => confirmReplyDelete(child.reply.id!) : undefined}
+                              onReport={!child.reply.deleted && canReportPost && child.reply.id && child.reply.authorId !== memberId
+                                ? () => onOpenReport({ targetType: 'reply', targetId: child.reply.id!, threadId: post.id })
+                                : undefined}
+                              onRemove={!child.reply.deleted && canModerate && child.reply.id && child.reply.authorId !== memberId
+                                ? () => confirmContentRemoval({ targetType: 'reply', targetId: child.reply.id!, threadId: post.id }, 'reply')
+                                : undefined}
+                              moderationPending={!!child.reply.id && moderationPendingTarget?.targetType === 'reply' && moderationPendingTarget.targetId === child.reply.id}
                               deleting={!!child.reply.id && !!deletingReplies[`reply:delete:${child.reply.id}`]}
                               onOpenAttachment={onOpenAttachment}
                               onOpenAuthor={child.reply.authorId ? () => onOpenMemberProfile(child.reply.authorId!) : undefined}
@@ -724,6 +800,12 @@ export default function PostDetail({
           <ForumFilePicker files={replyFiles} onChange={setReplyFiles} compact />
         </View>
       )}
+      <ForumReportSheet
+        target={reportingTarget}
+        pending={reportPending}
+        onClose={onCloseReport}
+        onSubmit={onSubmitReport}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -734,7 +816,10 @@ function ReplyBody({
   nested = false,
   onReplyTo,
   onDelete,
+  onReport,
+  onRemove,
   deleting = false,
+  moderationPending = false,
   onOpenAttachment,
   onOpenAuthor,
 }: {
@@ -743,12 +828,24 @@ function ReplyBody({
   /** Absent on a nested reply — the design only offers Reply at the top level. */
   onReplyTo?: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
+  onRemove?: () => void;
   deleting?: boolean;
+  moderationPending?: boolean;
   onOpenAttachment: (attachment: ForumAttachment) => void;
   onOpenAuthor?: () => void;
 }) {
   const { t } = useTheme();
   const r = node.reply;
+  if (r.deleted) {
+    return (
+      <View accessibilityLabel={r.removed ? 'Reply removed by a co-lead' : 'Reply deleted'}>
+        <Text style={[styles.replyTombstone, { color: t.inkMuted }]}>
+          {r.removed ? 'Reply removed by a co-lead' : 'Reply deleted'}
+        </Text>
+      </View>
+    );
+  }
   return (
     <>
       <View style={styles.replyByline}>
@@ -787,6 +884,18 @@ function ReplyBody({
         {!!onDelete && (
           <Pressable style={styles.replyAction} onPress={onDelete} disabled={deleting} hitSlop={6}>
             <Text style={[styles.replyActionText, { color: t.brandRed }]}>{deleting ? 'Deleting…' : 'Delete'}</Text>
+          </Pressable>
+        )}
+        {!!onReport && (
+          <Pressable style={styles.replyAction} onPress={onReport} hitSlop={6}>
+            <Flag size={12} color={t.inkFaint} />
+            <Text style={[styles.replyActionText, { color: t.inkFaint }]}>Report</Text>
+          </Pressable>
+        )}
+        {!!onRemove && (
+          <Pressable style={styles.replyAction} onPress={onRemove} disabled={moderationPending} hitSlop={6}>
+            <Trash size={12} color={t.brandBrickInk} />
+            <Text style={[styles.replyActionText, { color: t.brandBrickInk }]}>{moderationPending ? 'Removing…' : 'Remove'}</Text>
           </Pressable>
         )}
       </View>
@@ -1168,6 +1277,9 @@ const styles = StyleSheet.create({
   manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   manageBtn: {
     minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     justifyContent: 'center',
     paddingHorizontal: 8,
     borderWidth: 1,
@@ -1223,6 +1335,7 @@ const styles = StyleSheet.create({
   replyByline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 7 },
   replyAuthor: { fontFamily: sans(600), fontSize: 12.5 },
   replyText: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
+  replyTombstone: { paddingVertical: 3, fontFamily: sans(500), fontSize: 12.5, fontStyle: 'italic' },
   replyActions: { marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 14 },
   replyAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   replyActionText: { fontFamily: mono(400), fontSize: 10 },

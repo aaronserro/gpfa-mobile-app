@@ -90,6 +90,7 @@ import {
   getWorkingGroupDirectoryMembers,
   getWorkingGroupResources,
   getWorkingGroupResourceModeration,
+  getForumModerationQueue,
   getWorkingGroupTagUsage,
   getWorkingGroupThreadFeed,
   getWorkingGroupMembership,
@@ -102,6 +103,7 @@ import {
   removeMemberAvatar,
   renameMessageConversation,
   removeWorkingGroupApprovedResource,
+  removeForumContent,
   resolveDirectMessageConversation,
   resolveGroupMessageConversation,
   sendMemberMessage,
@@ -113,6 +115,8 @@ import {
   setUpvote,
   streamAskGpfa,
   submitWorkingGroupResource,
+  submitForumContentReport,
+  resolveForumContentReport,
   reviewWorkingGroupResourceSubmission,
   submitSurveyResponse,
   saveAnnualMeetingRegistration,
@@ -163,6 +167,10 @@ import type {
   EventRsvpState,
   FeedEntry,
   ForumAttachment,
+  ForumContentReportInput,
+  ForumContentReportTarget,
+  ForumModerationDecision,
+  ForumModerationQueueItem,
   GroupMember,
   HomeImmediateAction,
   HomeThreadPreview,
@@ -270,8 +278,20 @@ interface ResourceModerationState {
   error: Error | null;
 }
 
+interface ForumModerationState {
+  reports: ForumModerationQueueItem[];
+  loading: boolean;
+  error: Error | null;
+}
+
 const EMPTY_RESOURCE_MODERATION: ResourceModerationState = {
   submissions: [],
+  loading: false,
+  error: null,
+};
+
+const EMPTY_FORUM_MODERATION: ForumModerationState = {
+  reports: [],
   loading: false,
   error: null,
 };
@@ -351,6 +371,13 @@ function Portal() {
     Record<string, ResourceModerationState | undefined>
   >({});
   const [moderationPendingSubmissionId, setModerationPendingSubmissionId] = useState<string | null>(null);
+  const [forumModeration, setForumModeration] = useState<
+    Record<string, ForumModerationState | undefined>
+  >({});
+  const [reportingTarget, setReportingTarget] = useState<ForumContentReportTarget | null>(null);
+  const [reportPending, setReportPending] = useState(false);
+  const [pendingReportId, setPendingReportId] = useState<string | null>(null);
+  const [moderationPendingTarget, setModerationPendingTarget] = useState<ForumContentReportTarget | null>(null);
   const [resourceViewer, setResourceViewer] = useState<{
     resource: LibraryResource;
     accessToken: string | null;
@@ -1818,6 +1845,41 @@ function Portal() {
     [groups]
   );
 
+  const loadForumModeration = useCallback(
+    (id: string) => {
+      const group = groups.find((candidate) => candidate.id === id);
+      if (!group) return;
+
+      setForumModeration((current) => ({
+        ...current,
+        [id]: {
+          ...(current[id] ?? EMPTY_FORUM_MODERATION),
+          loading: true,
+          error: null,
+        },
+      }));
+
+      void getForumModerationQueue(group.slug ?? group.id)
+        .then((response) => {
+          setForumModeration((current) => ({
+            ...current,
+            [id]: { reports: response.reports, loading: false, error: null },
+          }));
+        })
+        .catch((cause) => {
+          setForumModeration((current) => ({
+            ...current,
+            [id]: {
+              reports: current[id]?.reports ?? [],
+              loading: false,
+              error: cause instanceof Error ? cause : new Error(String(cause)),
+            },
+          }));
+        });
+    },
+    [groups]
+  );
+
   const loadGroupMetadata = useCallback(
     (id: string) => {
       const group = groups.find((g) => g.id === id);
@@ -2161,8 +2223,12 @@ function Portal() {
               membershipRole: membership?.role ?? null,
             },
           }));
-          if (membership?.role === 'co_lead' || member.role?.toLowerCase() === 'admin') {
+          if (membership?.role === 'co_lead' || member.appRole === 'admin') {
             loadGroupResourceModeration(id);
+            loadForumModeration(id);
+          } else {
+            setResourceModeration((current) => ({ ...current, [id]: undefined }));
+            setForumModeration((current) => ({ ...current, [id]: undefined }));
           }
         })
         .catch((cause) => {
@@ -2172,7 +2238,7 @@ function Portal() {
           );
         });
     },
-    [groups, loadGroupResourceModeration, member.role]
+    [groups, loadForumModeration, loadGroupResourceModeration, member.appRole]
   );
 
   // Tapping a group on Home opens that group's page.
@@ -2792,6 +2858,148 @@ function Portal() {
       loadGroupResourceModeration,
       moderationPendingSubmissionId,
       notificationsQuery.refetch,
+      showMutationError,
+    ]
+  );
+
+  const submitForumReport = useCallback(
+    async (input: ForumContentReportInput): Promise<boolean> => {
+      if (reportPending) return false;
+      setReportPending(true);
+      try {
+        await submitForumContentReport(input);
+        setMutationNotice({ type: 'success', message: 'Report submitted for co-lead review.' });
+        return true;
+      } catch (cause) {
+        showMutationError(cause, 'The report could not be submitted.');
+        return false;
+      } finally {
+        setReportPending(false);
+      }
+    },
+    [reportPending, showMutationError]
+  );
+
+  const applyForumRemoval = useCallback((target: ForumContentReportTarget) => {
+    if (target.targetType === 'thread') {
+      setGroupDetails((current) => removeThreadFromGroupDetails(current, target.targetId));
+      setNewPosts((current) => current.filter((entry) => entry.post.id !== target.targetId));
+      setThreadId((current) => current === target.targetId ? null : current);
+      return;
+    }
+
+    if (!target.threadId) return;
+    setGroupDetails((current) => tombstoneReplyInGroupDetails(current, target.threadId!, target.targetId));
+    setNewPosts((current) => tombstoneReplyInEntries(current, target.threadId!, target.targetId));
+    setExtraReplies((current) => ({
+      ...current,
+      [target.threadId!]: tombstoneReplies(current[target.threadId!] ?? [], target.targetId),
+    }));
+  }, []);
+
+  const refreshAfterForumRemoval = useCallback(
+    (target: ForumContentReportTarget) => {
+      if (groupId) {
+        loadGroupDetail(groupId);
+        loadForumModeration(groupId);
+      }
+      if (target.targetType === 'reply' && target.threadId) {
+        void refreshThreadDetail(target.threadId).catch(() => {});
+      }
+      notificationsQuery.refetch();
+    },
+    [groupId, loadForumModeration, loadGroupDetail, notificationsQuery.refetch, refreshThreadDetail]
+  );
+
+  const resolveForumReport = useCallback(
+    async (reportId: string, decision: ForumModerationDecision): Promise<boolean> => {
+      if (!groupId || pendingReportId || moderationPendingTarget) return false;
+      const report = forumModeration[groupId]?.reports.find((candidate) => candidate.id === reportId);
+      if (!report) return false;
+
+      setPendingReportId(reportId);
+      try {
+        await resolveForumContentReport(reportId, decision);
+        setForumModeration((current) => {
+          const state = current[groupId] ?? EMPTY_FORUM_MODERATION;
+          return {
+            ...current,
+            [groupId]: {
+              ...state,
+              reports: decision === 'remove'
+                ? state.reports.filter((candidate) =>
+                    candidate.targetType !== report.targetType || candidate.targetId !== report.targetId
+                  )
+                : state.reports.filter((candidate) => candidate.id !== reportId),
+            },
+          };
+        });
+        if (decision === 'remove') {
+          const target = { targetType: report.targetType, targetId: report.targetId, threadId: report.threadId };
+          applyForumRemoval(target);
+          refreshAfterForumRemoval(target);
+        } else {
+          loadForumModeration(groupId);
+          notificationsQuery.refetch();
+        }
+        setMutationNotice({
+          type: 'success',
+          message: decision === 'remove' ? 'Reported content removed.' : 'Report dismissed.',
+        });
+        return true;
+      } catch (cause) {
+        loadForumModeration(groupId);
+        showMutationError(cause, 'The report decision could not be saved.');
+        return false;
+      } finally {
+        setPendingReportId(null);
+      }
+    },
+    [
+      applyForumRemoval,
+      forumModeration,
+      groupId,
+      loadForumModeration,
+      moderationPendingTarget,
+      notificationsQuery.refetch,
+      pendingReportId,
+      refreshAfterForumRemoval,
+      showMutationError,
+    ]
+  );
+
+  const removeContentAsModerator = useCallback(
+    async (target: ForumContentReportTarget): Promise<boolean> => {
+      if (!groupId || pendingReportId || moderationPendingTarget) return false;
+      setModerationPendingTarget(target);
+      try {
+        await removeForumContent(target);
+        applyForumRemoval(target);
+        refreshAfterForumRemoval(target);
+        setMutationNotice({
+          type: 'success',
+          message: target.targetType === 'thread' ? 'Post removed.' : 'Reply removed.',
+        });
+        return true;
+      } catch (cause) {
+        if (groupId) loadGroupDetail(groupId);
+        if (target.targetType === 'reply' && target.threadId) {
+          void refreshThreadDetail(target.threadId).catch(() => {});
+        }
+        showMutationError(cause, 'The content could not be removed.');
+        return false;
+      } finally {
+        setModerationPendingTarget(null);
+      }
+    },
+    [
+      applyForumRemoval,
+      groupId,
+      loadGroupDetail,
+      moderationPendingTarget,
+      pendingReportId,
+      refreshAfterForumRemoval,
+      refreshThreadDetail,
       showMutationError,
     ]
   );
@@ -3535,9 +3743,26 @@ function Portal() {
                   groupId ? resourceModeration[groupId]?.error ?? null : null
                 }
                 moderationPendingSubmissionId={moderationPendingSubmissionId}
+                forumReports={groupId ? forumModeration[groupId]?.reports ?? [] : []}
+                forumReportsLoading={groupId ? forumModeration[groupId]?.loading ?? false : false}
+                forumReportsError={groupId ? forumModeration[groupId]?.error ?? null : null}
+                pendingReportId={pendingReportId}
+                reportingTarget={reportingTarget}
+                reportPending={reportPending}
+                moderationPendingTarget={moderationPendingTarget}
                 onRefreshModeration={() => {
                   if (groupId) loadGroupResourceModeration(groupId);
                 }}
+                onRefreshReports={() => {
+                  if (groupId) loadForumModeration(groupId);
+                }}
+                onOpenReport={setReportingTarget}
+                onCloseReport={() => {
+                  if (!reportPending) setReportingTarget(null);
+                }}
+                onSubmitReport={submitForumReport}
+                onResolveReport={resolveForumReport}
+                onRemoveContent={removeContentAsModerator}
                 onReviewResource={reviewResourceSubmission}
                 onRemoveResource={removeApprovedResource}
                 onLoadMoreGroupFeed={loadMoreGroupFeed}
@@ -3548,7 +3773,10 @@ function Portal() {
                 onCloseGroup={() => setGroupId(null)}
                 threadId={threadId}
                 onOpenThread={openThread}
-                onCloseThread={() => setThreadId(null)}
+                onCloseThread={() => {
+                  setReportingTarget(null);
+                  setThreadId(null);
+                }}
                 postSummaries={postSummaries}
                 summarizing={summarizing}
                 onSummarize={summarizePost}
@@ -3982,6 +4210,39 @@ function removeReplyFromGroupDetails(
   return Object.fromEntries(Object.entries(details).map(([id, detail]) => [
     id,
     detail ? { ...detail, items: removeReplyFromEntries(detail.items, postId, replyId) } : detail,
+  ]));
+}
+
+function tombstoneReplies(replies: Reply[], replyId: string): Reply[] {
+  return replies.map((reply) => reply.id === replyId ? {
+    ...reply,
+    authorId: undefined,
+    a: 'Reply removed by a co-lead',
+    org: '',
+    initials: undefined,
+    text: '',
+    attachments: [],
+    uploadFiles: undefined,
+    deleted: true,
+    removed: true,
+  } : reply);
+}
+
+function tombstoneReplyInEntries(entries: FeedEntry[], postId: string, replyId: string): FeedEntry[] {
+  return entries.map((entry) => entry.post.id === postId ? {
+    ...entry,
+    post: { ...entry.post, replies: tombstoneReplies(entry.post.replies, replyId) },
+  } : entry);
+}
+
+function tombstoneReplyInGroupDetails(
+  details: Record<string, GroupDetailState | undefined>,
+  postId: string,
+  replyId: string
+): Record<string, GroupDetailState | undefined> {
+  return Object.fromEntries(Object.entries(details).map(([id, detail]) => [
+    id,
+    detail ? { ...detail, items: tombstoneReplyInEntries(detail.items, postId, replyId) } : detail,
   ]));
 }
 

@@ -31,6 +31,13 @@ import type {
   EditMessageResponse,
   FeedEntry,
   ForumAttachment,
+  ForumContentReportInput,
+  ForumContentReportResponse,
+  ForumContentReportTarget,
+  ForumModerationDecision,
+  ForumModerationQueueItem,
+  ForumModerationQueueResponse,
+  ForumReportCategory,
   ForumReplyInput,
   ForumSummarizeInput,
   ForumSummarizeResponse,
@@ -2101,6 +2108,8 @@ export function workingGroupFeedItemResponseToEntry(
         canEdit: detail.permissions.canEdit,
         canDelete: detail.permissions.canDelete,
         canChangeStatus: detail.permissions.canChangeStatus,
+        canReport: detail.permissions.canReport,
+        canModerate: detail.permissions.canModerate,
         replies: detail.replies.map(workingGroupDetailReplyToReply),
       },
     };
@@ -2119,6 +2128,8 @@ export function workingGroupFeedItemResponseToEntry(
       canEdit: detail.permissions.canEdit,
       canDelete: detail.permissions.canDelete,
       canChangeStatus: detail.permissions.canChangeStatus,
+      canReport: detail.permissions.canReport,
+      canModerate: detail.permissions.canModerate,
       replies: [],
     },
   };
@@ -2272,6 +2283,108 @@ export function removeWorkingGroupApprovedResource(submissionId: string): Promis
   if (!USING_REMOTE_API) return workingGroupsRequireApi<StatusResponse>();
   return request<StatusResponse>(ROUTES.workingGroupResourceModerationStatus(submissionId), {
     method: 'DELETE',
+  });
+}
+
+const FORUM_REPORT_CATEGORIES: readonly ForumReportCategory[] = [
+  'spam',
+  'harassment',
+  'off_topic',
+  'sensitive_information',
+  'misleading',
+  'other',
+];
+
+function isForumReportCategory(value: string): value is ForumReportCategory {
+  return FORUM_REPORT_CATEGORIES.some((category) => category === value);
+}
+
+function mapForumModerationPerson(value: unknown, path: string) {
+  const person = objectRecord(value, path);
+  return {
+    id: requiredString(person.id, `${path}.id`),
+    name: requiredString(person.full_name, `${path}.full_name`),
+    initials: requiredString(person.initials, `${path}.initials`),
+  };
+}
+
+function mapForumModerationQueueItem(value: unknown, index: number): ForumModerationQueueItem {
+  const path = `reports[${index}]`;
+  const report = objectRecord(value, path);
+  const targetType = requiredString(report.target_type, `${path}.target_type`);
+  const category = requiredString(report.category, `${path}.category`);
+  if (targetType !== 'thread' && targetType !== 'reply') {
+    throw new Error(`${path}.target_type is invalid.`);
+  }
+  if (!isForumReportCategory(category)) {
+    throw new Error(`${path}.category is invalid.`);
+  }
+  if (report.details !== null && typeof report.details !== 'string') {
+    throw new Error(`${path}.details is invalid.`);
+  }
+  if (report.target_title !== null && typeof report.target_title !== 'string') {
+    throw new Error(`${path}.target_title is invalid.`);
+  }
+
+  return {
+    id: requiredString(report.id, `${path}.id`),
+    workingGroupSlug: requiredString(report.working_group_slug, `${path}.working_group_slug`),
+    targetType,
+    targetId: requiredString(report.target_id, `${path}.target_id`),
+    threadId: requiredString(report.thread_id, `${path}.thread_id`),
+    category,
+    details: report.details === null ? null : report.details.trim() || null,
+    reporter: mapForumModerationPerson(report.reporter, `${path}.reporter`),
+    author: mapForumModerationPerson(report.author, `${path}.author`),
+    targetTitle: report.target_title === null ? null : report.target_title.trim() || null,
+    targetBody: requiredString(report.target_body, `${path}.target_body`, true),
+    createdAt: requiredString(report.created_at, `${path}.created_at`),
+  };
+}
+
+export function submitForumContentReport(
+  input: ForumContentReportInput
+): Promise<ForumContentReportResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<ForumContentReportResponse>();
+  return request<ForumContentReportResponse>(ROUTES.forumReports, {
+    method: 'POST',
+    body: { ...input, details: input.details?.trim() || undefined },
+  });
+}
+
+export function getForumModerationQueue(
+  groupSlug: string
+): Promise<ForumModerationQueueResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<ForumModerationQueueResponse>();
+  return request<unknown>(`${ROUTES.forumReports}${queryString({ groupSlug })}`)
+    .then((value) => {
+      const response = objectRecord(value, 'forum moderation response');
+      if (response.status !== 'success' || !Array.isArray(response.reports)) {
+        throw new Error('The forum moderation queue response is invalid.');
+      }
+      return {
+        status: 'success' as const,
+        reports: response.reports.map(mapForumModerationQueueItem),
+      };
+    });
+}
+
+export function resolveForumContentReport(
+  reportId: string,
+  decision: ForumModerationDecision
+): Promise<StatusResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<StatusResponse>();
+  return request<StatusResponse>(ROUTES.forumReport(reportId), {
+    method: 'PATCH',
+    body: { decision },
+  });
+}
+
+export function removeForumContent(target: ForumContentReportTarget): Promise<StatusResponse> {
+  if (!USING_REMOTE_API) return workingGroupsRequireApi<StatusResponse>();
+  return request<StatusResponse>(ROUTES.forumModerationRemove, {
+    method: 'POST',
+    body: { targetType: target.targetType, targetId: target.targetId },
   });
 }
 
@@ -3203,16 +3316,19 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
 }
 
 function workingGroupDetailReplyToReply(reply: WorkingGroupDetailReply): Reply {
+  const deleted = reply.deleted || reply.removed;
   return {
     id: reply.id,
     parentPostId: reply.parentPostId,
-    authorId: reply.author.id ?? undefined,
-    a: reply.author.name,
-    org: reply.author.organization,
+    authorId: deleted ? undefined : reply.author.id ?? undefined,
+    a: reply.removed ? 'Reply removed by a co-lead' : reply.deleted ? 'Reply deleted' : reply.author.name,
+    org: deleted ? '' : reply.author.organization,
     time: relativeTime(reply.createdAt),
-    initials: reply.author.initials,
-    text: reply.body,
-    attachments: reply.attachments.map(workingGroupDetailAttachmentToForumAttachment),
+    initials: deleted ? undefined : reply.author.initials,
+    text: deleted ? '' : reply.body,
+    attachments: deleted ? [] : reply.attachments.map(workingGroupDetailAttachmentToForumAttachment),
+    deleted,
+    removed: reply.removed,
   };
 }
 

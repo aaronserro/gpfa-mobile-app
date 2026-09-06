@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
  * Presentational. The post list arrives filtered and ordered; the tab and the
  * type filter are held by the caller so a trip into a post and back keeps them.
  */
-import { ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
 
 import {
   ArrowFatUp,
@@ -17,11 +17,13 @@ import {
   MagnifyingGlass,
   Plus,
   Repeat,
+  Trash,
   type Icon,
 } from '../../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
 import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import FeedFilterDropdown from './FeedFilterDropdown';
+import ForumModerationPanel from './ForumModerationPanel';
 import ResourceModerationPanel from './ResourceModerationPanel';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../../ds/tokens';
@@ -32,6 +34,9 @@ import {
 } from '../../lib/workingGroupFeedControls';
 import { AnchorAvatar, RoleBadge, TagChip, TYPE_ICON, ROW_ICON } from './parts';
 import type {
+  ForumContentReportTarget,
+  ForumModerationDecision,
+  ForumModerationQueueItem,
   Group,
   LibraryResource,
   PostType,
@@ -101,7 +106,15 @@ export interface GroupViewProps {
   moderationLoading?: boolean;
   moderationError?: Error | null;
   moderationPendingSubmissionId?: string | null;
+  forumReports?: ForumModerationQueueItem[];
+  forumReportsLoading?: boolean;
+  forumReportsError?: Error | null;
+  pendingReportId?: string | null;
+  moderationPendingTarget?: ForumContentReportTarget | null;
   onRefreshModeration?: () => void;
+  onRefreshReports?: () => void;
+  onResolveReport?: (reportId: string, decision: ForumModerationDecision) => Promise<boolean>;
+  onRemoveContent?: (target: ForumContentReportTarget) => Promise<boolean>;
   onReviewResource?: (
     submissionId: string,
     input: WorkingGroupResourceReviewInput
@@ -157,7 +170,15 @@ export default function GroupView({
   moderationLoading = false,
   moderationError = null,
   moderationPendingSubmissionId = null,
+  forumReports = [],
+  forumReportsLoading = false,
+  forumReportsError = null,
+  pendingReportId = null,
+  moderationPendingTarget = null,
   onRefreshModeration,
+  onRefreshReports,
+  onResolveReport,
+  onRemoveContent,
   onReviewResource,
   onRemoveResource,
   onChangePostStatus,
@@ -566,6 +587,14 @@ export default function GroupView({
             mutationNotice={mutationNotice}
             onDismissMutationNotice={onDismissMutationNotice}
             submissions={moderationSubmissions}
+            forumReports={forumReports}
+            forumReportsLoading={forumReportsLoading}
+            forumReportsError={forumReportsError}
+            pendingReportId={pendingReportId}
+            moderationPendingTarget={moderationPendingTarget}
+            onRefreshReports={onRefreshReports ?? (() => {})}
+            onResolveReport={onResolveReport ?? (async () => false)}
+            onRemoveContent={onRemoveContent ?? (async () => false)}
             resourceLoading={moderationLoading}
             resourceError={moderationError}
             pendingSubmissionId={moderationPendingSubmissionId}
@@ -813,6 +842,14 @@ function ModerationPanel({
   mutationNotice,
   onDismissMutationNotice,
   submissions,
+  forumReports,
+  forumReportsLoading,
+  forumReportsError,
+  pendingReportId,
+  moderationPendingTarget,
+  onRefreshReports,
+  onResolveReport,
+  onRemoveContent,
   resourceLoading,
   resourceError,
   pendingSubmissionId,
@@ -831,6 +868,14 @@ function ModerationPanel({
   mutationNotice: MutationNoticeValue | null;
   onDismissMutationNotice: () => void;
   submissions: WorkingGroupResourceModerationSubmission[];
+  forumReports: ForumModerationQueueItem[];
+  forumReportsLoading: boolean;
+  forumReportsError: Error | null;
+  pendingReportId: string | null;
+  moderationPendingTarget: ForumContentReportTarget | null;
+  onRefreshReports: () => void;
+  onResolveReport: (reportId: string, decision: ForumModerationDecision) => Promise<boolean>;
+  onRemoveContent: (target: ForumContentReportTarget) => Promise<boolean>;
   resourceLoading: boolean;
   resourceError: Error | null;
   pendingSubmissionId: string | null;
@@ -857,6 +902,17 @@ function ModerationPanel({
     <View style={styles.fill}>
       <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
       <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+        <ForumModerationPanel
+          reports={forumReports}
+          loading={forumReportsLoading}
+          error={forumReportsError}
+          pendingReportId={pendingReportId}
+          onRefresh={onRefreshReports}
+          onOpen={(report) => onOpenPost(report.threadId)}
+          onDismiss={(reportId) => onResolveReport(reportId, 'dismiss')}
+          onRemove={(reportId) => onResolveReport(reportId, 'remove')}
+        />
+
         <ResourceModerationPanel
           submissions={submissions}
           loading={resourceLoading}
@@ -1005,6 +1061,45 @@ function ModerationPanel({
                       )}
                     </View>
                   )}
+                  <View style={[styles.directRemovalRow, { borderTopColor: t.ruleHairline }]}>
+                    <Pressable
+                      onPress={() => onOpenPost(post.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${post.title} for review`}
+                      style={[styles.moderationAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+                    >
+                      <Text style={[styles.moderationActionText, { color: t.inkMuted }]}>Open / Review</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => Alert.alert(
+                        'Remove post?',
+                        'This post will be removed from member views. The audit record will be preserved.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: () => void onRemoveContent({ targetType: 'thread', targetId: post.id, threadId: post.id }),
+                          },
+                        ]
+                      )}
+                      disabled={moderationPendingTarget?.targetType === 'thread' && moderationPendingTarget.targetId === post.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${post.title}`}
+                      accessibilityState={{ disabled: moderationPendingTarget?.targetType === 'thread' && moderationPendingTarget.targetId === post.id }}
+                      style={[
+                        styles.moderationAction,
+                        {
+                          borderColor: t.brandBrick,
+                          backgroundColor: alpha(t.brandBrick, 0.08),
+                          opacity: moderationPendingTarget?.targetType === 'thread' && moderationPendingTarget.targetId === post.id ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <Trash size={13} color={t.brandBrickInk} />
+                      <Text style={[styles.moderationActionText, { color: t.brandBrickInk }]}>Remove</Text>
+                    </Pressable>
+                  </View>
                 </View>
               );
             })}
@@ -1379,8 +1474,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     padding: 10,
   },
+  directRemovalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    borderTopWidth: 1,
+    padding: 10,
+  },
   moderationAction: {
     minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 8,

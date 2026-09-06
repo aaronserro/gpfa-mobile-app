@@ -21,6 +21,10 @@ import { DEFAULT_WORKING_GROUP_FEED_CONTROLS } from '../lib/workingGroupFeedCont
 import type {
   FeedEntry,
   ForumAttachment,
+  ForumContentReportInput,
+  ForumContentReportTarget,
+  ForumModerationDecision,
+  ForumModerationQueueItem,
   ForumUploadFile,
   Group,
   LibraryResource,
@@ -59,7 +63,20 @@ export interface GroupsScreenProps {
   moderationLoading?: boolean;
   moderationError?: Error | null;
   moderationPendingSubmissionId?: string | null;
+  forumReports?: ForumModerationQueueItem[];
+  forumReportsLoading?: boolean;
+  forumReportsError?: Error | null;
+  pendingReportId?: string | null;
+  reportingTarget: ForumContentReportTarget | null;
+  reportPending: boolean;
+  moderationPendingTarget: ForumContentReportTarget | null;
   onRefreshModeration: () => void;
+  onRefreshReports: () => void;
+  onOpenReport: (target: ForumContentReportTarget) => void;
+  onCloseReport: () => void;
+  onSubmitReport: (input: ForumContentReportInput) => Promise<boolean>;
+  onResolveReport: (reportId: string, decision: ForumModerationDecision) => Promise<boolean>;
+  onRemoveContent: (target: ForumContentReportTarget) => Promise<boolean>;
   onReviewResource: (
     submissionId: string,
     input: WorkingGroupResourceReviewInput
@@ -142,7 +159,20 @@ export default function GroupsScreen({
   moderationLoading = false,
   moderationError = null,
   moderationPendingSubmissionId = null,
+  forumReports = [],
+  forumReportsLoading = false,
+  forumReportsError = null,
+  pendingReportId = null,
+  reportingTarget,
+  reportPending,
+  moderationPendingTarget,
   onRefreshModeration,
+  onRefreshReports,
+  onOpenReport,
+  onCloseReport,
+  onSubmitReport,
+  onResolveReport,
+  onRemoveContent,
   onReviewResource,
   onRemoveResource,
   onLoadMoreGroupFeed,
@@ -207,6 +237,7 @@ export default function GroupsScreen({
 
   const group = groupId ? groups.find((g) => g.id === groupId) ?? null : null;
   const thread = threadId ? allPosts.find((x) => x.post.id === threadId)?.post ?? null : null;
+  const canModerateSelectedGroup = selectedGroupMembershipRole === 'co_lead' || !!thread?.canModerate;
 
   /* ── post detail ─────────────────────────────────────────────────────── */
   if (group && thread) {
@@ -227,6 +258,15 @@ export default function GroupsScreen({
         replyPending={!!pendingMutations[`reply:create:${thread.id}`]}
         deletingReplies={pendingMutations}
         onDeleteReply={(replyId) => onDeleteReply(thread.id, replyId)}
+        canReportPost={isSubscribed(group) && !!thread.canReport && thread.authorId !== member.id}
+        canModerate={canModerateSelectedGroup}
+        reportingTarget={reportingTarget}
+        reportPending={reportPending}
+        moderationPendingTarget={moderationPendingTarget}
+        onOpenReport={onOpenReport}
+        onCloseReport={onCloseReport}
+        onSubmitReport={onSubmitReport}
+        onRemoveContent={onRemoveContent}
         pollEditor={pollEditors[thread.id]}
         pollEditorError={pollEditorErrors[thread.id]}
         pollLoading={!!pendingMutations[`poll:load:${thread.id}`]}
@@ -273,9 +313,7 @@ export default function GroupsScreen({
     const replyCounts = Object.fromEntries(
       groupPosts.map((p) => [p.id, repliesFor(p.id).length])
     );
-    const canModerate =
-      member.role?.toLowerCase() === 'admin' ||
-      selectedGroupMembershipRole === 'co_lead';
+    const canModerate = canModerateSelectedGroup;
 
     return (
       <GroupView
@@ -308,7 +346,15 @@ export default function GroupsScreen({
         moderationLoading={moderationLoading}
         moderationError={moderationError}
         moderationPendingSubmissionId={moderationPendingSubmissionId}
+        forumReports={forumReports}
+        forumReportsLoading={forumReportsLoading}
+        forumReportsError={forumReportsError}
+        pendingReportId={pendingReportId}
+        moderationPendingTarget={moderationPendingTarget}
         onRefreshModeration={onRefreshModeration}
+        onRefreshReports={onRefreshReports}
+        onResolveReport={onResolveReport}
+        onRemoveContent={onRemoveContent}
         onReviewResource={onReviewResource}
         onRemoveResource={onRemoveResource}
         onChangePostStatus={onChangePostStatus}
