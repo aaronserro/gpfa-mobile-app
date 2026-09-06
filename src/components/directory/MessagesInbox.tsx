@@ -40,6 +40,7 @@ export interface MessagesInboxProps {
   hasOlderMessages: boolean;
   actionPending: boolean;
   messageMutationPendingId: string | null;
+  pendingBlockedMemberId: string | null;
   onOpenConversation: (conversationId: string) => void;
   onStartMessage: (memberId: string) => void;
   onStartGroupMessage: (memberIds: string[]) => Promise<void>;
@@ -53,6 +54,8 @@ export interface MessagesInboxProps {
   onRename: (title: string) => Promise<void>;
   onAddMembers: (participantIds: string[]) => Promise<void>;
   onLeave: () => Promise<void>;
+  onBlockMember: (memberId: string) => Promise<void>;
+  onUnblockMember: (memberId: string) => Promise<void>;
   onReachLatest: (ordinal: number) => void;
 }
 
@@ -76,6 +79,7 @@ export default function MessagesInbox({
   hasOlderMessages,
   actionPending,
   messageMutationPendingId,
+  pendingBlockedMemberId,
   onOpenConversation,
   onStartMessage,
   onStartGroupMessage,
@@ -89,6 +93,8 @@ export default function MessagesInbox({
   onRename,
   onAddMembers,
   onLeave,
+  onBlockMember,
+  onUnblockMember,
   onReachLatest,
 }: MessagesInboxProps) {
   const { t } = useTheme();
@@ -140,6 +146,7 @@ export default function MessagesInbox({
         sending={sending}
         actionPending={actionPending}
         messageMutationPendingId={messageMutationPendingId}
+        pendingBlockedMemberId={pendingBlockedMemberId}
         onBack={onCloseConversation}
         onRetry={onRetryConversation}
         onSend={onSend}
@@ -150,6 +157,8 @@ export default function MessagesInbox({
         onRename={onRename}
         onAddMembers={onAddMembers}
         onLeave={onLeave}
+        onBlockMember={onBlockMember}
+        onUnblockMember={onUnblockMember}
         onReachLatest={onReachLatest}
       />
     );
@@ -390,9 +399,14 @@ function ConversationRows({
           >
             {conversation.kind === 'direct' && other ? (
               <Pressable
-                onPress={() => onOpenMemberProfile(other.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${other.name}'s profile`}
+                onPress={conversation.canSend && other.isAvailable
+                  ? () => onOpenMemberProfile(other.id)
+                  : undefined}
+                disabled={!conversation.canSend || !other.isAvailable}
+                accessibilityRole={conversation.canSend && other.isAvailable ? 'button' : undefined}
+                accessibilityLabel={conversation.canSend && other.isAvailable
+                  ? `Open ${other.name}'s profile`
+                  : undefined}
                 style={styles.identityAvatar}
               >
                 <Avatar initials={initials(other.name)} photoUrl={other.avatarUrl ?? undefined} size={40} />

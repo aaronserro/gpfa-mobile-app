@@ -265,7 +265,7 @@ export type ForumModerationDecision = 'dismiss' | 'remove';
 export interface ForumModerationPerson {
   id: string;
   name: string;
-  initials: string;
+  mentionHandle: string | null;
 }
 
 export interface ForumModerationQueueItem {
@@ -274,6 +274,7 @@ export interface ForumModerationQueueItem {
   targetType: ForumContentTargetType;
   targetId: string;
   threadId: string;
+  workingGroupName: string;
   category: ForumReportCategory;
   details: string | null;
   reporter: ForumModerationPerson;
@@ -559,8 +560,8 @@ export interface WorkingGroupDetailPermissions {
   canEdit: boolean;
   canDelete: boolean;
   canChangeStatus: boolean;
-  canReport: boolean;
-  canModerate: boolean;
+  canReport?: boolean;
+  canModerate?: boolean;
 }
 
 export interface WorkingGroupThreadDetail {
@@ -1615,6 +1616,27 @@ export interface DirectoryMemberSummary {
   sharedGroupCount: number;
 }
 
+export type BlockedMemberListItem =
+  | {
+      memberId: string;
+      availability: 'active';
+      name: string;
+      avatarUrl: string | null;
+      organizationName: string | null;
+      blockedAt: string;
+    }
+  | {
+      memberId: string;
+      availability: 'unavailable';
+      blockedAt: string;
+    };
+
+export interface BlockedMembersResponse {
+  status: 'success';
+  members: BlockedMemberListItem[];
+  nextCursor: string | null;
+}
+
 /** A member as exposed by the private messaging service. */
 export interface MessagingParticipant {
   id: string;
@@ -1652,6 +1674,8 @@ export interface ConversationSummary {
   id: string;
   kind: 'direct' | 'group';
   title: string | null;
+  canSend: boolean;
+  blockedByCurrentMember: boolean;
   participants: MessagingParticipant[];
   lastMessage: MessageItem | null;
   lastMessageAt: string;
@@ -1669,6 +1693,8 @@ export interface ConversationDetail {
   id: string;
   kind: 'direct' | 'group';
   title: string | null;
+  canSend: boolean;
+  blockedByCurrentMember: boolean;
   participants: MessagingParticipant[];
   lastReadOrdinal: number;
 }

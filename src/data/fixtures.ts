@@ -1787,6 +1787,8 @@ export const MESSAGE_CONVERSATIONS: ConversationSummary[] = [
     id: 'conversation-amara',
     kind: 'direct',
     title: null,
+    canSend: true,
+    blockedByCurrentMember: false,
     participants: [
       {
         id: 'rg',
@@ -1819,6 +1821,8 @@ export const MESSAGE_CONVERSATIONS: ConversationSummary[] = [
     id: 'conversation-elena',
     kind: 'direct',
     title: null,
+    canSend: true,
+    blockedByCurrentMember: false,
     participants: [
       {
         id: 'rg',

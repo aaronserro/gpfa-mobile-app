@@ -581,7 +581,7 @@ export default function PostDetail({
                 <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{threadDeletePending ? 'Deleting…' : 'Delete'}</Text>
               </Pressable>
             )}
-            {type !== 'poll' && canReportPost && (
+            {type !== 'poll' && canReportPost && post.authorId !== memberId && (
               <Pressable
                 onPress={() => onOpenReport({ targetType: 'thread', targetId: post.id, threadId: post.id })}
                 disabled={reportPending}

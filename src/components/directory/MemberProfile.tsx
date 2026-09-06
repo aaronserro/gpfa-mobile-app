@@ -12,6 +12,8 @@ export default function MemberProfile({
   summary,
   loading,
   error,
+  canOpenProfile,
+  canMessage,
   onBack,
   onRetry,
   onMessage,
@@ -21,11 +23,25 @@ export default function MemberProfile({
   summary: DirectoryMemberSummary | null;
   loading: boolean;
   error: string | null;
+  canOpenProfile: boolean;
+  canMessage: boolean;
   onBack: () => void;
   onRetry: () => void;
   onMessage: (memberId: string) => void;
 }) {
   const { t } = useTheme();
+
+  if (!canOpenProfile) {
+    return (
+      <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
+        <ScreenHeader title="Member profile" onBack={onBack} backLabel="Back to episode" />
+        <View style={styles.status}>
+          <Text style={[styles.name, { color: t.inkStrong }]}>Member profile unavailable</Text>
+          <Text style={[styles.error, { color: t.inkMuted }]}>This member profile cannot be opened.</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
@@ -42,15 +58,17 @@ export default function MemberProfile({
           {summary?.region ? (
             <Text style={[styles.region, { color: t.inkMuted }]}>{summary.region}</Text>
           ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Message ${person.name}`}
-            onPress={() => onMessage(person.id)}
-            style={[styles.messageButton, { backgroundColor: t.surfaceAnchor }]}
-          >
-            <ChatCircle size={17} color={t.inkInverse} />
-            <Text style={[styles.messageText, { color: t.inkInverse }]}>Message</Text>
-          </Pressable>
+          {canMessage ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${person.name}`}
+              onPress={() => onMessage(person.id)}
+              style={[styles.messageButton, { backgroundColor: t.surfaceAnchor }]}
+            >
+              <ChatCircle size={17} color={t.inkInverse} />
+              <Text style={[styles.messageText, { color: t.inkInverse }]}>Message</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {loading ? <ActivityIndicator color={t.brandGreen} style={styles.status} /> : null}

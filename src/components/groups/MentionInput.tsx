@@ -88,12 +88,17 @@ export const MentionInput = forwardRef<TextInput, MentionInputProps>(function Me
     end: value.length,
   });
   const activeMention = activeMentionAt(value, selection);
+  // The server-filtered roster replaces the candidate set after a refresh;
+  // never merge old members here because block changes must take effect immediately.
+  const eligibleMembers = useMemo(
+    () => members.filter((member) => member.id && member.name && member.mentionHandle),
+    [members]
+  );
 
   const candidates = useMemo(() => {
     if (!activeMention) return [];
 
-    return members
-      .filter((member) => member.id && member.name && member.mentionHandle)
+    return eligibleMembers
       .filter((member) => {
         const handle = normalizeMentionHandle(member.mentionHandle ?? '');
         return (
@@ -107,7 +112,7 @@ export const MentionInput = forwardRef<TextInput, MentionInputProps>(function Me
         return a.name.localeCompare(b.name);
       })
       .slice(0, MAX_SUGGESTIONS);
-  }, [activeMention, members]);
+  }, [activeMention, eligibleMembers]);
 
   const selectMember = (member: GroupMember) => {
     if (!activeMention || !member.mentionHandle) return;

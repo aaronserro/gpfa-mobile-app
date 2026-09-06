@@ -57,6 +57,7 @@ export { PauseIcon as Pause } from 'phosphor-react-native/lib/commonjs/icons/Pau
 export { PlayIcon as Play } from 'phosphor-react-native/lib/commonjs/icons/Play';
 export { PencilSimpleIcon as PencilSimple } from 'phosphor-react-native/lib/commonjs/icons/PencilSimple';
 export { PlusIcon as Plus } from 'phosphor-react-native/lib/commonjs/icons/Plus';
+export { ProhibitIcon as Prohibit } from 'phosphor-react-native/lib/commonjs/icons/Prohibit';
 export { RepeatIcon as Repeat } from 'phosphor-react-native/lib/commonjs/icons/Repeat';
 export { ShareFatIcon as ShareFat } from 'phosphor-react-native/lib/commonjs/icons/ShareFat';
 export { ShieldWarningIcon as ShieldWarning } from 'phosphor-react-native/lib/commonjs/icons/ShieldWarning';

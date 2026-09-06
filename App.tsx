@@ -18,7 +18,7 @@ import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600Semi
 import MemberSheet from './src/components/MemberSheet';
 import NotificationArrivalBanner from './src/components/NotificationArrivalBanner';
 import AskConversationHistory from './src/components/ask-gpfa/AskConversationHistory';
-import type { MutationNoticeValue } from './src/components/MutationNotice';
+import MutationNotice, { type MutationNoticeValue } from './src/components/MutationNotice';
 import NotificationsSheet from './src/components/NotificationsSheet';
 import PortalTabBar, { TAB_IDS, type TabId } from './src/components/PortalTabBar';
 import PostComposer from './src/components/PostComposer';
@@ -50,6 +50,7 @@ import UpdatesScreen, {
 } from './src/screens/UpdatesScreen';
 import {
   addMessageConversationMembers,
+  blockMember,
   castVote,
   createPost as createPostRequest,
   createReply,
@@ -71,6 +72,7 @@ import {
   getJobs,
   getMemberOrgs,
   getMemberEmailPreferences,
+  getBlockedMembers,
   getMemberMentions,
   getMemberUpvotes,
   getMemberUpdates,
@@ -127,6 +129,7 @@ import {
   updateMemberEmailPreference,
   updateOwnProfile,
   updateMemberHandle,
+  unblockMember,
   unsendMemberMessage,
   uploadMemberAvatar,
   workingGroupFeedItemResponseToEntry,
@@ -160,6 +163,7 @@ import type {
   AskMessage,
   AskSource,
   AskStreamEvent,
+  BlockedMemberListItem,
   ConversationDetail,
   ConversationSummary,
   DirectoryMemberProfile,
@@ -349,6 +353,7 @@ function Portal() {
   const workingGroupRealtimeEventIds = useRef<string[]>([]);
   const workingGroupRealtimeHandlerRef = useRef<(event: WorkingGroupFeedRealtimeEvent) => void>(() => {});
   const [mutationNotice, setMutationNotice] = useState<MutationNoticeValue | null>(null);
+  const [blockMutationNotice, setBlockMutationNotice] = useState<MutationNoticeValue | null>(null);
   const [pendingMutations, setPendingMutations] = useState<Record<string, boolean | undefined>>({});
   const [pollEditors, setPollEditors] = useState<Record<string, MemberPoll | undefined>>({});
   const [pollEditorErrors, setPollEditorErrors] = useState<Record<string, string | undefined>>({});
@@ -417,6 +422,11 @@ function Portal() {
   const [messageActionPending, setMessageActionPending] = useState(false);
   const [messageMutationPendingId, setMessageMutationPendingId] = useState<string | null>(null);
   const messageMutationPendingIdRef = useRef<string | null>(null);
+  const [blockedMembers, setBlockedMembers] = useState<BlockedMemberListItem[]>([]);
+  const [blockedMembersNextCursor, setBlockedMembersNextCursor] = useState<string | null>(null);
+  const [blockedMembersLoadingMore, setBlockedMembersLoadingMore] = useState(false);
+  const [blockedMembersPageError, setBlockedMembersPageError] = useState<Error | null>(null);
+  const [pendingBlockedMemberId, setPendingBlockedMemberId] = useState<string | null>(null);
   const [askConversations, setAskConversations] = useState<AskConversationSummary[]>([]);
   const [activeAskConversationId, setActiveAskConversationId] = useState<string | null>(null);
   const [askMessages, setAskMessages] = useState<AskDisplayMessage[]>([]);
@@ -444,6 +454,13 @@ function Portal() {
       isSignedIn && moreView === 'email-preferences'
         ? getMemberEmailPreferences()
         : Promise.resolve(null),
+    [isSignedIn, moreView]
+  );
+  const blockedMembersQuery = useQuery(
+    () =>
+      isSignedIn && moreView === 'edit-profile'
+        ? getBlockedMembers()
+        : Promise.resolve({ status: 'success' as const, members: [], nextCursor: null }),
     [isSignedIn, moreView]
   );
   const mentionsQuery = useQuery(
@@ -582,6 +599,13 @@ function Portal() {
   }, [messageConversationsQuery.data]);
 
   useEffect(() => {
+    if (!blockedMembersQuery.data) return;
+    setBlockedMembers(blockedMembersQuery.data.members);
+    setBlockedMembersNextCursor(blockedMembersQuery.data.nextCursor);
+    setBlockedMembersPageError(null);
+  }, [blockedMembersQuery.data]);
+
+  useEffect(() => {
     setAskConversations(askConversationsQuery.data ?? []);
   }, [askConversationsQuery.data]);
 
@@ -592,6 +616,11 @@ function Portal() {
     setDraftMessageRecipient(null);
     setDraftGroupParticipants([]);
     setMessageItems([]);
+    setBlockedMembers([]);
+    setBlockedMembersNextCursor(null);
+    setBlockedMembersPageError(null);
+    setPendingBlockedMemberId(null);
+    setBlockMutationNotice(null);
     setGroupsWithNewPosts({});
     setRefreshingGroupNewPosts({});
     workingGroupRealtimeEventIds.current = [];
@@ -1394,6 +1423,8 @@ function Portal() {
           id: response.conversationId,
           kind: draftParticipants.length > 1 ? 'group' as const : 'direct' as const,
           title: null,
+          canSend: true,
+          blockedByCurrentMember: false,
           participants: [currentParticipant, ...draftParticipants],
           lastReadOrdinal: 0,
         };
@@ -1426,6 +1457,8 @@ function Portal() {
                 id: response.conversationId,
                 kind: committedDetail.kind,
                 title: committedDetail.title,
+                canSend: committedDetail.canSend,
+                blockedByCurrentMember: committedDetail.blockedByCurrentMember,
                 participants: committedDetail.participants,
                 lastMessage: response.message,
                 lastMessageAt: response.message.createdAt,
@@ -2015,6 +2048,151 @@ function Portal() {
     },
     [feedControls, loadGroupFeed, loadGroupMetadata]
   );
+
+  const refreshBlockedMemberList = useCallback(async () => {
+    try {
+      const response = await getBlockedMembers();
+      setBlockedMembers(response.members);
+      setBlockedMembersNextCursor(response.nextCursor);
+      setBlockedMembersPageError(null);
+    } catch (cause) {
+      setBlockedMembersPageError(
+        cause instanceof Error ? cause : new Error('Blocked members could not be loaded.')
+      );
+    }
+  }, []);
+
+  const loadMoreBlockedMembers = useCallback(async () => {
+    if (!blockedMembersNextCursor || blockedMembersLoadingMore) return;
+    setBlockedMembersLoadingMore(true);
+    setBlockedMembersPageError(null);
+    try {
+      const response = await getBlockedMembers(blockedMembersNextCursor);
+      setBlockedMembers((current) => {
+        const existingIds = new Set(current.map((item) => item.memberId));
+        return [...current, ...response.members.filter((item) => !existingIds.has(item.memberId))];
+      });
+      setBlockedMembersNextCursor(response.nextCursor);
+    } catch (cause) {
+      setBlockedMembersPageError(
+        cause instanceof Error ? cause : new Error('More blocked members could not be loaded.')
+      );
+    } finally {
+      setBlockedMembersLoadingMore(false);
+    }
+  }, [blockedMembersLoadingMore, blockedMembersNextCursor]);
+
+  const refreshMemberBlockingSurfaces = useCallback((targetMemberId: string) => {
+    directoryPeopleQuery.refetch();
+    orgsQuery.refetch();
+    messageConversationsQuery.refetch();
+    notificationsQuery.refetch();
+    if (moreView === 'mentions') mentionsQuery.refetch();
+    if (groupId) loadGroupMetadata(groupId);
+
+    const activeDirectIncludesTarget =
+      activeMessageConversation?.kind === 'direct' &&
+      activeMessageConversation.participants.some((participant) => participant.id === targetMemberId);
+    if (activeDirectIncludesTarget) void catchUpActiveMessageConversation();
+  }, [
+    activeMessageConversation,
+    catchUpActiveMessageConversation,
+    directoryPeopleQuery.refetch,
+    groupId,
+    loadGroupMetadata,
+    mentionsQuery.refetch,
+    messageConversationsQuery.refetch,
+    moreView,
+    notificationsQuery.refetch,
+    orgsQuery.refetch,
+  ]);
+
+  const handleBlockMember = useCallback(async (targetMemberId: string) => {
+    if (pendingBlockedMemberId) return;
+    setPendingBlockedMemberId(targetMemberId);
+    setBlockMutationNotice(null);
+    try {
+      await blockMember(targetMemberId);
+
+      const activeDirectIncludesTarget =
+        activeMessageConversation?.kind === 'direct' &&
+        activeMessageConversation.participants.some((participant) => participant.id === targetMemberId);
+      if (
+        activeDirectIncludesTarget ||
+        draftMessageRecipient?.id === targetMemberId
+      ) {
+        closeMessageConversation();
+      }
+      if (profileTargetId === targetMemberId) setProfileOpen(false);
+
+      refreshMemberBlockingSurfaces(targetMemberId);
+      void refreshBlockedMemberList();
+      setBlockMutationNotice({ type: 'success', message: 'Member blocked.' });
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error('The member could not be blocked.');
+      setBlockMutationNotice({ type: 'error', message: error.message });
+      throw error;
+    } finally {
+      setPendingBlockedMemberId(null);
+    }
+  }, [
+    activeMessageConversation,
+    closeMessageConversation,
+    draftMessageRecipient?.id,
+    pendingBlockedMemberId,
+    profileTargetId,
+    refreshBlockedMemberList,
+    refreshMemberBlockingSurfaces,
+  ]);
+
+  const handleUnblockMember = useCallback(async (targetMemberId: string) => {
+    if (pendingBlockedMemberId) return;
+    setPendingBlockedMemberId(targetMemberId);
+    setBlockMutationNotice(null);
+    try {
+      await unblockMember(targetMemberId);
+      setBlockedMembers((current) => current.filter((item) => item.memberId !== targetMemberId));
+      refreshMemberBlockingSurfaces(targetMemberId);
+      void refreshBlockedMemberList();
+      // A reciprocal block may remain, so capability always comes from the refreshed conversation.
+      setBlockMutationNotice({ type: 'success', message: 'Your block was removed.' });
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error('The member could not be unblocked.');
+      setBlockMutationNotice({ type: 'error', message: error.message });
+      throw error;
+    } finally {
+      setPendingBlockedMemberId(null);
+    }
+  }, [pendingBlockedMemberId, refreshBlockedMemberList, refreshMemberBlockingSurfaces]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      directoryPeopleQuery.refetch();
+      orgsQuery.refetch();
+      if (profileOpen) {
+        directoryProfileQuery.refetch();
+        directoryProfileActivityQuery.refetch();
+      }
+      if (moreView === 'edit-profile') void refreshBlockedMemberList();
+      if (moreView === 'mentions') mentionsQuery.refetch();
+      if (groupId) loadGroupMetadata(groupId);
+    });
+    return () => subscription.remove();
+  }, [
+    directoryPeopleQuery.refetch,
+    directoryProfileActivityQuery.refetch,
+    directoryProfileQuery.refetch,
+    groupId,
+    isSignedIn,
+    loadGroupMetadata,
+    mentionsQuery.refetch,
+    moreView,
+    orgsQuery.refetch,
+    profileOpen,
+    refreshBlockedMemberList,
+  ]);
 
   const loadMoreGroupFeed = useCallback(() => {
     if (!groupId) return;
@@ -2881,6 +3059,7 @@ function Portal() {
   );
 
   const applyForumRemoval = useCallback((target: ForumContentReportTarget) => {
+    setReportingTarget(null);
     if (target.targetType === 'thread') {
       setGroupDetails((current) => removeThreadFromGroupDetails(current, target.targetId));
       setNewPosts((current) => current.filter((entry) => entry.post.id !== target.targetId));
@@ -3482,6 +3661,15 @@ function Portal() {
             {moreView === 'edit-profile' && meQuery.data && (
               <ProfileSettingsScreen
                 profile={meQuery.data}
+                blockedMembers={blockedMembers}
+                blockedMembersLoading={blockedMembersQuery.loading}
+                blockedMembersLoadingMore={blockedMembersLoadingMore}
+                blockedMembersError={blockedMembersPageError ?? blockedMembersQuery.error ?? null}
+                blockedMembersNextCursor={blockedMembersNextCursor}
+                pendingBlockedMemberId={pendingBlockedMemberId}
+                onRetryBlockedMembers={blockedMembersQuery.refetch}
+                onLoadMoreBlockedMembers={loadMoreBlockedMembers}
+                onUnblockMember={handleUnblockMember}
                 onBack={() => setMoreView('account')}
                 onSave={async (input) => {
                   await updateOwnProfile(input);
@@ -3770,7 +3958,10 @@ function Portal() {
                 onShowNewGroupPosts={() => groupId ? showWorkingGroupNewPosts(groupId) : Promise.resolve()}
                 groupId={groupId}
                 onOpenGroup={openGroup}
-                onCloseGroup={() => setGroupId(null)}
+                onCloseGroup={() => {
+                  setReportingTarget(null);
+                  setGroupId(null);
+                }}
                 threadId={threadId}
                 onOpenThread={openThread}
                 onCloseThread={() => {
@@ -3870,6 +4061,7 @@ function Portal() {
                   hasOlderMessages={messageHasOlder}
                   messageActionPending={messageActionPending}
                   messageMutationPendingId={messageMutationPendingId}
+                  pendingBlockedMemberId={pendingBlockedMemberId}
                   onOpenConversation={(id) => void openMessageConversation(id)}
                   onStartMessage={(id) => void startMessageConversation(id)}
                   onStartGroupMessage={startGroupMessageConversation}
@@ -3883,6 +4075,8 @@ function Portal() {
                   onRenameConversation={renameActiveMessageConversation}
                   onAddConversationMembers={addActiveMessageConversationMembers}
                   onLeaveConversation={leaveActiveMessageConversation}
+                  onBlockMember={handleBlockMember}
+                  onUnblockMember={handleUnblockMember}
                   onReachLatestMessage={markActiveMessageConversationLatestRead}
                 />
               </DataGate>
@@ -4020,6 +4214,8 @@ function Portal() {
                     setTab('directory');
                     void startMessageConversation(memberId);
                   }}
+                  blockPending={pendingBlockedMemberId === profileTargetId}
+                  onBlockMember={handleBlockMember}
                   onEdit={() => {
                     setProfileOpen(false);
                     setMoreView('edit-profile');
@@ -4031,6 +4227,14 @@ function Portal() {
             </View>
           </GestureDetector>
           <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
+          {blockMutationNotice ? (
+            <View style={styles.blockMutationNotice}>
+              <MutationNotice
+                notice={blockMutationNotice}
+                onDismiss={() => setBlockMutationNotice(null)}
+              />
+            </View>
+          ) : null}
           <PortalTabBar
             tab={tab}
             onSelect={selectTab}
@@ -4363,4 +4567,5 @@ const styles = StyleSheet.create({
   tabViewport: { overflow: 'hidden' },
   tabTrack: { flex: 1, position: 'relative' },
   tabPage: { position: 'absolute', top: 0, bottom: 0 },
+  blockMutationNotice: { position: 'absolute', right: 0, bottom: 70, left: 0, zIndex: 20 },
 });

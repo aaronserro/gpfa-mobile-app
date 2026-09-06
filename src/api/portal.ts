@@ -19,6 +19,8 @@ import type {
   AnnualMeetingPreview,
   AnnualMeetingRegistrationInput,
   AnnualMeetingRegistrationState,
+  BlockedMemberListItem,
+  BlockedMembersResponse,
   CalendarEvent,
   ConversationDetailResponse,
   ConversationListResponse,
@@ -204,6 +206,12 @@ const fixtureMessageItems: Record<string, MessageItem[]> = Object.fromEntries(
 
 function workingGroupsRequireApi<T>(): Promise<T> {
   return Promise.reject(new Error('Working Groups require the member API. Configure EXPO_PUBLIC_API_URL to use this flow.'));
+}
+
+function memberBlockingRequiresApi<T>(): Promise<T> {
+  return Promise.reject(
+    new Error('Member blocking requires the member API. Configure EXPO_PUBLIC_API_URL to use this flow.')
+  );
 }
 
 interface WorkingGroupsResponse {
@@ -1084,6 +1092,30 @@ export function getDirectoryPeople(): Promise<DirectoryPerson[]> {
   );
 }
 
+export function getBlockedMembers(cursor?: string): Promise<BlockedMembersResponse> {
+  if (!USING_REMOTE_API) {
+    return local({ status: 'success', members: [], nextCursor: null });
+  }
+  return request<unknown>(`${ROUTES.memberBlocks}${queryString({ cursor })}`).then(
+    normalizeBlockedMembersResponse
+  );
+}
+
+export function blockMember(targetMemberId: string): Promise<StatusResponse> {
+  if (!USING_REMOTE_API) return memberBlockingRequiresApi<StatusResponse>();
+  return request<unknown>(ROUTES.memberBlocks, {
+    method: 'POST',
+    body: { targetMemberId },
+  }).then((value) => normalizeStatusResponse(value, 'Block member'));
+}
+
+export function unblockMember(targetMemberId: string): Promise<StatusResponse> {
+  if (!USING_REMOTE_API) return memberBlockingRequiresApi<StatusResponse>();
+  return request<unknown>(ROUTES.memberBlock(targetMemberId), { method: 'DELETE' }).then(
+    (value) => normalizeStatusResponse(value, 'Unblock member')
+  );
+}
+
 /** Viewer-scoped details for an active directory member. */
 export function getDirectoryMemberSummary(
   mentionHandle: string
@@ -1113,6 +1145,68 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} response is invalid.`);
   }
   return value as Record<string, unknown>;
+}
+
+function normalizeBlockedMembersResponse(value: unknown): BlockedMembersResponse {
+  const response = requireRecord(value, 'Blocked members');
+  if (
+    response.status !== 'success' ||
+    !Array.isArray(response.members) ||
+    (response.nextCursor !== null && typeof response.nextCursor !== 'string')
+  ) {
+    throw new Error('Blocked members response is invalid.');
+  }
+
+  return {
+    status: 'success',
+    members: response.members.map(normalizeBlockedMember),
+    nextCursor: response.nextCursor,
+  };
+}
+
+function normalizeBlockedMember(value: unknown, index: number): BlockedMemberListItem {
+  const member = requireRecord(value, `Blocked member ${index + 1}`);
+  if (
+    typeof member.memberId !== 'string' ||
+    !member.memberId.trim() ||
+    typeof member.blockedAt !== 'string' ||
+    !member.blockedAt.trim()
+  ) {
+    throw new Error(`Blocked member ${index + 1} response is invalid.`);
+  }
+
+  if (member.availability === 'unavailable') {
+    return {
+      memberId: member.memberId,
+      availability: 'unavailable',
+      blockedAt: member.blockedAt,
+    };
+  }
+
+  if (
+    member.availability !== 'active' ||
+    typeof member.name !== 'string' ||
+    !member.name.trim() ||
+    (member.avatarUrl !== null && typeof member.avatarUrl !== 'string') ||
+    (member.organizationName !== null && typeof member.organizationName !== 'string')
+  ) {
+    throw new Error(`Blocked member ${index + 1} response is invalid.`);
+  }
+
+  return {
+    memberId: member.memberId,
+    availability: 'active',
+    name: member.name,
+    avatarUrl: member.avatarUrl,
+    organizationName: member.organizationName,
+    blockedAt: member.blockedAt,
+  };
+}
+
+function normalizeStatusResponse(value: unknown, label: string): StatusResponse {
+  const response = requireRecord(value, label);
+  if (response.status !== 'success') throw new Error(`${label} response is invalid.`);
+  return { status: 'success' };
 }
 
 function normalizeDirectoryMemberProfile(value: unknown): DirectoryMemberProfile {
@@ -1291,7 +1385,7 @@ export function getMessageConversations(): Promise<ConversationListResponse> {
       totalUnread: fixtureMessageConversations.reduce((total, item) => total + item.unreadCount, 0),
     });
   }
-  return request<ConversationListResponse>(ROUTES.messageConversations);
+  return request<unknown>(ROUTES.messageConversations).then(normalizeConversationListResponse);
 }
 
 export function getMessageConversation(
@@ -1320,6 +1414,8 @@ export function getMessageConversation(
         id: summary.id,
         kind: summary.kind,
         title: summary.title,
+        canSend: summary.canSend,
+        blockedByCurrentMember: summary.blockedByCurrentMember,
         participants: summary.participants.map((participant) => ({ ...participant })),
         lastReadOrdinal: summary.lastReadOrdinal,
       },
@@ -1327,9 +1423,9 @@ export function getMessageConversation(
       latestOrdinal: allMessages.at(-1)?.ordinal ?? 0,
     });
   }
-  return request<ConversationDetailResponse>(
+  return request<unknown>(
     `${ROUTES.messageConversation(conversationId)}${queryString(query)}`
-  );
+  ).then(normalizeConversationDetailResponse);
 }
 
 export function resolveDirectMessageConversation(memberId: string): Promise<DirectConversationResponse> {
@@ -1404,6 +1500,8 @@ export function sendMemberMessage(input: SendMessageInput): Promise<SendMessageR
       id: conversationId,
       kind: participants.length === 1 ? 'direct' : 'group',
       title: null,
+      canSend: true,
+      blockedByCurrentMember: false,
       participants: [
         currentMemberMessagingParticipant(),
         ...participants,
@@ -1863,6 +1961,66 @@ function cloneConversation(
   };
 }
 
+function normalizeConversationCapabilities(
+  value: unknown,
+  label: string
+): { canSend: boolean; blockedByCurrentMember: boolean } {
+  const conversation = requireRecord(value, label);
+  if (
+    typeof conversation.canSend !== 'boolean' ||
+    typeof conversation.blockedByCurrentMember !== 'boolean'
+  ) {
+    throw new Error(`${label} is missing required messaging capabilities.`);
+  }
+  return {
+    canSend: conversation.canSend,
+    blockedByCurrentMember: conversation.blockedByCurrentMember,
+  };
+}
+
+function normalizeConversationListResponse(value: unknown): ConversationListResponse {
+  const response = requireRecord(value, 'Conversation list');
+  if (
+    response.status !== 'success' ||
+    !Array.isArray(response.conversations) ||
+    typeof response.totalUnread !== 'number'
+  ) {
+    throw new Error('Conversation list response is invalid.');
+  }
+  return {
+    status: 'success',
+    conversations: response.conversations.map((value, index) => {
+      const conversation = requireRecord(value, `Conversation ${index + 1}`);
+      return {
+        ...(conversation as unknown as ConversationListResponse['conversations'][number]),
+        ...normalizeConversationCapabilities(conversation, `Conversation ${index + 1}`),
+      };
+    }),
+    totalUnread: response.totalUnread,
+  };
+}
+
+function normalizeConversationDetailResponse(value: unknown): ConversationDetailResponse {
+  const response = requireRecord(value, 'Conversation detail');
+  const conversation = requireRecord(response.conversation, 'Conversation detail');
+  if (
+    response.status !== 'success' ||
+    !Array.isArray(response.messages) ||
+    typeof response.latestOrdinal !== 'number'
+  ) {
+    throw new Error('Conversation detail response is invalid.');
+  }
+  return {
+    status: 'success',
+    conversation: {
+      ...(conversation as unknown as ConversationDetailResponse['conversation']),
+      ...normalizeConversationCapabilities(conversation, 'Conversation detail'),
+    },
+    messages: response.messages as MessageItem[],
+    latestOrdinal: response.latestOrdinal,
+  };
+}
+
 function directoryPersonToMessagingParticipant(
   person: DirectoryPerson,
   organizationName: string | null
@@ -2301,20 +2459,23 @@ function isForumReportCategory(value: string): value is ForumReportCategory {
 
 function mapForumModerationPerson(value: unknown, path: string) {
   const person = objectRecord(value, path);
+  if (person.mentionHandle !== null && typeof person.mentionHandle !== 'string') {
+    throw new Error(`${path}.mentionHandle is invalid.`);
+  }
   return {
     id: requiredString(person.id, `${path}.id`),
-    name: requiredString(person.full_name, `${path}.full_name`),
-    initials: requiredString(person.initials, `${path}.initials`),
+    name: requiredString(person.name, `${path}.name`),
+    mentionHandle: person.mentionHandle === null ? null : requiredString(person.mentionHandle, `${path}.mentionHandle`),
   };
 }
 
 function mapForumModerationQueueItem(value: unknown, index: number): ForumModerationQueueItem {
   const path = `reports[${index}]`;
   const report = objectRecord(value, path);
-  const targetType = requiredString(report.target_type, `${path}.target_type`);
+  const targetType = requiredString(report.targetType, `${path}.targetType`);
   const category = requiredString(report.category, `${path}.category`);
   if (targetType !== 'thread' && targetType !== 'reply') {
-    throw new Error(`${path}.target_type is invalid.`);
+    throw new Error(`${path}.targetType is invalid.`);
   }
   if (!isForumReportCategory(category)) {
     throw new Error(`${path}.category is invalid.`);
@@ -2322,23 +2483,24 @@ function mapForumModerationQueueItem(value: unknown, index: number): ForumModera
   if (report.details !== null && typeof report.details !== 'string') {
     throw new Error(`${path}.details is invalid.`);
   }
-  if (report.target_title !== null && typeof report.target_title !== 'string') {
-    throw new Error(`${path}.target_title is invalid.`);
+  if (report.targetTitle !== null && typeof report.targetTitle !== 'string') {
+    throw new Error(`${path}.targetTitle is invalid.`);
   }
 
   return {
     id: requiredString(report.id, `${path}.id`),
-    workingGroupSlug: requiredString(report.working_group_slug, `${path}.working_group_slug`),
+    workingGroupSlug: requiredString(report.workingGroupSlug, `${path}.workingGroupSlug`),
+    workingGroupName: requiredString(report.workingGroupName, `${path}.workingGroupName`),
     targetType,
-    targetId: requiredString(report.target_id, `${path}.target_id`),
-    threadId: requiredString(report.thread_id, `${path}.thread_id`),
+    targetId: requiredString(report.targetId, `${path}.targetId`),
+    threadId: requiredString(report.threadId, `${path}.threadId`),
     category,
     details: report.details === null ? null : report.details.trim() || null,
     reporter: mapForumModerationPerson(report.reporter, `${path}.reporter`),
     author: mapForumModerationPerson(report.author, `${path}.author`),
-    targetTitle: report.target_title === null ? null : report.target_title.trim() || null,
-    targetBody: requiredString(report.target_body, `${path}.target_body`, true),
-    createdAt: requiredString(report.created_at, `${path}.created_at`),
+    targetTitle: report.targetTitle === null ? null : report.targetTitle.trim() || null,
+    targetBody: requiredString(report.targetBody, `${path}.targetBody`, true),
+    createdAt: requiredString(report.createdAt, `${path}.createdAt`),
   };
 }
 

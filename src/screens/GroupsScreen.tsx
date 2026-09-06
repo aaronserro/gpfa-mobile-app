@@ -237,7 +237,7 @@ export default function GroupsScreen({
 
   const group = groupId ? groups.find((g) => g.id === groupId) ?? null : null;
   const thread = threadId ? allPosts.find((x) => x.post.id === threadId)?.post ?? null : null;
-  const canModerateSelectedGroup = selectedGroupMembershipRole === 'co_lead' || !!thread?.canModerate;
+  const canModerateSelectedGroup = member.appRole === 'admin' || selectedGroupMembershipRole === 'co_lead' || !!thread?.canModerate;
 
   /* ── post detail ─────────────────────────────────────────────────────── */
   if (group && thread) {
@@ -258,7 +258,7 @@ export default function GroupsScreen({
         replyPending={!!pendingMutations[`reply:create:${thread.id}`]}
         deletingReplies={pendingMutations}
         onDeleteReply={(replyId) => onDeleteReply(thread.id, replyId)}
-        canReportPost={isSubscribed(group) && !!thread.canReport && thread.authorId !== member.id}
+        canReportPost={isSubscribed(group) && !!thread.canReport}
         canModerate={canModerateSelectedGroup}
         reportingTarget={reportingTarget}
         reportPending={reportPending}

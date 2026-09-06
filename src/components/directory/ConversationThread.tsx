@@ -34,6 +34,7 @@ import {
   messagingParticipantName,
   normalizeMessageContent,
 } from '../../lib/messages';
+import BlockMemberAction from './BlockMemberAction';
 
 export interface ConversationThreadProps {
   currentMemberId: string;
@@ -52,6 +53,7 @@ export interface ConversationThreadProps {
   sending: boolean;
   actionPending: boolean;
   messageMutationPendingId: string | null;
+  pendingBlockedMemberId: string | null;
   onBack: () => void;
   onRetry: () => void;
   onSend: (content: string) => Promise<void>;
@@ -62,6 +64,8 @@ export interface ConversationThreadProps {
   onRename: (title: string) => Promise<void>;
   onAddMembers: (participantIds: string[]) => Promise<void>;
   onLeave: () => Promise<void>;
+  onBlockMember: (memberId: string) => Promise<void>;
+  onUnblockMember: (memberId: string) => Promise<void>;
   onReachLatest: (ordinal: number) => void;
 }
 
@@ -84,6 +88,7 @@ export default function ConversationThread({
   sending,
   actionPending,
   messageMutationPendingId,
+  pendingBlockedMemberId,
   onBack,
   onRetry,
   onSend,
@@ -94,6 +99,8 @@ export default function ConversationThread({
   onRename,
   onAddMembers,
   onLeave,
+  onBlockMember,
+  onUnblockMember,
   onReachLatest,
 }: ConversationThreadProps) {
   const { t } = useTheme();
@@ -130,6 +137,8 @@ export default function ConversationThread({
     : sending;
   const composerError = editingMessage ? editError : sendError;
   const isGroup = conversation?.kind === 'group';
+  const restrictedDirect = conversation?.kind === 'direct' && !conversation.canSend;
+  const canOpenOtherProfile = !!other && (!restrictedDirect || isGroup) && other.isAvailable;
   const existingIds = new Set(participants.map((participant) => participant.id));
   const availablePeople = people.filter((person) => person.id !== currentMemberId && !existingIds.has(person.id));
   const activeParticipantCount = participants.filter((participant) => !participant.hasLeft).length;
@@ -150,6 +159,17 @@ export default function ConversationThread({
     setEditContent('');
     setEditError(null);
   }, [conversation?.id]);
+
+  useEffect(() => {
+    if (!restrictedDirect) return;
+    setContent('');
+    setSendError(null);
+    setReactionPickerMessageId(null);
+    setMessageActionsId(null);
+    setEditingMessageId(null);
+    setEditContent('');
+    setEditError(null);
+  }, [restrictedDirect]);
 
   useEffect(() => {
     setEditWindowNow(Date.now());
@@ -289,18 +309,19 @@ export default function ConversationThread({
         </Pressable>
         {other ? (
           <Pressable
-            onPress={() => onOpenMemberProfile(other.id)}
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${other.name}'s profile`}
+            onPress={canOpenOtherProfile ? () => onOpenMemberProfile(other.id) : undefined}
+            disabled={!canOpenOtherProfile}
+            accessibilityRole={canOpenOtherProfile ? 'button' : undefined}
+            accessibilityLabel={canOpenOtherProfile ? `Open ${other.name}'s profile` : undefined}
           >
             <Avatar initials={initials(other.name)} photoUrl={other.avatarUrl ?? undefined} size={36} />
           </Pressable>
         ) : null}
         <Pressable
-          onPress={other ? () => onOpenMemberProfile(other.id) : undefined}
-          disabled={!other}
-          accessibilityRole={other ? 'button' : undefined}
-          accessibilityLabel={other ? `Open ${other.name}'s profile` : undefined}
+          onPress={canOpenOtherProfile && other ? () => onOpenMemberProfile(other.id) : undefined}
+          disabled={!canOpenOtherProfile}
+          accessibilityRole={canOpenOtherProfile ? 'button' : undefined}
+          accessibilityLabel={canOpenOtherProfile && other ? `Open ${other.name}'s profile` : undefined}
           style={styles.headerText}
         >
           <Text numberOfLines={1} style={[styles.title, { color: t.inkStrong }]}>{title}</Text>
@@ -321,6 +342,15 @@ export default function ConversationThread({
             <Text style={[styles.manageLabel, { color: t.inkStrong }]}>{managing ? 'Done' : 'Manage'}</Text>
           </Pressable>
         )}
+        {conversation?.kind === 'direct' && other && (other.isAvailable || conversation.blockedByCurrentMember) ? (
+          <BlockMemberAction
+            member={{ id: other.id, name: other.name }}
+            mode={conversation.blockedByCurrentMember ? 'unblock' : 'block'}
+            pending={pendingBlockedMemberId === other.id}
+            onBlock={onBlockMember}
+            onUnblock={onUnblockMember}
+          />
+        ) : null}
       </View>
 
       {actionError && !managing && (
@@ -359,12 +389,12 @@ export default function ConversationThread({
           {participants.map((participant) => (
             <Pressable
               key={participant.id}
-              onPress={!participant.isCurrentMember && !participant.hasLeft
+              onPress={!participant.isCurrentMember && !participant.hasLeft && participant.isAvailable
                 ? () => onOpenMemberProfile(participant.id)
                 : undefined}
-              disabled={participant.isCurrentMember || participant.hasLeft}
-              accessibilityRole={!participant.isCurrentMember && !participant.hasLeft ? 'button' : undefined}
-              accessibilityLabel={!participant.isCurrentMember && !participant.hasLeft
+              disabled={participant.isCurrentMember || participant.hasLeft || !participant.isAvailable}
+              accessibilityRole={!participant.isCurrentMember && !participant.hasLeft && participant.isAvailable ? 'button' : undefined}
+              accessibilityLabel={!participant.isCurrentMember && !participant.hasLeft && participant.isAvailable
                 ? `Open ${participant.name}'s profile`
                 : undefined}
               style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}
@@ -527,11 +557,11 @@ export default function ConversationThread({
             }
             const sender = participants.find((participant) => participant.id === message.senderId);
             const own = sender?.isCurrentMember ?? message.senderId === currentMemberId;
-            const actionsAvailable = own && isMessageWithinEditWindow(message.createdAt, editWindowNow);
+            const actionsAvailable = !restrictedDirect && own && isMessageWithinEditWindow(message.createdAt, editWindowNow);
             const mutationPending = messageMutationPendingId === message.id;
             return (
               <View style={[styles.messageRow, own && styles.messageRowOwn]}>
-                {!own && sender ? (
+                {!own && sender?.isAvailable ? (
                   <Pressable
                     onPress={() => onOpenMemberProfile(sender.id)}
                     accessibilityRole="button"
@@ -541,7 +571,7 @@ export default function ConversationThread({
                   </Pressable>
                 ) : null}
                 <View style={[styles.messageColumn, own && styles.messageColumnOwn]}>
-                  {!own && sender ? (
+                  {!own && sender?.isAvailable ? (
                     <Pressable
                       onPress={() => onOpenMemberProfile(sender.id)}
                       accessibilityRole="button"
@@ -553,13 +583,13 @@ export default function ConversationThread({
                     </Pressable>
                   ) : null}
                   <Pressable
-                    onLongPress={() => {
+                    onLongPress={!restrictedDirect ? () => {
                       setMessageActionsId(null);
                       setReactionPickerMessageId((current) => current === message.id ? null : message.id);
-                    }}
+                    } : undefined}
                     delayLongPress={250}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${message.content}. Long press to react.`}
+                    accessibilityRole={restrictedDirect ? undefined : 'button'}
+                    accessibilityLabel={restrictedDirect ? message.content : `${message.content}. Long press to react.`}
                     style={[
                       styles.bubble,
                       own ? styles.bubbleOwn : styles.bubbleOther,
@@ -573,28 +603,34 @@ export default function ConversationThread({
                   </Pressable>
                   {message.reactions.length > 0 && (
                     <View style={styles.reactionChips}>
-                      {message.reactions.map((reaction) => (
-                        <Pressable
-                          key={reaction.emoji}
-                          onPress={() => void runAction(() => onSetReaction(
-                            message.id,
-                            reaction.emoji,
-                            !reaction.reactedByCurrentMember
-                          ))}
-                          style={[
-                            styles.reactionChip,
-                            {
-                              backgroundColor: reaction.reactedByCurrentMember ? t.brandGreenSoft : t.surfacePaper,
-                              borderColor: reaction.reactedByCurrentMember ? t.brandGreen : t.ruleHairline,
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.reactionText, { color: t.inkStrong }]}>{reaction.emoji} {reaction.count}</Text>
-                        </Pressable>
-                      ))}
+                      {message.reactions.map((reaction) => {
+                        const chipStyle = [
+                          styles.reactionChip,
+                          {
+                            backgroundColor: reaction.reactedByCurrentMember ? t.brandGreenSoft : t.surfacePaper,
+                            borderColor: reaction.reactedByCurrentMember ? t.brandGreen : t.ruleHairline,
+                          },
+                        ];
+                        const label = <Text style={[styles.reactionText, { color: t.inkStrong }]}>{reaction.emoji} {reaction.count}</Text>;
+                        return restrictedDirect ? (
+                          <View key={reaction.emoji} style={chipStyle}>{label}</View>
+                        ) : (
+                          <Pressable
+                            key={reaction.emoji}
+                            onPress={() => void runAction(() => onSetReaction(
+                              message.id,
+                              reaction.emoji,
+                              !reaction.reactedByCurrentMember
+                            ))}
+                            style={chipStyle}
+                          >
+                            {label}
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   )}
-                  {reactionPickerMessageId === message.id && (
+                  {!restrictedDirect && reactionPickerMessageId === message.id && (
                     <View style={[styles.reactionPicker, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
                       {REACTIONS.map((emoji) => {
                         const existing = message.reactions.find((reaction) => reaction.emoji === emoji);
@@ -618,17 +654,19 @@ export default function ConversationThread({
                     <Text style={[styles.time, { color: t.inkFaint }]}>
                       {messageTimestamp(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
                     </Text>
-                    <Pressable
-                      onPress={() => {
-                        setMessageActionsId(null);
-                        setReactionPickerMessageId((current) => current === message.id ? null : message.id);
-                      }}
-                      hitSlop={5}
-                      accessibilityRole="button"
-                      accessibilityLabel="React to message"
-                    >
-                      <Text style={[styles.reactLabel, { color: t.brandGreen }]}>React</Text>
-                    </Pressable>
+                    {!restrictedDirect ? (
+                      <Pressable
+                        onPress={() => {
+                          setMessageActionsId(null);
+                          setReactionPickerMessageId((current) => current === message.id ? null : message.id);
+                        }}
+                        hitSlop={5}
+                        accessibilityRole="button"
+                        accessibilityLabel="React to message"
+                      >
+                        <Text style={[styles.reactLabel, { color: t.brandGreen }]}>React</Text>
+                      </Pressable>
+                    ) : null}
                     {actionsAvailable && (
                       <Pressable
                         onPress={() => {
@@ -695,7 +733,12 @@ export default function ConversationThread({
         </Pressable>
       )}
 
-      {!managing && (
+      {!managing && restrictedDirect ? (
+        <View accessibilityRole="alert" style={[styles.unavailable, { backgroundColor: t.surfaceSoft, borderTopColor: t.ruleHairline }]}>
+          <Text style={[styles.unavailableTitle, { color: t.inkStrong }]}>Messaging unavailable</Text>
+          <Text style={[styles.unavailableText, { color: t.inkMuted }]}>This conversation is read-only. Existing messages remain available.</Text>
+        </View>
+      ) : !managing ? (
       <View style={[styles.composer, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
         {editingMessage && (
           <View style={styles.editingHeader}>
@@ -769,7 +812,7 @@ export default function ConversationThread({
           </View>
         </View>
       </View>
-      )}
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -844,6 +887,9 @@ const styles = StyleSheet.create({
   systemMessage: { alignSelf: 'center', paddingVertical: 4, fontFamily: sans(400), fontSize: 11.5 },
   newMessagesButton: { alignSelf: 'center', minHeight: 34, justifyContent: 'center', borderRadius: 17, marginVertical: 8, paddingHorizontal: 16 },
   newMessagesText: { fontFamily: sans(600), fontSize: 11.5 },
+  unavailable: { alignItems: 'center', borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 12 },
+  unavailableTitle: { fontFamily: sans(600), fontSize: 13 },
+  unavailableText: { marginTop: 3, textAlign: 'center', fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
   composer: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
   editingHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingBottom: 8 },
   editingHeaderText: { flex: 1, minWidth: 0 },

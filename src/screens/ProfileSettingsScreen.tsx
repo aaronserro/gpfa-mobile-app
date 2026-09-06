@@ -15,7 +15,8 @@ import {
   View,
 } from 'react-native';
 
-import type { OwnProfile, OwnProfileUpdateInput } from '../api/types';
+import type { BlockedMemberListItem, OwnProfile, OwnProfileUpdateInput } from '../api/types';
+import BlockedMembersPanel from '../components/directory/BlockedMembersPanel';
 import { Avatar, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans, trackDisplay } from '../ds/tokens';
@@ -27,6 +28,15 @@ export default function ProfileSettingsScreen({
   onUploadAvatar,
   onRemoveAvatar,
   onImportLinkedInAvatar,
+  blockedMembers,
+  blockedMembersLoading,
+  blockedMembersLoadingMore,
+  blockedMembersError,
+  blockedMembersNextCursor,
+  pendingBlockedMemberId,
+  onRetryBlockedMembers,
+  onLoadMoreBlockedMembers,
+  onUnblockMember,
 }: {
   profile: OwnProfile;
   onBack: () => void;
@@ -34,6 +44,15 @@ export default function ProfileSettingsScreen({
   onUploadAvatar: (uri: string, byteSize: number) => Promise<void>;
   onRemoveAvatar: () => Promise<void>;
   onImportLinkedInAvatar: () => Promise<void>;
+  blockedMembers: BlockedMemberListItem[];
+  blockedMembersLoading: boolean;
+  blockedMembersLoadingMore: boolean;
+  blockedMembersError: Error | null;
+  blockedMembersNextCursor: string | null;
+  pendingBlockedMemberId: string | null;
+  onRetryBlockedMembers: () => void;
+  onLoadMoreBlockedMembers: () => Promise<void>;
+  onUnblockMember: (memberId: string) => Promise<void>;
 }) {
   const { t } = useTheme();
   const [fullName, setFullName] = useState(profile.name);
@@ -182,6 +201,18 @@ export default function ProfileSettingsScreen({
           {saving && <ActivityIndicator size="small" color="#fff" />}
           <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save profile'}</Text>
         </Pressable>
+
+        <BlockedMembersPanel
+          members={blockedMembers}
+          loading={blockedMembersLoading}
+          loadingMore={blockedMembersLoadingMore}
+          error={blockedMembersError}
+          nextCursor={blockedMembersNextCursor}
+          pendingMemberId={pendingBlockedMemberId}
+          onRetry={onRetryBlockedMembers}
+          onLoadMore={onLoadMoreBlockedMembers}
+          onUnblock={onUnblockMember}
+        />
       </ScrollView>
       </KeyboardAvoidingView>
     </View>

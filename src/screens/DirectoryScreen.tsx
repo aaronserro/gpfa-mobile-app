@@ -76,6 +76,7 @@ export interface DirectoryScreenProps {
   hasOlderMessages: boolean;
   messageActionPending: boolean;
   messageMutationPendingId: string | null;
+  pendingBlockedMemberId: string | null;
   onOpenConversation: (conversationId: string) => void;
   onStartMessage: (memberId: string) => void;
   onStartGroupMessage: (memberIds: string[]) => Promise<void>;
@@ -89,6 +90,8 @@ export interface DirectoryScreenProps {
   onRenameConversation: (title: string) => Promise<void>;
   onAddConversationMembers: (participantIds: string[]) => Promise<void>;
   onLeaveConversation: () => Promise<void>;
+  onBlockMember: (memberId: string) => Promise<void>;
+  onUnblockMember: (memberId: string) => Promise<void>;
   onReachLatestMessage: (ordinal: number) => void;
 }
 
@@ -117,6 +120,7 @@ export default function DirectoryScreen({
   hasOlderMessages,
   messageActionPending,
   messageMutationPendingId,
+  pendingBlockedMemberId,
   onOpenConversation,
   onStartMessage,
   onStartGroupMessage,
@@ -130,6 +134,8 @@ export default function DirectoryScreen({
   onRenameConversation,
   onAddConversationMembers,
   onLeaveConversation,
+  onBlockMember,
+  onUnblockMember,
   onReachLatestMessage,
 }: DirectoryScreenProps) {
   const { t } = useTheme();
@@ -269,6 +275,7 @@ export default function DirectoryScreen({
           hasOlderMessages={hasOlderMessages}
           actionPending={messageActionPending}
           messageMutationPendingId={messageMutationPendingId}
+          pendingBlockedMemberId={pendingBlockedMemberId}
           onOpenConversation={onOpenConversation}
           onStartMessage={openMessagesFor}
           onStartGroupMessage={onStartGroupMessage}
@@ -282,6 +289,8 @@ export default function DirectoryScreen({
           onRename={onRenameConversation}
           onAddMembers={onAddConversationMembers}
           onLeave={onLeaveConversation}
+          onBlockMember={onBlockMember}
+          onUnblockMember={onUnblockMember}
           onReachLatest={onReachLatestMessage}
         />
       ) : (

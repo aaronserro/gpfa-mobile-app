@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type {
@@ -7,7 +7,8 @@ import type {
   MemberProfileActivityKind,
   MemberProfileActivityPage,
 } from '../api/types';
-import { ChatCircle, CaretLeft, CaretRight } from '../ds/icons';
+import BlockMemberAction from '../components/directory/BlockMemberAction';
+import { ChatCircle, CaretLeft, CaretRight, DotsThree } from '../ds/icons';
 import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
@@ -36,6 +37,8 @@ export interface DirectoryMemberProfileScreenProps {
   onOpenEvent: (event: NonNullable<DirectoryMemberProfile['events']>[number]) => void;
   onOpenOrganization: (organizationId: string) => void;
   onMessage?: (memberId: string) => void;
+  blockPending: boolean;
+  onBlockMember: (memberId: string) => Promise<void>;
   onEdit?: () => void;
 }
 
@@ -56,9 +59,12 @@ export default function DirectoryMemberProfileScreen({
   onOpenEvent,
   onOpenOrganization,
   onMessage,
+  blockPending,
+  onBlockMember,
   onEdit,
 }: DirectoryMemberProfileScreenProps) {
   const { t } = useTheme();
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   if (loading && !profile) {
     return (
@@ -109,17 +115,42 @@ export default function DirectoryMemberProfileScreen({
                 <Text style={[styles.primaryButtonText, { color: t.inkInverse }]}>Edit profile</Text>
               </Pressable>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Message ${profile.fullName}`}
-                onPress={() => onMessage?.(profile.id)}
-                style={[styles.primaryButton, { backgroundColor: t.surfaceAnchor }]}
-              >
-                <ChatCircle size={17} color={t.inkInverse} />
-                <Text style={[styles.primaryButtonText, { color: t.inkInverse }]}>Message</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${profile.fullName}`}
+                  onPress={() => onMessage?.(profile.id)}
+                  style={[styles.primaryButton, { backgroundColor: t.surfaceAnchor }]}
+                >
+                  <ChatCircle size={17} color={t.inkInverse} />
+                  <Text style={[styles.primaryButtonText, { color: t.inkInverse }]}>Message</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`More actions for ${profile.fullName}`}
+                  accessibilityState={{ expanded: actionsOpen }}
+                  onPress={() => setActionsOpen((current) => !current)}
+                  style={[styles.moreButton, { borderColor: t.ruleStrong, backgroundColor: t.surfacePaper }]}
+                >
+                  <DotsThree size={20} color={t.inkStrong} weight="bold" />
+                </Pressable>
+              </>
             )}
           </View>
+          {!profile.isSelf && actionsOpen ? (
+            <View style={styles.actionMenu}>
+              <BlockMemberAction
+                member={{ id: profile.id, name: profile.fullName }}
+                mode="block"
+                pending={blockPending}
+                onBlock={async (memberId) => {
+                  await onBlockMember(memberId);
+                  onBack();
+                }}
+                onUnblock={async () => undefined}
+              />
+            </View>
+          ) : null}
         </View>
 
         {profile.bio ? (
@@ -286,8 +317,10 @@ const styles = StyleSheet.create({
   name: { marginTop: 12, fontFamily: sans(600), fontSize: 21, letterSpacing: trackDisplay(21) },
   role: { marginTop: 5, textAlign: 'center', fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
   meta: { marginTop: 6 },
-  actions: { marginTop: 16, flexDirection: 'row' },
+  actions: { marginTop: 16, flexDirection: 'row', gap: 8 },
+  actionMenu: { alignSelf: 'stretch', marginTop: 10 },
   primaryButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 7, paddingHorizontal: 17 },
+  moreButton: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 7 },
   primaryButtonText: { fontFamily: sans(600), fontSize: 13 },
   outlineButton: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderRadius: 6, paddingHorizontal: 15 },
   buttonText: { fontFamily: sans(600), fontSize: 12 },

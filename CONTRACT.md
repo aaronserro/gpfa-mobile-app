@@ -25,7 +25,7 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 
 | `EXPO_PUBLIC_API_URL` | Behaviour |
 | --- | --- |
-| unset / empty | **Fixture mode.** Data comes from `src/data/fixtures.ts`. Sign-in accepts any credentials. Mutations are local no-ops. |
+| unset / empty | **Fixture mode.** Data comes from `src/data/fixtures.ts`. Sign-in accepts any credentials. Fixture-supported mutations are local; durable member blocking is unavailable. |
 | set | **Remote mode.** Every read and write hits your server. Sign-in posts real credentials and stores a token. |
 
 `EXPO_PUBLIC_GPFA_WEB_ORIGIN` is optional and is sent to sign-in as
@@ -226,6 +226,9 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/api/members/working-groups/:slug/membership` | Group subscribe state | `WorkingGroupMembershipResponse` |
 | `GET` | `/api/members/working-groups/:slug/co-leads` | Group detail About/Members | `{ status, members: WorkingGroupCoLead[] }` |
 | `GET` | `/api/members/directory?workingGroupSlug=:slug&query=&limit=500` | Group detail Members tab | `{ status, members: DirectoryMember[] }` |
+| `GET` | `/api/members/blocks` | Profile settings → Blocked Members | `BlockedMembersResponse` |
+| `POST` | `/api/members/blocks` | Profile/direct-chat Block action | `{ status: "success" }` |
+| `DELETE` | `/api/members/blocks/:targetMemberId` | Settings/direct-chat Unblock action | `{ status: "success" }` |
 | `GET` | `/api/members/messages` | Directory → Messages inbox | `ConversationListResponse` |
 | `GET` | `/api/members/messages/direct/:memberId` | Directory member → direct-message draft | `DirectConversationResponse` |
 | `GET` | `/api/members/messages/group?to=:memberIds` | New group message member selection | `GroupConversationResponse` |
@@ -261,6 +264,10 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `POST` | `/api/members/forum/uploads/finalize` | Thread/reply attachment finalize | `ForumUploadFinalizeResponse` |
 | `GET` | `/api/content-assets/:assetId` | Open thread/reply attachment | file response; bearer required for member assets |
 | `POST` | `/api/members/forum/summarize` | Post detail summarize action | `ForumSummarizeResponse` |
+| `POST` | `/api/members/forum/reports` | Report a thread or reply | `{ status: "success", reportId }` |
+| `GET` | `/api/members/forum/reports?groupSlug=:slug` | Co-lead moderation queue | `{ status: "success", reports: ForumModerationQueueItem[] }` |
+| `PATCH` | `/api/members/forum/reports/:reportId` | Dismiss or remove reported content | `{ status: "success" }` |
+| `POST` | `/api/members/forum/moderation/remove` | Direct co-lead content removal | `{ status: "success" }` |
 | `GET`/`POST` | `/api/members/polls` | Poll detail/create poll | `MemberPollsResponse` / `{ status, pollId }` |
 | `GET`/`PUT`/`DELETE` | `/api/members/polls/:id` | Post detail poll editor, close, and delete actions | `MemberPollResponse` / `{ status }` |
 | `POST` | `/api/members/polls/vote` | Submit or replace one complete poll response | `{ status, message }` |
@@ -394,6 +401,7 @@ the authenticated member's identity.
     "initials": "RG",
     "org": "HOOPP",
     "role": "Assistant VP, Treasury & Liquidity",
+    "appRole": "member",
     "orgId": "organization-uuid"
   }
 }
@@ -933,7 +941,7 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `GET /api/members/working-groups/:slug/membership` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/membership/route.ts`. | Path `slug`. | `{ status: "success", membership: WorkingGroupMembership | null }`. | No pagination. `membership: null` means not subscribed. Invalid/inaccessible slug returns an error without granting mutation rights. |
 | `GET /api/members/working-groups/:slug/co-leads` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/co-leads/route.ts`. | Path `slug`. | `{ status: "success", members: WorkingGroupCoLead[] }`. | Sorted by server helper; no pagination. Empty state is `members: []`. `401` when inactive; inaccessible group should fail closed. |
 | `GET /api/members/working-groups/:slug/feed` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/route.ts`. | Query `query?`, `type?`, `status?`, `sort?`, `limit?`, `snapshotAt?`, `cursor?`; path `slug`. When sending `cursor`, send the `snapshotAt` returned with the first page. | `WorkingGroupFeedResponse`: `{ status, items, nextCursor, snapshotAt, totalMatching }`. | Cursor pagination. Sort values are `newest`, `oldest`, `recently_active`, `most_upvoted`. Empty page is `items: []`, `nextCursor: null`, `totalMatching: 0`. Invalid filters/cursors return `400`; auth errors `401`; group visibility errors should not leak private data. |
-| `GET /api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/items/[itemType]/[itemId]/route.ts`. | Path `slug`, `itemType`, `itemId`. | `WorkingGroupFeedItemResponse`: `{ status: "success", item, detail }`. Thread details include full thread body, attachments, replies, participants, saved/upvoted counts, and `permissions: { canReply, canEdit, canDelete, canChangeStatus }`. Poll details include full poll, results, current member answers, saved/upvoted counts, and the same permission block. | No pagination. Unknown, mismatched, or inaccessible items return `404`; invalid params return `400`; auth errors return `401`. Reply upvotes are not included yet because the web upvote target union does not support `reply`. |
+| `GET /api/members/working-groups/:slug/feed/items/:itemType/:itemId` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/feed/items/[itemType]/[itemId]/route.ts`. | Path `slug`, `itemType`, `itemId`. | `WorkingGroupFeedItemResponse`: `{ status: "success", item, detail }`. Thread details include full thread body, attachments, replies, participants, saved/upvoted counts, and `permissions: { canReply, canEdit, canDelete, canChangeStatus, canReport, canModerate }`. Replies include required `deleted` and `removed` booleans. Poll details include full poll, results, current member answers, saved/upvoted counts, and currently omit `canReport` and `canModerate`. | No pagination. Unknown, mismatched, removed, or inaccessible root items return `404`; invalid params return `400`; auth errors return `401`. A removed reply remains in the response as an empty structural tombstone with `deleted: true` and `removed: true`. |
 | `GET /api/members/working-groups/:slug/tag-usage` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/tag-usage/route.ts`. | Query `query?`/`q?`, `limit?`; path `slug`. | `WorkingGroupTagUsageResponse`: `{ status, group, tags: [{ key, label, count }] }`. | Server-ranked tag suggestions, limited by query. Empty state is `tags: []`. Validation/auth errors as above. |
 | `POST /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: `members/working-groups/[slug]/subscription/route.ts`. | Path `slug`; no body required. | Success response is ignored by the app; route records subscription. | No pagination. Idempotent subscribe semantics are preferred because mobile writes optimistically. `401` inactive; `404`/`403` for invalid group; write errors `500`. |
 | `DELETE /api/members/working-groups/:slug/subscription` | Current / Member bearer-ready. Source: same route. | Path `slug`; no body required. | Success response is ignored by the app; route removes subscription. | No pagination. Empty state is unsubscribed membership. Same auth/error contract as subscribe. |
@@ -959,6 +967,10 @@ bearer-ready unless noted, and are mapped in `src/api/config.ts`.
 | `POST /api/members/forum/uploads/finalize` | Current / Member bearer-ready. Source: `members/forum/uploads/finalize/route.ts`. | JSON `{ groupSlug, assetId, fileName, contentType, byteSize }`. | `ForumUploadFinalizeResponse`: persisted asset metadata. | Used by thread and reply composers. Reject mismatched upload metadata; storage errors `500`. |
 | `GET /api/content-assets/:assetId` | Current / Public for public assets; member bearer-ready for member assets. Source: `content-assets/[id]/route.ts`. | Path `assetId`; bearer token for protected forum files. | Inline response for safe media/PDF types, attachment response for Office/other files. | Mobile downloads to cache and opens the native document/share sheet. Unauthorized and missing assets intentionally return `404`. |
 | `POST /api/members/forum/summarize` | Current / Member bearer-ready. Source: `members/forum/summarize/route.ts`. | `multipart/form-data` with `threadId`, `groupSlug`. | `ForumSummarizeResponse`: `{ status, message, summary }`. | No pagination. Must verify readable group content; rate-limit/AI errors should return clear `status: "error"` messages. |
+| `POST /api/members/forum/reports` | Current / Member bearer required. | JSON `ForumContentReportInput`: `{ targetType: "thread" | "reply", targetId, category, details? }`. Categories are `spam`, `harassment`, `off_topic`, `sensitive_information`, `misleading`, and `other`; details are trimmed and limited to 1,000 characters. | `{ status: "success", reportId }`. | The route derives group, thread, and author from the target. Active subscribed members may report another member's live content. Self, duplicate-pending, deleted, and removed targets fail with `409`; validation `400`; auth `401`; permission `403`; rate limit `429`. |
+| `GET /api/members/forum/reports?groupSlug=:slug` | Current / Exact-group co-lead or active global admin bearer required. | Required `groupSlug` query. | `{ status: "success", reports }`, where each report contains `id`, `workingGroupSlug`, `workingGroupName`, `targetType`, `targetId`, `threadId`, `category`, nullable `details`, `reporter`, `author`, nullable `targetTitle`, `targetBody`, and `createdAt`. `reporter` and `author` contain `id`, `name`, and nullable `mentionHandle`. | Pending only, oldest first. Empty state is `reports: []`. The mobile repository rejects malformed required fields rather than inventing fallback moderation data. Auth `401`; wrong-group/non-moderator `403`; invalid query `400`. Reporter identity is private to this endpoint. |
+| `PATCH /api/members/forum/reports/:reportId` | Current / Report-scoped co-lead or active global admin bearer required. | JSON `{ decision: "dismiss" | "remove" }`. | `{ status: "success" }`. | The server derives the report's group and rechecks authority transactionally. Dismiss closes one report. Remove tombstones the target and resolves every pending report for it. Validation `400`; auth `401`; permission `403`; stale/resolved report or target `409`; unknown report `404`. |
+| `POST /api/members/forum/moderation/remove` | Current / Target-scoped co-lead or active global admin bearer required. | JSON `{ targetType: "thread" | "reply", targetId }`. | `{ status: "success" }`. | Direct removal has no report prerequisite. The server derives the group and rechecks authority. Removed threads disappear; removed replies remain empty `Reply removed by a co-lead` tombstones. Validation `400`; auth `401`; permission `403`; removed/stale target `409`; unknown target `404`. |
 
 #### Polls
 
@@ -1017,18 +1029,55 @@ suggestions API yet.
 | `GET /api/members/knowledge/conversations/:id` | Deferred / active member, migration needed. Source: `members/knowledge/conversations/[id]/route.ts`. | Path `id`; query `before?` cursor for earlier messages. | `{ status, conversation, messages, hasEarlier, earlierCursor }`. | Cursor pagination backward through messages. Empty state `messages: []`. Invalid cursor `400`; unknown/not-owned conversation `404`. |
 | `POST /api/members/knowledge/messages/stream` | Current / Member bearer-ready. Source: `members/knowledge/messages/stream/route.ts`. | JSON `{ conversationId?: uuid, message }`, message 1-5000 chars. | Incremental SSE: `ready`, zero or more `tool_call`, `tool_result`, `text_delta`, then `done`, followed by `persisted` or `error`. `done` includes canonical Markdown, `sourceState`, and structured sources. | No page pagination in stream. Rate limit: 20 member requests/hour. Validation `400`; auth `401`; missing conversation `404`; rate limit `429`; model/persistence failures return error events or error JSON. Cancellation before `done` preserves only an unsaved in-memory partial assistant response. |
 
+#### Member blocking
+
+Member blocking is server-authoritative and available only in remote mode. All
+three routes require an active-member bearer session and return private,
+no-store responses. The target member id is untrusted input; the server derives
+the actor from authentication and owns all authorization and pair locking.
+
+| Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/members/blocks` | Current / Member bearer-ready. Source: `members/blocks/route.ts`. | Optional opaque `cursor`; optional `limit` is server-bounded. | `BlockedMembersResponse`: `{ status: "success", members, nextCursor }`. An active row includes `{ memberId, availability: "active", name, avatarUrl, organizationName, blockedAt }`; an inactive target includes only `{ memberId, availability: "unavailable", blockedAt }`. | Actor-owned active blocks only, newest first. Empty state is `members: []`, `nextCursor: null`. Invalid pagination `400`; auth `401`; load failure `500`. |
+| `POST /api/members/blocks` | Current / Member bearer-ready, rate-limited. Source: `members/blocks/route.ts`. | JSON `{ targetMemberId }`. | `{ status: "success" }`. | Idempotent for an existing actor-owned block. Invalid/self target `400`; unavailable target uses generic `404`; auth `401`; rate limit `429`. No notification is created. |
+| `DELETE /api/members/blocks/:targetMemberId` | Current / Member bearer-ready, rate-limited. Source: `members/blocks/[targetMemberId]/route.ts`. | Target UUID in the path; no body. | `{ status: "success" }`. | Idempotently ends only the caller's ordered block. A reciprocal block remains active and private. Invalid or unauthorized target uses generic `400`/`404`; auth `401`; rate limit `429`. |
+
+An active block has bilateral effects: the pair disappear from each other's
+directory, organization-roster, profile, and non-group mention-candidate
+surfaces. Existing authored working-group content remains visible, but blocked
+author profile links are omitted. Existing direct-message history and the
+caller's read cursor remain available; direct send, edit, unsend, and reaction
+writes fail with generic unavailable responses. Existing group conversations,
+messages, reactions, mentions, and alerts remain unchanged, while creating or
+extending a group roster containing any blocked pair fails without naming the
+pair.
+
+There is no inbound-block endpoint, blocker identity field, block-created
+notification, or administrative override. A successful Unblock ends only the
+caller's row and must always be followed by canonical directory and messaging
+refreshes; the client must not assume `canSend` became true. Fixture mode
+returns an empty block list and rejects Block/Unblock mutations rather than
+inventing durable success.
+
 #### Member messaging
 
 Messaging appears as the second section inside the Directory tab. All routes are
 private, require an active-member bearer session, and fail closed when the
 caller cannot see a participant or conversation.
 
+Every conversation summary and detail includes two required server-owned
+capabilities: `canSend` and `blockedByCurrentMember`. Mobile rejects responses
+that omit or malform either boolean; it never invents a permissive default.
+`blockedByCurrentMember` reports only the caller's own active block so the app
+can offer Unblock. It does not reveal whether the other member blocked the
+caller.
+
 | Method and path | Status / auth | Request | Response | Sorting, pagination, empty state, errors |
 | --- | --- | --- | --- | --- |
-| `GET /api/members/messages` | Current / Member bearer-ready. Source: `members/messages/route.ts`. | No query params. | `ConversationListResponse`: `{ status, conversations, totalUnread }`. | Most recently active first. Empty state is `conversations: []`. Auth `401`; load failure `500`. |
+| `GET /api/members/messages` | Current / Member bearer-ready. Source: `members/messages/route.ts`. | No query params. | `ConversationListResponse`: `{ status, conversations, totalUnread }`; each conversation requires `canSend` and `blockedByCurrentMember`. | Most recently active first. Blocked direct history remains listed but is read-only. Empty state is `conversations: []`. Auth `401`; load failure `500`. |
 | `GET /api/members/messages/direct/:memberId` | Current / Member bearer-ready. Source: `members/messages/direct/[memberId]/route.ts`. | Active directory member UUID in the path. | `DirectConversationResponse`: `{ status, conversationId, recipient }`; `conversationId` is null for a new draft. | Invalid id `400`; unavailable member uses permission-safe `404`; auth `401`. |
 | `GET /api/members/messages/group` | Current / Member bearer-ready. Source: `members/messages/group/route.ts`. | Query `to` contains 2-7 unique active member UUIDs. | `GroupConversationResponse`: `{ status, conversationId }`; `conversationId` is null for a new draft. | The New → Group flow resolves an exact participant set before the first send. Invalid participants `400`; inaccessible participant `404`; auth `401`. |
-| `GET /api/members/messages/conversations/:conversationId` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/route.ts`. | Query `beforeOrdinal?`, `afterOrdinal?`, `limit?` up to 50. Mobile requests the latest 50, loads earlier windows with `beforeOrdinal`, and checks post-mutation additions with `afterOrdinal`. | `ConversationDetailResponse`: `{ status, conversation, messages, latestOrdinal }`. | Messages are in ordinal order. Unknown/inaccessible conversation `404`; invalid cursor `400`; auth `401`. |
+| `GET /api/members/messages/conversations/:conversationId` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/route.ts`. | Query `beforeOrdinal?`, `afterOrdinal?`, `limit?` up to 50. Mobile requests the latest 50, loads earlier windows with `beforeOrdinal`, and checks post-mutation additions with `afterOrdinal`. | `ConversationDetailResponse`: `{ status, conversation, messages, latestOrdinal }`; `conversation` requires `canSend` and `blockedByCurrentMember`. | Messages are in ordinal order. Existing blocked direct history and read-cursor advancement remain available, while send/edit/unsend/reaction writes fail generically. Unknown/inaccessible conversation `404`; invalid cursor `400`; auth `401`. |
 | `POST /api/members/messages/conversations/:conversationId/read` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/read/route.ts`. | JSON `{ lastReadOrdinal }`. | `{ status: "success", conversationId, lastReadOrdinal }`. | Idempotent cursor advance. Invalid cursor `400`; conflict `409`; rate limit `429`. |
 | `POST /api/members/messages/conversations/:conversationId/members` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/members/route.ts`. | JSON `{ participantIds }` with 1-7 unique member UUIDs to add. | `{ status: "success", conversationId, participantIds }`. | Group-only Manage action. The active group remains capped at 8 members. Invalid input `400`; inaccessible member/conversation `404`; conflict `409`; rate limit `429`. |
 | `DELETE /api/members/messages/conversations/:conversationId/leave` | Current / Member bearer-ready. Source: `members/messages/conversations/[conversationId]/leave/route.ts`. | Conversation UUID in the path. | `{ status: "success", conversationId }`. | Group-only, exposed behind a two-tap confirmation. Direct conversation conflict `409`; inaccessible conversation `404`; rate limit `429`. |

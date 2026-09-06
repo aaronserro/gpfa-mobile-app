@@ -161,6 +161,9 @@ export const ROUTES = {
   memberChangePassword: '/api/members/change-password',
   memberSavedContent: '/api/members/saved-content',
   memberDirectory: '/api/members/directory',
+  memberBlocks: '/api/members/blocks',
+  memberBlock: (targetMemberId: string) =>
+    `/api/members/blocks/${encodeURIComponent(targetMemberId)}`,
   messageConversations: '/api/members/messages',
   message: (messageId: string) =>
     `/api/members/messages/${encodeURIComponent(messageId)}`,

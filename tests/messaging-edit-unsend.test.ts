@@ -38,6 +38,8 @@ function conversation(lastMessage: MessageItem | null): ConversationSummary {
     id: CONVERSATION_ID,
     kind: 'direct',
     title: null,
+    canSend: true,
+    blockedByCurrentMember: false,
     participants: [],
     lastMessage,
     lastMessageAt: '2026-09-01T12:05:00.000Z',
