@@ -8,7 +8,7 @@ import {
   normalizeAskMessage,
 } from './ask-stream';
 import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
-import { normalizeNotifications } from './notification-normalization';
+import { normalizeNotification, normalizeNotifications } from './notification-normalization';
 import type {
   AskAnswer,
   AskConversationPage,
@@ -73,6 +73,7 @@ import type {
   OwnProfile,
   OwnProfileUpdateInput,
   MemberUpdates,
+  MemberNotification,
   MemberNotificationsResponse,
   MemberPollCreateInput,
   MemberPollCreateResponse,
@@ -95,6 +96,7 @@ import type {
   NewsFeedItem,
   NewsFeedPage,
   NewsFeedRequest,
+  NotificationDetailResponse,
   PodcastEpisode,
   PodcastTranscriptSegment,
   Poll,
@@ -102,6 +104,8 @@ import type {
   Relevance,
   RedirectResponse,
   RenameConversationResponse,
+  RegisterPushDeviceInput,
+  RegisterPushDeviceResponse,
   Reply,
   ResourceHubData,
   ResourceArtifact,
@@ -605,6 +609,45 @@ export function getNotifications(): Promise<MemberNotificationsResponse> {
     return local({ memberCreatedAt: null, notifications: NOTIFICATIONS });
   }
   return request<unknown>(ROUTES.notifications).then(normalizeNotifications);
+}
+
+/** Registers this installation only when an authenticated backend exists. */
+export function registerPushDevice(
+  input: RegisterPushDeviceInput
+): Promise<RegisterPushDeviceResponse> {
+  if (!USING_REMOTE_API) {
+    return local({ status: 'success', deviceId: 'fixture-disabled' });
+  }
+  return request<RegisterPushDeviceResponse>(ROUTES.pushDeviceRegister, {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Idempotently disables this member-owned installation. */
+export function unregisterPushDevice(deviceId: string): Promise<void> {
+  if (!USING_REMOTE_API) return local(undefined);
+  return request<StatusResponse>(ROUTES.pushDeviceUnregister, {
+    method: 'POST',
+    body: { deviceId },
+  }).then(() => undefined);
+}
+
+/** Resolves an untrusted push ID through the canonical member API. */
+export function getNotificationDetail(notificationId: string): Promise<MemberNotification> {
+  if (!USING_REMOTE_API) {
+    const notification = NOTIFICATIONS.find((item) => item.id === notificationId);
+    return notification
+      ? local(notification)
+      : Promise.reject(new Error('Notification unavailable.'));
+  }
+  return request<NotificationDetailResponse>(ROUTES.notificationDetail(notificationId)).then(
+    ({ notification }) => {
+      const normalized = normalizeNotification(notification, 0, 'api');
+      if (!normalized) throw new Error('Notification unavailable.');
+      return normalized;
+    }
+  );
 }
 
 export function markNotificationsRead(notificationIds: string[]): Promise<void> {

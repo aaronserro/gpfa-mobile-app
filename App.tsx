@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { Alert, Animated, AppState, Keyboard, Linking, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Alert, Animated, AppState, Keyboard, Linking, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -41,6 +42,7 @@ import MoreScreen from './src/screens/MoreScreen';
 import NewsFeedScreen from './src/screens/NewsFeedScreen';
 import NewsStoryScreen from './src/screens/NewsStoryScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
+import PushNotificationsScreen from './src/screens/PushNotificationsScreen';
 import SecuritySettingsScreen from './src/screens/SecuritySettingsScreen';
 import UpvoteHistoryScreen from './src/screens/UpvoteHistoryScreen';
 import ResourcesScreen, { type ResourcesNavigationRequest } from './src/screens/ResourcesScreen';
@@ -85,6 +87,7 @@ import {
   getMessageConversations,
     leaveMessageConversation,
   getNotifications,
+  getNotificationDetail,
   getPodcasts,
   getPodcastTranscript,
   refreshPodcastEpisode,
@@ -103,6 +106,7 @@ import {
   markMessageConversationRead,
   requestPasswordChange,
   removeMemberAvatar,
+  registerPushDevice,
   renameMessageConversation,
   removeWorkingGroupApprovedResource,
   removeForumContent,
@@ -130,13 +134,14 @@ import {
   updateOwnProfile,
   updateMemberHandle,
   unblockMember,
+  unregisterPushDevice,
   unsendMemberMessage,
   uploadMemberAvatar,
   workingGroupFeedItemResponseToEntry,
 } from './src/api/portal';
 import { useQuery } from './src/api/useQuery';
 import { ApiError, RequestCancelledError } from './src/api/client';
-import { forgotPasswordUrl, GPFA_WEB_ORIGIN } from './src/api/config';
+import { forgotPasswordUrl, GPFA_WEB_ORIGIN, USING_REMOTE_API } from './src/api/config';
 import { getAccessToken } from './src/api/tokens';
 import { sharePodcastDownload } from './src/api/podcast-download';
 import { shareResourceDownload } from './src/api/resource-download';
@@ -156,7 +161,7 @@ import { subscribeToWorkingGroupFeed } from './src/api/working-group-realtime';
 import { normalizeNotification } from './src/api/notification-normalization';
 import { DEFAULT_WORKING_GROUP_FEED_CONTROLS } from './src/lib/workingGroupFeedControls';
 import { useNewsFeed } from './src/hooks/useNewsFeed';
-import { useOneSignalIntegration } from './src/hooks/useOneSignalIntegration';
+import { useExpoNotificationsIntegration } from './src/hooks/useExpoNotificationsIntegration';
 import type {
   AskConversationSummary,
   AskDisplayMessage,
@@ -200,6 +205,7 @@ import type {
   PodcastEpisode,
   PodcastPerson,
   PollAnswer,
+  PushNotificationsState,
   Reply,
   RsvpChoice,
   Thread,
@@ -228,6 +234,19 @@ import {
 import { loadActiveAskConversation, saveActiveAskConversation } from './src/lib/ask-gpfa-session';
 import { askSourceDestination, trustedAskSourceUrl } from './src/lib/ask-source-navigation';
 import { externalResourceUrl } from './src/lib/library-resources';
+import {
+  ensureMemberUpdatesChannel,
+  getCurrentExpoPushToken,
+  getNotificationPermissionState,
+  requestNotificationPermission,
+  requireExpoProjectId,
+  unregisterCurrentExpoPushToken,
+} from './src/lib/expo-notifications';
+import {
+  clearPushRegistration,
+  commitPushRegistration,
+  readPushRegistration,
+} from './src/lib/push-registration-storage';
 import type { TagSuggestion } from './src/lib/tags';
 import {
   advanceAskResearchPhase,
@@ -240,6 +259,15 @@ import {
 const DEFAULT_TAB: TabId = 'home';
 const DARK_MODE = false;
 const SHOW_BADGES = true;
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: false,
+    shouldShowList: false,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 const EMPTY_WORKING_GROUPS = { groups: [], home: { groups: [], threads: [] } };
 
@@ -305,6 +333,7 @@ type MoreView =
   | 'account'
   | 'edit-profile'
   | 'email-preferences'
+  | 'push-notifications'
   | 'mentions'
   | 'upvotes'
   | 'security'
@@ -395,6 +424,13 @@ function Portal() {
   const [profileActivityKind, setProfileActivityKind] = useState<MemberProfileActivityKind>('posts');
   const [profileActivityPage, setProfileActivityPage] = useState(1);
   const [pendingEmailPreference, setPendingEmailPreference] = useState<MemberEmailPreferenceKey | null>(null);
+  const [pushNotificationsState, setPushNotificationsState] = useState<PushNotificationsState>('unavailable');
+  const [pushNotificationsPending, setPushNotificationsPending] = useState(false);
+  const [pushNotificationsError, setPushNotificationsError] = useState<Error | null>(null);
+  const [pushIntegrationRefreshKey, setPushIntegrationRefreshKey] = useState(0);
+  const pushStateGeneration = useRef(0);
+  const [pendingNotificationId, setPendingNotificationId] = useState<string | null>(null);
+  const openNotificationRef = useRef<(notification: MemberNotification) => void>(() => {});
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [localNotifications, setLocalNotifications] = useState<MemberNotification[]>([]);
   const [notificationMemberCreatedAt, setNotificationMemberCreatedAt] = useState<string | null>(null);
@@ -576,6 +612,86 @@ function Portal() {
   // DataGate blocks member-dependent screens until this query resolves.
   const member: Member = meQuery.data ?? { id: '', name: '', firstName: '', org: '' };
 
+  const removeCurrentPushRegistration = useCallback(async () => {
+    if (!member.id) return;
+    const registration = await readPushRegistration(member.id);
+    if (registration && USING_REMOTE_API) {
+      await unregisterPushDevice(registration.deviceId);
+    }
+
+    try {
+      await unregisterCurrentExpoPushToken();
+    } catch {
+      // The member API is authoritative for delivery; native cleanup is best-effort.
+    } finally {
+      // Once the server route succeeds, local opt-in must not survive a native cleanup failure.
+      await clearPushRegistration();
+    }
+  }, [member.id]);
+
+  const refreshPushNotificationsState = useCallback(async () => {
+    const generation = ++pushStateGeneration.current;
+    setPushNotificationsError(null);
+
+    if (!isSignedIn || !member.id) {
+      setPushNotificationsPending(false);
+      setPushNotificationsState('disabled');
+      return;
+    }
+    if (!USING_REMOTE_API || (Platform.OS !== 'ios' && Platform.OS !== 'android')) {
+      setPushNotificationsPending(false);
+      setPushNotificationsState('unavailable');
+      return;
+    }
+
+    setPushNotificationsPending(true);
+    try {
+      const [registration, permission] = await Promise.all([
+        readPushRegistration(member.id),
+        getNotificationPermissionState(),
+      ]);
+      if (generation !== pushStateGeneration.current) return;
+
+      if (registration && !permission.allowed) {
+        try {
+          await removeCurrentPushRegistration();
+        } catch (error) {
+          if (generation === pushStateGeneration.current) {
+            setPushNotificationsError(
+              error instanceof Error ? error : new Error('Could not remove this device registration.')
+            );
+          }
+        }
+      }
+
+      if (generation === pushStateGeneration.current) {
+        setPushNotificationsState(
+          registration && permission.allowed
+            ? 'enabled'
+            : permission.allowed
+              ? 'disabled'
+              : permission.canAskAgain ? 'requestable' : 'blocked'
+        );
+      }
+    } catch (error) {
+      if (generation === pushStateGeneration.current) {
+        setPushNotificationsState('unavailable');
+        setPushNotificationsError(
+          error instanceof Error ? error : new Error('Could not read notification settings.')
+        );
+      }
+    } finally {
+      if (generation === pushStateGeneration.current) setPushNotificationsPending(false);
+    }
+  }, [isSignedIn, member.id, removeCurrentPushRegistration]);
+
+  useEffect(() => {
+    void refreshPushNotificationsState();
+    return () => {
+      pushStateGeneration.current += 1;
+    };
+  }, [refreshPushNotificationsState]);
+
   useEffect(() => {
     const data = notificationsQuery.data;
     setLocalNotifications(data?.notifications ?? []);
@@ -588,7 +704,18 @@ function Portal() {
       setNotificationMemberCreatedAt(null);
       setNotificationArrivals([]);
     }
-  }, [isSignedIn]);
+    if (status === 'signedOut') {
+      setPendingNotificationId(null);
+      setPushNotificationsState(USING_REMOTE_API ? 'disabled' : 'unavailable');
+      setPushNotificationsError(null);
+      void (async () => {
+        if (USING_REMOTE_API) {
+          await unregisterCurrentExpoPushToken().catch(() => undefined);
+        }
+        await clearPushRegistration().catch(() => undefined);
+      })();
+    }
+  }, [isSignedIn, status]);
 
   useEffect(() => {
     notificationIdsRef.current = new Set(localNotifications.map(({ id }) => id));
@@ -1660,20 +1787,150 @@ function Portal() {
     });
   }, [messageConversationsQuery.refetch]);
 
+  const completeEnablePushNotifications = useCallback(async () => {
+    if (!member.id || !USING_REMOTE_API || (Platform.OS !== 'ios' && Platform.OS !== 'android')) {
+      setPushNotificationsState('unavailable');
+      return;
+    }
+    const platform = Platform.OS;
+
+    setPushNotificationsPending(true);
+    setPushNotificationsError(null);
+    try {
+      // Android requires a channel before permission or push-token operations.
+      await ensureMemberUpdatesChannel();
+      let permission = await getNotificationPermissionState();
+      if (!permission.allowed && permission.canAskAgain) {
+        permission = await requestNotificationPermission();
+      }
+      if (!permission.allowed) {
+        setPushNotificationsState(permission.canAskAgain ? 'requestable' : 'blocked');
+        return;
+      }
+
+      const existing = await readPushRegistration(member.id);
+      const [expoPushToken, projectId] = await Promise.all([
+        getCurrentExpoPushToken(),
+        requireExpoProjectId(),
+      ]);
+      await commitPushRegistration({
+        memberId: member.id,
+        register: () => registerPushDevice({
+          ...(existing ? { deviceId: existing.deviceId } : {}),
+          expoPushToken,
+          projectId,
+          platform,
+        }),
+        rollback: unregisterPushDevice,
+      });
+      setPushNotificationsState('enabled');
+      setPushIntegrationRefreshKey((current) => current + 1);
+    } catch (error) {
+      setPushNotificationsError(
+        error instanceof Error ? error : new Error('Could not enable push notifications.')
+      );
+    } finally {
+      setPushNotificationsPending(false);
+    }
+  }, [member.id]);
+
+  const enablePushNotifications = useCallback(() => {
+    if (pushNotificationsPending) return;
+    Alert.alert(
+      'Enable push notifications?',
+      'GPFA will send durable member updates to this device. You can turn them off here at any time.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Continue', onPress: () => void completeEnablePushNotifications() },
+      ]
+    );
+  }, [completeEnablePushNotifications, pushNotificationsPending]);
+
+  const disablePushNotifications = useCallback(async () => {
+    if (pushNotificationsPending) return;
+    const previousState = pushNotificationsState;
+    setPushNotificationsState('disabled');
+    setPushNotificationsPending(true);
+    setPushNotificationsError(null);
+    try {
+      await removeCurrentPushRegistration();
+      setPushNotificationsState('disabled');
+    } catch (error) {
+      setPushNotificationsState(previousState);
+      setPushNotificationsError(
+        error instanceof Error ? error : new Error('Could not disable push notifications.')
+      );
+    } finally {
+      setPushNotificationsPending(false);
+    }
+  }, [pushNotificationsPending, pushNotificationsState, removeCurrentPushRegistration]);
+
+  const handlePushPermissionRevoked = useCallback(async () => {
+    setPushNotificationsState('blocked');
+    try {
+      await removeCurrentPushRegistration();
+      setPushNotificationsError(null);
+    } catch (error) {
+      setPushNotificationsError(
+        error instanceof Error ? error : new Error('Could not remove this device registration.')
+      );
+    } finally {
+      const permission = await getNotificationPermissionState().catch(() => null);
+      setPushNotificationsState(permission?.canAskAgain ? 'requestable' : 'blocked');
+    }
+  }, [removeCurrentPushRegistration]);
+
+  const retryPushNotifications = useCallback(() => {
+    setPushNotificationsError(null);
+    if (pushNotificationsState === 'enabled') {
+      setPushIntegrationRefreshKey((current) => current + 1);
+      return;
+    }
+    void refreshPushNotificationsState();
+  }, [pushNotificationsState, refreshPushNotificationsState]);
+
+  const openPushNotificationSettings = useCallback(() => {
+    void Linking.openSettings().catch((error) => {
+      setPushNotificationsError(
+        error instanceof Error ? error : new Error('Could not open device settings.')
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    if (moreView !== 'push-notifications') return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refreshPushNotificationsState();
+    });
+    return () => subscription.remove();
+  }, [moreView, refreshPushNotificationsState]);
+
   const performSignOut = useCallback(async () => {
     setProfileSheetOpen(false);
     setProfileOpen(false);
     setNotificationsOpen(false);
     setTab('home');
     setMoreView('root');
+    setPushNotificationsState('disabled');
+    let pushCleanupConfirmed = true;
+    try {
+      await removeCurrentPushRegistration();
+    } catch {
+      pushCleanupConfirmed = false;
+      // Local/native cleanup still prevents another account inheriting this opt-in.
+      await unregisterCurrentExpoPushToken().catch(() => undefined);
+      await clearPushRegistration().catch(() => undefined);
+    }
     const result = await signOut();
-    if (!result.remoteRevocationConfirmed) {
+    setPushNotificationsState('disabled');
+    setPendingNotificationId(null);
+    if (!result.remoteRevocationConfirmed || !pushCleanupConfirmed) {
       Alert.alert(
         'Signed out on this device',
-        'Your local session was cleared, but remote revocation could not be confirmed. Check your connection before signing in again.'
+        'Your local session was cleared, but remote session or notification cleanup could not be confirmed. Check your connection before signing in again.'
       );
     }
-  }, [signOut]);
+  }, [removeCurrentPushRegistration, signOut]);
 
   const requestSignOut = useCallback(() => {
     if (signingOut) return;
@@ -2666,6 +2923,64 @@ function Portal() {
   }, [announcements, groups, markNotificationRead, openHomeThread, pickGroup, previewEvents, surveys]);
 
   useEffect(() => {
+    openNotificationRef.current = openNotification;
+  }, [openNotification]);
+
+  const refreshCanonicalNotificationsFromPush = useCallback(async () => {
+    await notificationsQuery.refetch();
+  }, [notificationsQuery.refetch]);
+
+  const queueNotificationResponse = useCallback((notificationId: string) => {
+    setPendingNotificationId(notificationId);
+  }, []);
+
+  const reportPushRegistrationError = useCallback((error: Error) => {
+    setPushNotificationsError(error);
+  }, []);
+
+  useExpoNotificationsIntegration({
+    memberId: meQuery.data?.id ?? null,
+    enabled: pushNotificationsState === 'enabled',
+    refreshKey: pushIntegrationRefreshKey,
+    onCanonicalNotification: refreshCanonicalNotificationsFromPush,
+    onNotificationResponse: queueNotificationResponse,
+    onPermissionRevoked: handlePushPermissionRevoked,
+    onRegistrationError: reportPushRegistrationError,
+  });
+
+  const pushNavigationDataReady =
+    isSignedIn &&
+    !!meQuery.data &&
+    !groupsQuery.loading &&
+    !eventsQuery.loading &&
+    !updatesQuery.loading;
+
+  useEffect(() => {
+    if (!pendingNotificationId || !pushNavigationDataReady) return;
+    const notificationId = pendingNotificationId;
+    let active = true;
+
+    void getNotificationDetail(notificationId)
+      .then((notification) => {
+        if (active) openNotificationRef.current(notification);
+      })
+      .catch(() => {
+        if (active) {
+          Alert.alert('Notification unavailable', 'This update is no longer available.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setPendingNotificationId((current) => current === notificationId ? null : current);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [pendingNotificationId, pushNavigationDataReady]);
+
+  useEffect(() => {
     if (!isSignedIn) return;
     let subscription: ReturnType<typeof subscribeToNotificationInserts> = null;
     let disposed = false;
@@ -3651,6 +3966,7 @@ function Portal() {
                 onOpenProfile={openProfile}
                 onEditProfile={() => setMoreView('edit-profile')}
                 onOpenEmailPreferences={() => setMoreView('email-preferences')}
+                onOpenPushNotifications={() => setMoreView('push-notifications')}
                 onOpenMentions={() => setMoreView('mentions')}
                 onOpenUpvotes={() => setMoreView('upvotes')}
                 onOpenSecurity={() => setMoreView('security')}
@@ -3712,6 +4028,18 @@ function Portal() {
                   />
                 ) : null}
               </DataGate>
+            )}
+            {moreView === 'push-notifications' && (
+              <PushNotificationsScreen
+                state={pushNotificationsState}
+                pending={pushNotificationsPending}
+                error={pushNotificationsError}
+                onBack={() => setMoreView('account')}
+                onEnable={enablePushNotifications}
+                onDisable={() => void disablePushNotifications()}
+                onOpenSettings={openPushNotificationSettings}
+                onRetry={retryPushNotifications}
+              />
             )}
             {moreView === 'mentions' && (
               <DataGate
@@ -4527,8 +4855,6 @@ function createClientNonce(): string {
 }
 
 export default function App() {
-  useOneSignalIntegration();
-
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,

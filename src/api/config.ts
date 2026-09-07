@@ -116,6 +116,10 @@ export const ROUTES = {
   notifications: '/api/members/notifications',
   notificationsRead: '/api/members/notifications/read',
   notificationsDismiss: '/api/members/notifications/dismiss',
+  notificationDetail: (notificationId: string) =>
+    `/api/members/notifications/${encodeURIComponent(notificationId)}`,
+  pushDeviceRegister: '/api/members/push-devices/register',
+  pushDeviceUnregister: '/api/members/push-devices/unregister',
   homeImmediateActions: '/api/members/home/immediate-actions',
   workingGroups: '/api/members/working-groups',
   workingGroupMembership: (slug: string) => `/api/members/working-groups/${slug}/membership`,

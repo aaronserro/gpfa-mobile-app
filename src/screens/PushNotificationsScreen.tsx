@@ -1,0 +1,125 @@
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+
+import type { PushNotificationsState } from '../api/types';
+import { ScreenHeader } from '../ds/primitives';
+import { useTheme } from '../ds/ThemeProvider';
+import { alpha, sans, trackDisplay } from '../ds/tokens';
+
+const DESCRIPTION: Record<PushNotificationsState, string> = {
+  disabled: 'Updates are not being sent to this device.',
+  enabled: 'Member updates can appear when the app is closed or in the background.',
+  requestable: 'Turn this on to choose whether GPFA may send notifications.',
+  blocked: 'Notifications are blocked in your device settings.',
+  unavailable: 'Push notifications require a configured member API and a native iOS or Android build.',
+};
+
+export default function PushNotificationsScreen({
+  state,
+  pending,
+  error,
+  onBack,
+  onEnable,
+  onDisable,
+  onOpenSettings,
+  onRetry,
+}: {
+  state: PushNotificationsState;
+  pending: boolean;
+  error: Error | null;
+  onBack: () => void;
+  onEnable: () => void;
+  onDisable: () => void;
+  onOpenSettings: () => void;
+  onRetry: () => void;
+}) {
+  const { t } = useTheme();
+  const unavailable = state === 'unavailable';
+
+  return (
+    <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
+      <ScreenHeader title="Push notifications" onBack={onBack} backLabel="Back to account" />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.intro, { color: t.inkMuted }]}>Receive the same durable member updates shown in the notification centre. This setting applies only to this device.</Text>
+
+        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+          <View style={styles.row}>
+            <View style={styles.flex}>
+              <Text style={[styles.label, { color: t.inkStrong }]}>Notifications on this device</Text>
+              <Text style={[styles.description, { color: t.inkMuted }]}>{DESCRIPTION[state]}</Text>
+            </View>
+            {pending ? (
+              <ActivityIndicator accessibilityLabel="Updating push notifications" color={t.brandGreen} />
+            ) : (
+              <Switch
+                accessibilityLabel="Notifications on this device"
+                accessibilityHint={DESCRIPTION[state]}
+                disabled={unavailable}
+                value={state === 'enabled'}
+                onValueChange={(enabled) => enabled ? onEnable() : onDisable()}
+                trackColor={{ false: t.muted, true: t.brandGreen }}
+              />
+            )}
+          </View>
+        </View>
+
+        {state === 'blocked' && (
+          <ActionButton label="Open device settings" onPress={onOpenSettings} />
+        )}
+
+        {error && (
+          <View
+            accessibilityRole="alert"
+            style={[styles.notice, { backgroundColor: alpha(t.brandRed, 0.08), borderColor: alpha(t.brandRed, 0.3) }]}
+          >
+            <Text style={[styles.noticeTitle, { color: t.brandRed }]}>Could not update notifications</Text>
+            <Text style={[styles.noticeBody, { color: t.inkMuted }]}>{error.message}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onRetry}
+              style={({ pressed }) => [
+                styles.retry,
+                { borderColor: t.ruleStrong, opacity: pressed ? 0.72 : 1 },
+              ]}
+            >
+              <Text style={[styles.retryText, { color: t.inkStrong }]}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ActionButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const { t } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        { backgroundColor: t.brandGreen, opacity: pressed ? 0.82 : 1 },
+      ]}
+    >
+      <Text style={[styles.buttonText, { color: t.primaryForeground }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  flex: { flex: 1, minWidth: 0 },
+  scroll: { padding: 20, paddingBottom: 40 },
+  intro: { marginBottom: 16, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  group: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  row: { minHeight: 84, paddingHorizontal: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  label: { fontFamily: sans(600), fontSize: 14.5, letterSpacing: trackDisplay(14.5) },
+  description: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  button: { minHeight: 48, marginTop: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  buttonText: { fontFamily: sans(600), fontSize: 14.5 },
+  notice: { marginTop: 16, borderWidth: 1, borderRadius: 10, padding: 14 },
+  noticeTitle: { fontFamily: sans(600), fontSize: 14 },
+  noticeBody: { marginTop: 4, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  retry: { alignSelf: 'flex-start', minHeight: 40, marginTop: 12, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  retryText: { fontFamily: sans(600), fontSize: 13 },
+});

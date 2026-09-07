@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ArrowFatUp, ArrowSquareOut, At, Bell, CaretRight, CheckCircle, Desktop, LockSimple, Moon, PencilSimple, Sun, User } from '../ds/icons';
+import { ArrowFatUp, ArrowSquareOut, At, Bell, BellRinging, CaretRight, CheckCircle, Desktop, LockSimple, Moon, PencilSimple, Sun, User } from '../ds/icons';
 import { Avatar, ScreenHeader } from '../ds/primitives';
 import { useTheme, type ThemePreference } from '../ds/ThemeProvider';
 import { alpha, sans, trackDisplay } from '../ds/tokens';
@@ -15,6 +15,7 @@ export default function AccountScreen({
   onOpenProfile,
   onEditProfile,
   onOpenEmailPreferences,
+  onOpenPushNotifications,
   onOpenMentions,
   onOpenUpvotes,
   onOpenSecurity,
@@ -28,6 +29,7 @@ export default function AccountScreen({
   onOpenProfile: () => void;
   onEditProfile: () => void;
   onOpenEmailPreferences: () => void;
+  onOpenPushNotifications: () => void;
   onOpenMentions: () => void;
   onOpenUpvotes: () => void;
   onOpenSecurity: () => void;
@@ -71,6 +73,13 @@ export default function AccountScreen({
             description="Choose which member updates reach your inbox"
             divided
             onPress={onOpenEmailPreferences}
+          />
+          <ActionRow
+            icon={<BellRinging size={19} color={t.brandGreen} />}
+            label="Push notifications"
+            description="Choose whether updates reach this device"
+            divided
+            onPress={onOpenPushNotifications}
           />
           <ActionRow
             icon={<At size={19} color={t.brandGreen} />}

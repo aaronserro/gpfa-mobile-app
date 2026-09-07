@@ -1439,6 +1439,32 @@ export interface MemberNotificationsResponse {
   notifications: MemberNotification[];
 }
 
+export type PushPlatform = 'ios' | 'android';
+
+export interface RegisterPushDeviceInput {
+  deviceId?: string;
+  expoPushToken: string;
+  projectId: string;
+  platform: PushPlatform;
+}
+
+export interface RegisterPushDeviceResponse {
+  status: 'success';
+  deviceId: string;
+}
+
+export interface NotificationDetailResponse {
+  status: 'success';
+  notification: MemberNotification;
+}
+
+export type PushNotificationsState =
+  | 'disabled'
+  | 'enabled'
+  | 'requestable'
+  | 'blocked'
+  | 'unavailable';
+
 /** A badge on the calendar card. */
 export interface EventTag {
   label: string;

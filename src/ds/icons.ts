@@ -22,6 +22,7 @@ export { ArrowUpIcon as ArrowUp } from 'phosphor-react-native/lib/commonjs/icons
 export { ArticleIcon as Article } from 'phosphor-react-native/lib/commonjs/icons/Article';
 export { AtIcon as At } from 'phosphor-react-native/lib/commonjs/icons/At';
 export { BellIcon as Bell } from 'phosphor-react-native/lib/commonjs/icons/Bell';
+export { BellRingingIcon as BellRinging } from 'phosphor-react-native/lib/commonjs/icons/BellRinging';
 export { BookOpenIcon as BookOpen } from 'phosphor-react-native/lib/commonjs/icons/BookOpen';
 export { BookmarkSimpleIcon as BookmarkSimple } from 'phosphor-react-native/lib/commonjs/icons/BookmarkSimple';
 export { BriefcaseIcon as Briefcase } from 'phosphor-react-native/lib/commonjs/icons/Briefcase';

@@ -21,15 +21,9 @@
         },
         "NSLocalNetworkUsageDescription": "GPFA Mobile connects to the development API on your local network.",
         "UIBackgroundModes": [
-          "audio",
-          "remote-notification",
-          "audio",
-          "remote-notification"
+          "audio"
         ],
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "entitlements": {
-        "aps-environment": "development"
       }
     },
     "android": {
@@ -55,12 +49,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      [
-        "onesignal-expo-plugin",
-        {
-          "mode": "development"
-        }
-      ],
       "expo-font",
       "expo-secure-store",
       [
@@ -72,29 +60,21 @@
       ],
       "expo-asset",
       "expo-system-ui",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#33565f",
+          "defaultChannel": "member-updates",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
       "@react-native-community/datetimepicker",
       "@config-plugins/react-native-blob-util",
       "@config-plugins/react-native-pdf"
     ],
     "extra": {
       "eas": {
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "targetName": "OneSignalNotificationServiceExtension",
-                  "bundleIdentifier": "org.gpfa.mobile.OneSignalNotificationServiceExtension",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.org.gpfa.mobile.onesignal"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        },
         "projectId": "9b642b4e-c2b3-4d4a-8990-9e78af01f07e"
       }
     }

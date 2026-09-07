@@ -207,8 +207,52 @@ Sockets run only while the app is active. They close when the app backgrounds
 and rejoin with bounded backoff after foregrounding or a channel failure. A
 successful join triggers a canonical catch-up so events missed during launch,
 network loss, token refresh, or background execution are recovered. Fixture
-mode does not open sockets. Background push delivery is not part of this
-contract.
+mode does not open sockets. Native push may display a visible notification while
+the app is backgrounded, but the app does not register a headless background
+task or enable iOS `remote-notification` background execution.
+
+### 3.6 Native push registration and lifecycle
+
+Native push is an optional transport for the same durable notifications shown
+by the notification bell. It is not a second notification store, and an Expo
+ticket or receipt does not prove that a member saw a notification.
+
+- Consent is current-device-only. The app asks for OS permission only after the
+  signed-in member chooses **Push notifications → Notifications on this device**.
+- Android creates the `member-updates` channel before checking permission or
+  requesting a token. iOS authorized, provisional, and ephemeral permission
+  states are accepted.
+- Encrypted local state contains only `{ memberId, optedIn: true, deviceId }`.
+  The Expo token is never persisted locally or used as authorization.
+- A signed-in launch silently refreshes an existing opted-in registration and
+  listens for native token rotation. It never turns an opted-out device on.
+- Permission revocation, opt-out, sign-out, and a confirmed signed-out state
+  clear the local registration and disable native delivery. Sign-out attempts
+  server unregister while bearer credentials still exist.
+- Fixture mode does not request permission, obtain a token, or call a remote
+  registration endpoint. The settings screen reports push as unavailable.
+
+Push data is an untrusted, ID-only hint with this exact shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "notification",
+  "notificationId": "notification-uuid"
+}
+```
+
+Unknown versions, malformed UUIDs, arbitrary URLs, extra fields, and non-default
+notification actions are rejected. A valid live or cold-start tap waits for an
+authenticated member and loaded navigation data, then fetches the canonical
+notification detail through the member API. Missing, dismissed, deleted,
+pre-membership, or unauthorized records all produce the same unavailable UI and
+never navigate.
+
+While the app is foregrounded, native banner, list, sound, and badge presentation
+are suppressed. The push event triggers a canonical notification-list refresh;
+the existing realtime/list ID deduplication remains responsible for in-app
+arrival state. Live and cold-start responses are consumed once and cleared.
 
 ---
 
@@ -222,6 +266,9 @@ Base URL is prefixed to every path. Bodies are JSON unless a route explicitly no
 | `GET` | `/api/members/notifications` | Header notification bell | `MemberNotification[]`, newest first |
 | `POST` | `/api/members/notifications/read` | Notification sheet mark-read action | `{ status, readAt }` |
 | `POST` | `/api/members/notifications/dismiss` | Notification sheet dismiss action | `{ status, dismissedAt }` |
+| `GET` | `/api/members/notifications/:notificationId` | Native push tap resolution | `{ status: "success", notification: MemberNotification }` |
+| `POST` | `/api/members/push-devices/register` | Current-device push opt-in and token rotation | `{ status: "success", deviceId }` |
+| `POST` | `/api/members/push-devices/unregister` | Current-device opt-out and sign-out cleanup | `{ status: "success" }` |
 | `GET` | `/api/members/working-groups` | Home + Groups directory | `WorkingGroupsResponse` |
 | `GET` | `/api/members/working-groups/:slug/membership` | Group subscribe state | `WorkingGroupMembershipResponse` |
 | `GET` | `/api/members/working-groups/:slug/co-leads` | Group detail About/Members | `{ status, members: WorkingGroupCoLead[] }` |
@@ -500,6 +547,59 @@ removes matching notifications from the sheet. If the request fails, it
 restores the previous list and shows an error. Dismissing the last notification
 renders the sheet's empty state. Both operations remain per-user soft dismissals;
 the durable notification row is not deleted.
+
+**`POST /api/members/push-devices/register` → `{ status: "success", deviceId }`**
+
+Registers or rotates one authenticated member-owned installation. The request
+uses the standard bearer/session-refresh client and sends:
+
+```json
+{
+  "deviceId": "existing-device-uuid-or-omitted",
+  "expoPushToken": "ExpoPushToken[...]",
+  "projectId": "9b642b4e-c2b3-4d4a-8990-9e78af01f07e",
+  "platform": "ios"
+}
+```
+
+`platform` is `ios` or `android`. The server derives member identity from the
+bearer token, validates the fixed EAS project, and returns its stable `deviceId`.
+Local opt-in is committed only after this request succeeds. If encrypted local
+storage then fails, the app attempts to unregister the accepted device so the
+operation fails closed.
+
+**`POST /api/members/push-devices/unregister` → `{ status: "success" }`**
+
+Idempotently disables the authenticated member's installation from
+`{ "deviceId": "device-uuid" }`. Another member cannot disable that device.
+Opt-out performs this call before deleting encrypted local state. Sign-out also
+attempts it before clearing bearer credentials, then always clears local/native
+registration state even when remote cleanup cannot be confirmed.
+
+**`GET /api/members/notifications/:notificationId` → `NotificationDetailResponse`**
+
+Resolves an untrusted push identifier to one canonical notification under the
+current member's authorization and notification RLS. The mobile repository
+URL-encodes the ID and normalizes the returned row through the same boundary as
+the list. The route returns a uniform unavailable response for records the
+caller must not distinguish.
+
+### Native push release evidence
+
+Code-level verification covers configuration, permission interpretation,
+strict payloads, encrypted ownership state, registration rollback, listener
+cleanup, explicit-consent ordering, foreground suppression, canonical detail
+resolution, and pre-auth-clear sign-out ordering. Release acceptance still
+requires development or preview binaries on physical iOS and Android devices;
+Expo Go is not an acceptable Android remote-push test environment.
+
+Record redacted results for fresh-install allow/deny, permanent denial and
+Settings recovery, foreground/background/force-quit delivery, offline retry,
+token rotation, opt-out, sign-out, account switch, reinstall, multiple devices,
+inactive members, group unsubscribe, deleted content, invalid payloads, and
+stale tokens. Evidence must compare device behavior with canonical notification,
+outbox, Expo ticket, and receipt state without recording tokens, credentials, or
+private notification copy.
 
 **Foreground realtime delivery**
 
@@ -929,6 +1029,9 @@ account settings. Profile and avatar changes refresh this authoritative read.
 | `GET /api/members/notifications` | Current / Member bearer-ready. Source: `members/notifications/route.ts`. | No query params. | `{ status: "success", memberCreatedAt, notifications: MemberNotification[] }`. `portal.ts` normalizes `notifications` into `MemberNotification[]`. | Newest first, route-limited to the latest notification window. Empty state is `notifications: []`. `401` when not active; malformed rows are logged/dropped rather than rendered. |
 | `POST /api/members/notifications/read` | Current / Member bearer-ready. Source: `members/notifications/read/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", readAt }`. | No pagination. Validation `400`; `401` when not active; `500` on write failure. Mobile marks all unread optimistically and rolls back on failure. |
 | `POST /api/members/notifications/dismiss` | Current / Member bearer-ready. Source: `members/notifications/dismiss/route.ts`. | JSON `{ notificationIds: string[] }`, 1-100 UUIDs. | `{ status: "success", dismissedAt }`. | No pagination. Same validation/auth/write errors as mark-read. Empty state after dismissal is a shorter notifications list; mobile rolls back on failure. |
+| `GET /api/members/notifications/:notificationId` | Current / Member bearer-ready. Source: `members/notifications/[notificationId]/route.ts`. | Path UUID, URL-encoded by mobile. | `{ status: "success", notification }`, normalized to `MemberNotification`. | No pagination. Missing, dismissed, deleted, pre-membership, malformed, and unauthorized records are unavailable without revealing which condition applied. |
+| `POST /api/members/push-devices/register` | Current / Member bearer-ready, service-mediated. | JSON `{ deviceId?, expoPushToken, projectId, platform }`; no member ID. | `{ status: "success", deviceId }`. | Validates Expo token, fixed EAS project UUID, and `ios`/`android`; ownership comes only from authentication. Fixture mode does not call the route. |
+| `POST /api/members/push-devices/unregister` | Current / Member bearer-ready, service-mediated. | JSON `{ deviceId }`; no member ID. | `{ status: "success" }`. | Idempotently disables only a caller-owned installation. Mobile attempts this before auth clear, then clears encrypted/native registration state even if sign-out cleanup cannot be confirmed. |
 
 #### Working groups
 
