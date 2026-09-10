@@ -4,7 +4,7 @@
  * From the Member Profile design. Two deliberate departures from it:
  *
  * - The design draws a bespoke anchor band (back caret, mono MEMBER PROFILE
- *   label, 64px avatar). `ScreenHeader` owns the band on every other screen, so
+ *   label, 64px avatar). `PageHead` owns the head on every other screen, so
  *   the name is its title and the avatar, role and origin line sit in its
  *   `children` — the same relayout `OrgProfile` makes.
  * - The design's ORGANIZATION mono eyebrow is a sentence-case section head
@@ -13,10 +13,10 @@
  * Presentational: the member, their reposts and their organization all arrive
  * resolved.
  */
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CaretRight, Repeat } from '../ds/icons';
-import { Avatar, MastheadMeta, OrgMark, ScreenHeader } from '../ds/primitives';
+import { Avatar, MastheadMeta, OrgMark, PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../ds/tokens';
 import { initials as initialsOf, orgInitials } from '../lib/format';
@@ -48,32 +48,34 @@ export default function MemberProfileScreen({
   onOpenOrg,
 }: MemberProfileScreenProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
 
   const orgLocation = org ? [org.city, org.country].filter(Boolean).join(', ') : '';
   const origin = [member.org, orgLocation].filter(Boolean).join(' · ');
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title={member.name} onBack={onBack} backLabel="Back">
-        <View style={styles.identity}>
-          <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={48} />
-          <View style={styles.flex}>
-            {!!member.role && (
-              <Text style={[styles.role, { color: t.inkBody }]}>{member.role}</Text>
-            )}
-            <View style={styles.originRow}>
-              <MastheadMeta size={10} style={styles.flex}>
-                {origin.toUpperCase()}
-              </MastheadMeta>
-              <MastheadMeta size={10} color={t.brandGreen}>
-                {`${workingGroups} WORKING GROUP${workingGroups === 1 ? '' : 'S'}`}
-              </MastheadMeta>
+      <StickyTitle scrollY={scrollY} title={member.name} onBack={onBack} backLabel="Back" actions={<PageActions />} />
+
+      <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title={member.name} onBack={onBack} backLabel="Back" actions={<PageActions />}>
+          <View style={styles.identity}>
+            <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={48} />
+            <View style={styles.flex}>
+              {!!member.role && (
+                <Text style={[styles.role, { color: t.inkBody }]}>{member.role}</Text>
+              )}
+              <View style={styles.originRow}>
+                <MastheadMeta size={11} style={styles.flex}>
+                  {origin.toUpperCase()}
+                </MastheadMeta>
+                <MastheadMeta size={11} color={t.brandGreen}>
+                  {`${workingGroups} WORKING GROUP${workingGroups === 1 ? '' : 'S'}`}
+                </MastheadMeta>
+              </View>
             </View>
           </View>
-        </View>
-      </ScreenHeader>
-
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        </PageHead>
         <SectionHead
           label="Reposts"
           count={`${reposts.length} post${reposts.length === 1 ? '' : 's'}`}
@@ -86,7 +88,7 @@ export default function MemberProfileScreen({
             <View
               style={[
                 styles.repostEmpty,
-                { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
+                { backgroundColor: t.surfacePaper, borderColor: t.rule },
               ]}
             >
               <Repeat size={20} color={t.inkMuted} />
@@ -106,7 +108,7 @@ export default function MemberProfileScreen({
                   styles.orgCard,
                   {
                     backgroundColor: t.surfacePaper,
-                    borderColor: pressed ? t.ruleStrong : t.ruleHairline,
+                    borderColor: pressed ? t.ruleStrong : t.rule,
                   },
                 ]}
               >
@@ -116,14 +118,14 @@ export default function MemberProfileScreen({
                     <Text style={[styles.orgName, { color: t.inkStrong }]}>
                       {org.fullName ?? org.name}
                     </Text>
-                    <MastheadMeta size={9.5} style={styles.orgMeta}>
+                    <MastheadMeta size={10.5} style={styles.orgMeta}>
                       {[org.sector, orgLocation].filter(Boolean).join(' · ').toUpperCase()}
                     </MastheadMeta>
                   </View>
                   <CaretRight size={14} color={t.inkFaint} />
                 </View>
-                <View style={[styles.orgFoot, { borderTopColor: t.ruleHairline }]}>
-                  <MastheadMeta size={11} color={t.inkFaint}>
+                <View style={[styles.orgFoot, { borderTopColor: t.rule }]}>
+                  <MastheadMeta size={12} color={t.inkFaint}>
                     {[
                       `${org.members} member${org.members === 1 ? '' : 's'}`,
                       org.workingGroups === undefined
@@ -137,7 +139,7 @@ export default function MemberProfileScreen({
             </View>
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -162,7 +164,7 @@ function RepostCard({ repost, onOpen }: { repost: MemberRepost; onOpen: () => vo
         styles.repostCard,
         {
           backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper,
-          borderColor: t.ruleHairline,
+          borderColor: t.rule,
         },
       ]}
     >
@@ -179,7 +181,7 @@ function RepostCard({ repost, onOpen }: { repost: MemberRepost; onOpen: () => vo
           {post.body}
         </Text>
       )}
-      <MastheadMeta size={9.5} style={styles.repostMeta}>
+      <MastheadMeta size={10.5} style={styles.repostMeta}>
         {`${repost.groupName} · ${post.author} · REPOSTED ${repostedOn}`.toUpperCase()}
       </MastheadMeta>
     </Pressable>
@@ -202,12 +204,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
 
   identity: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingTop: 12 },
-  role: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.75 },
+  role: { fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
   originRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
 
   scroll: { paddingBottom: 28 },
   repostList: { paddingHorizontal: 20, gap: 10 },
-  repostCard: { borderWidth: 1, borderRadius: 8, padding: 14 },
+  repostCard: { borderWidth: 1, borderRadius: 12, padding: 14 },
   repostHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   repostChip: {
     flexDirection: 'row',
@@ -219,8 +221,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   repostChipText: { fontFamily: mono(400), fontSize: 9.5, letterSpacing: 0.48 },
-  repostTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 14, lineHeight: 20 },
-  repostBody: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
+  repostTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 15, lineHeight: 21.5 },
+  repostBody: { marginTop: 5, fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
   repostMeta: { marginTop: 9 },
   repostEmpty: { borderWidth: 1, borderRadius: 8, alignItems: 'center', paddingVertical: 22 },
   sectionHead: {
@@ -231,13 +233,13 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     paddingHorizontal: 20,
   },
-  sectionLabel: { fontFamily: sans(600), fontSize: 13, letterSpacing: trackDisplay(13) },
-  sectionCount: { fontFamily: sans(400), fontSize: 12 },
+  sectionLabel: { fontFamily: sans(600), fontSize: 14.5, letterSpacing: trackDisplay(14.5) },
+  sectionCount: { fontFamily: sans(400), fontSize: 13 },
 
   orgWrap: { paddingHorizontal: 20, paddingTop: 2 },
-  orgCard: { borderWidth: 1, borderRadius: 8, padding: 14 },
+  orgCard: { borderWidth: 1, borderRadius: 12, padding: 14 },
   orgHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  orgName: { fontFamily: sans(600), fontSize: 14 },
+  orgName: { fontFamily: sans(600), fontSize: 15 },
   orgMeta: { marginTop: 3 },
   orgFoot: {
     flexDirection: 'row',
@@ -248,14 +250,14 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
   },
-  orgLink: { fontFamily: sans(400), fontSize: 12.5 },
+  orgLink: { fontFamily: sans(400), fontSize: 13.5 },
 
   empty: {
     paddingVertical: 12,
     paddingHorizontal: 20,
     textAlign: 'center',
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14.5,
+    lineHeight: 21,
   },
 });

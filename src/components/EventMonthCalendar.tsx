@@ -67,7 +67,7 @@ export function EventMonthCalendar({
             accessibilityRole="button"
             style={[
               styles.today,
-              { borderColor: t.ruleHairline },
+              { borderColor: t.rule },
               onCurrentMonth && styles.disabled,
             ]}
           >
@@ -77,7 +77,7 @@ export function EventMonthCalendar({
             onPress={() => moveMonth(-1)}
             accessibilityRole="button"
             accessibilityLabel="Previous month"
-            style={[styles.arrow, { borderColor: t.ruleHairline }]}
+            style={[styles.arrow, { borderColor: t.rule }]}
           >
             <CaretLeft size={15} color={t.brandGreen} />
           </Pressable>
@@ -85,15 +85,15 @@ export function EventMonthCalendar({
             onPress={() => moveMonth(1)}
             accessibilityRole="button"
             accessibilityLabel="Next month"
-            style={[styles.arrow, { borderColor: t.ruleHairline }]}
+            style={[styles.arrow, { borderColor: t.rule }]}
           >
             <CaretRight size={15} color={t.brandGreen} />
           </Pressable>
         </View>
       </View>
 
-      <View style={[styles.calendar, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-        <View style={[styles.weekdays, { borderBottomColor: t.ruleHairline }]}>
+      <View style={[styles.calendar, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
+        <View style={[styles.weekdays, { borderBottomColor: t.rule }]}>
           {WEEKDAYS.map((weekday) => (
             <Text key={weekday} style={[styles.weekday, { color: t.inkMuted }]}>
               {weekday.slice(0, 1)}
@@ -118,7 +118,7 @@ export function EventMonthCalendar({
                 })}, ${dayEvents.length} ${dayEvents.length === 1 ? 'event' : 'events'}`}
                 style={[
                   styles.cell,
-                  { borderColor: t.ruleHairline },
+                  { borderColor: t.rule },
                   selected && { backgroundColor: alpha(t.surfaceAnchor, 0.1) },
                 ]}
               >
@@ -155,14 +155,14 @@ export function EventMonthCalendar({
       <View style={styles.daySection}>
         <Text style={[styles.dayHeading, { color: t.inkStrong }]}>Selected day</Text>
         {selectedEvents.length ? (
-          <View style={[styles.dayList, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+          <View style={[styles.dayList, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
             {selectedEvents.map((event, index) => (
               <Pressable
                 key={event.id}
                 onPress={() => onSelectEvent(event.id)}
                 style={({ pressed }) => [
                   styles.eventRow,
-                  index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                  index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
                   pressed && { backgroundColor: alpha(t.surfaceSoft, 0.55) },
                 ]}
               >
@@ -180,7 +180,7 @@ export function EventMonthCalendar({
             ))}
           </View>
         ) : (
-          <View style={[styles.noEvents, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+          <View style={[styles.noEvents, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
             <Text style={[styles.noEventsText, { color: t.inkMuted }]}>No events on this day.</Text>
           </View>
         )}
@@ -194,30 +194,30 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   monthLine: { flexDirection: 'row', alignItems: 'baseline', gap: 7 },
   month: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
-  year: { fontFamily: mono(500), fontSize: 11 },
+  year: { fontFamily: mono(500), fontSize: 12 },
   controls: { flexDirection: 'row', gap: 6 },
-  today: { minHeight: 32, justifyContent: 'center', borderWidth: 1, borderRadius: 7, paddingHorizontal: 10 },
-  todayText: { fontFamily: sans(600), fontSize: 10.5 },
-  arrow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 7 },
+  today: { minHeight: 32, justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
+  todayText: { fontFamily: sans(600), fontSize: 11.5 },
+  arrow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8 },
   disabled: { opacity: 0.4 },
-  calendar: { overflow: 'hidden', borderWidth: 1, borderRadius: 9 },
+  calendar: { overflow: 'hidden', borderWidth: 1, borderRadius: 12 },
   weekdays: { flexDirection: 'row', borderBottomWidth: 1 },
   weekday: { width: '14.2857%', paddingVertical: 7, textAlign: 'center', fontFamily: mono(500), fontSize: 9 },
   cells: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '14.2857%', height: 55, alignItems: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingTop: 5 },
   dayCircle: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
-  day: { fontFamily: mono(500), fontSize: 10 },
+  day: { fontFamily: mono(500), fontSize: 11 },
   dots: { minHeight: 12, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
   dot: { width: 4, height: 4, borderRadius: 2 },
   overflow: { fontFamily: mono(500), fontSize: 7 },
   daySection: { marginTop: 18 },
-  dayHeading: { marginBottom: 9, fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
-  dayList: { overflow: 'hidden', borderWidth: 1, borderRadius: 9 },
+  dayHeading: { marginBottom: 9, fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
+  dayList: { overflow: 'hidden', borderWidth: 1, borderRadius: 12 },
   eventRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 11 },
   eventDot: { width: 7, height: 7, borderRadius: 4 },
   eventCopy: { flex: 1, minWidth: 0 },
-  eventTitle: { fontFamily: sans(600), fontSize: 13, lineHeight: 17 },
-  eventMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5 },
-  noEvents: { borderWidth: 1, borderRadius: 9, padding: 18, alignItems: 'center' },
-  noEventsText: { fontFamily: sans(400), fontSize: 12.5 },
+  eventTitle: { fontFamily: sans(600), fontSize: 14.5, lineHeight: 19 },
+  eventMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5 },
+  noEvents: { borderWidth: 1, borderRadius: 12, padding: 18, alignItems: 'center' },
+  noEventsText: { fontFamily: sans(400), fontSize: 13.5 },
 });

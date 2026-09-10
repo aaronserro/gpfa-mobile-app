@@ -12,11 +12,17 @@
  */
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { ArrowRight, ArrowSquareOut, LockSimple, Tray } from '../ds/icons';
-import { MastheadMeta, ScreenHeader } from '../ds/primitives';
+import {
+  MastheadMeta,
+  PageActions,
+  PageHead,
+  StickyTitle,
+  useStickyScroll,
+} from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type { NewsStory } from '../api/types';
@@ -43,6 +49,7 @@ export default function NewsScreen({
   onOpen: (story: NewsStory) => void;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
 
   const [topic, setTopic] = useState<string>(ALL_TOPICS);
   const [source, setSource] = useState<SourceId>('all');
@@ -82,14 +89,31 @@ export default function NewsScreen({
 
   return (
     <View style={styles.fill}>
-      <ScreenHeader title="News Radar" onBack={onBack} backLabel="Back to home" />
+      <StickyTitle
+        scrollY={scrollY}
+        title="News Radar"
+        onBack={onBack}
+        backLabel="Back to home"
+        actions={<PageActions />}
+      />
 
-      <ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        {...handlers}
+      >
+      <PageHead
+        title="News Radar"
+        onBack={onBack}
+        backLabel="Back to home"
+        actions={<PageActions />}
+      />
       <View style={styles.controlRow}>
-        <MastheadMeta size={10.5} style={styles.countTrack}>
+        <MastheadMeta size={11.5} style={styles.countTrack}>
           {resultCount}
         </MastheadMeta>
-        <View style={[styles.segment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+        <View style={[styles.segment, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
           {SOURCES.map((s) => {
             const on = s.id === source;
             return (
@@ -131,7 +155,7 @@ export default function NewsScreen({
               style={[
                 styles.topicChip,
                 {
-                  borderColor: on ? t.surfaceAnchor : t.ruleHairline,
+                  borderColor: on ? t.surfaceAnchor : t.rule,
                   backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
                 },
               ]}
@@ -166,7 +190,7 @@ export default function NewsScreen({
         ))}
 
         {filtered.length === 0 && (
-          <View style={[styles.empty, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+          <View style={[styles.empty, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
             <Tray size={22} color={t.inkFaint} />
             <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>
               No stories match these filters
@@ -187,7 +211,7 @@ export default function NewsScreen({
           </View>
         )}
       </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -210,7 +234,7 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
         styles.card,
         {
           backgroundColor: t.surfacePaper,
-          borderColor: isGpfa ? alpha(t.surfaceAnchor, 0.4) : t.ruleHairline,
+          borderColor: isGpfa ? alpha(t.surfaceAnchor, 0.4) : t.rule,
         },
       ]}
     >
@@ -221,7 +245,7 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
         accessibilityState={{ disabled: !hasAction }}
         style={({ pressed }) => ({ opacity: pressed && hasAction ? 0.78 : 1 })}
       >
-        <View style={[styles.hero, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
+        <View style={[styles.hero, { backgroundColor: t.surfaceSoft, borderBottomColor: t.rule }]}>
           {!!story.imageUrl && (
             <Image
               source={story.imageUrl}
@@ -245,7 +269,7 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
                 styles.heroChip,
                 {
                   color: t.inkStrong,
-                  borderColor: t.ruleHairline,
+                  borderColor: t.rule,
                   backgroundColor: alpha(t.surfacePaper, 0.9),
                 },
               ]}
@@ -260,12 +284,12 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
 
         <View style={styles.cardHead}>
           {!isGpfa && !!story.ticker && (
-            <Text style={[styles.pill, { color: t.inkMuted, borderColor: t.ruleHairline }]}>
+            <Text style={[styles.pill, { color: t.inkMuted, borderColor: t.rule }]}>
               {story.ticker}
             </Text>
           )}
           {isGpfa && story.memberOnly && (
-            <View style={[styles.lockPill, { borderColor: t.ruleHairline }]}>
+            <View style={[styles.lockPill, { borderColor: t.rule }]}>
               <LockSimple size={11} color={t.inkMuted} />
               <Text style={[styles.lockText, { color: t.inkMuted }]}>Members only</Text>
             </View>
@@ -274,7 +298,7 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
           <Text style={[styles.title, { color: t.inkStrong }]} numberOfLines={3}>
             {story.title}
           </Text>
-          <MastheadMeta size={10} style={styles.meta}>
+          <MastheadMeta size={11} style={styles.meta}>
             {story.meta}
           </MastheadMeta>
         </View>
@@ -306,8 +330,8 @@ function StoryCard({ story, onOpen }: { story: NewsStory; onOpen: () => void }) 
         </View>
       </Pressable>
 
-      <View style={[styles.foot, { borderTopColor: alpha(t.ruleHairline, 0.6) }]}>
-        <MastheadMeta size={10} color={isGpfa ? t.brandGreen : t.inkMuted} style={styles.footTrack}>
+      <View style={[styles.foot, { borderTopColor: alpha(t.rule, 0.6) }]}>
+        <MastheadMeta size={11} color={isGpfa ? t.brandGreen : t.inkMuted} style={styles.footTrack}>
           {isGpfa ? 'FROM GPFA' : `${threads} ${threads === 1 ? 'THREAD' : 'THREADS'}`}
         </MastheadMeta>
         {hasAction && (
@@ -358,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentText: { fontSize: 11.5 },
+  segmentText: { fontSize: 12.5 },
 
   topicRow: {
     gap: 8,
@@ -374,7 +398,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  topicLabel: { fontSize: 11.5 },
+  topicLabel: { fontSize: 12.5 },
   topicCount: {
     fontFamily: mono(400),
     fontSize: 9.5,
@@ -392,7 +416,7 @@ const styles = StyleSheet.create({
 
   card: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   hero: {
@@ -422,7 +446,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     overflow: 'hidden',
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
@@ -432,7 +456,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     overflow: 'hidden',
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     // Sits on the anchor fill in both themes, so the literal is the token.
@@ -452,7 +476,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     overflow: 'hidden',
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'uppercase',
   },
   lockPill: {
@@ -466,14 +490,14 @@ const styles = StyleSheet.create({
   },
   lockText: {
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'uppercase',
   },
   title: {
     fontFamily: sans(600),
-    fontSize: 17,
-    lineHeight: 20,
-    letterSpacing: trackDisplay(17),
+    fontSize: 19,
+    lineHeight: 22.5,
+    letterSpacing: trackDisplay(19),
   },
   meta: { letterSpacing: 0.8, textTransform: 'uppercase' },
 
@@ -485,8 +509,8 @@ const styles = StyleSheet.create({
   },
   body: {
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14.5,
+    lineHeight: 22.5,
   },
   tags: {
     flexDirection: 'row',
@@ -500,7 +524,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     overflow: 'hidden',
     fontFamily: sans(400),
-    fontSize: 10.5,
+    fontSize: 11.5,
   },
 
   foot: {
@@ -524,7 +548,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontFamily: sans(500),
-    fontSize: 13,
+    fontSize: 14.5,
   },
 
   empty: {
@@ -538,12 +562,12 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontFamily: sans(500),
-    fontSize: 14,
+    fontSize: 15,
   },
   emptyBody: {
     fontFamily: sans(400),
-    fontSize: 12.5,
-    lineHeight: 19,
+    fontSize: 13.5,
+    lineHeight: 20.5,
     textAlign: 'center',
   },
   clearBtn: {
@@ -556,7 +580,7 @@ const styles = StyleSheet.create({
   },
   clearText: {
     fontFamily: sans(500),
-    fontSize: 13,
+    fontSize: 14.5,
     color: '#fff',
   },
 });

@@ -86,7 +86,7 @@ export default function PollQuestionFields({
       {questions.map((question, questionIndex) => (
         <View
           key={question.key}
-          style={[styles.question, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+          style={[styles.question, { borderColor: t.rule, backgroundColor: t.surfacePage }]}
         >
           <View style={styles.questionHeader}>
             <Text style={[styles.questionNumber, { color: t.inkMuted }]}>
@@ -183,7 +183,7 @@ export default function PollQuestionFields({
         <Pressable
           onPress={() => onChange([...questions, createPollQuestionDraft()])}
           accessibilityRole="button"
-          style={[styles.addQuestion, { borderColor: t.ruleHairline }]}
+          style={[styles.addQuestion, { borderColor: t.rule }]}
         >
           <Plus size={15} color={t.surfaceAnchor} />
           <Text style={[styles.addText, { color: t.surfaceAnchor }]}>Add question</Text>
@@ -195,15 +195,15 @@ export default function PollQuestionFields({
 
 const styles = StyleSheet.create({
   list: { gap: 14, marginTop: 8 },
-  question: { gap: 12, borderWidth: 1, borderRadius: 10, padding: 15 },
+  question: { gap: 12, borderWidth: 1, borderRadius: 12, padding: 15 },
   questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  questionNumber: { fontFamily: sans(600), fontSize: 13 },
-  questionInput: { minHeight: 68, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
+  questionNumber: { fontFamily: sans(600), fontSize: 14.5 },
+  questionInput: { minHeight: 68, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15 },
   optionRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10 },
   optionNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  optionNumberText: { fontFamily: sans(600), fontSize: 11 },
+  optionNumberText: { fontFamily: sans(600), fontSize: 12 },
   optionInput: { flex: 1 },
   addAction: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 7 },
   addQuestion: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderRadius: 8 },
-  addText: { fontFamily: sans(600), fontSize: 12.5 },
+  addText: { fontFamily: sans(600), fontSize: 13.5 },
 });

@@ -65,7 +65,7 @@ export default function PodcastTranscript({
   return (
     <View
       onLayout={(event: LayoutChangeEvent) => setTranscriptTop(event.nativeEvent.layout.y)}
-      style={[styles.section, { borderTopColor: t.ruleHairline }]}
+      style={[styles.section, { borderTopColor: t.rule }]}
     >
       <View style={styles.header}>
         <Text style={[styles.title, { color: t.inkStrong }]}>Transcript</Text>
@@ -73,7 +73,7 @@ export default function PodcastTranscript({
           <Pressable
             accessibilityRole="button"
             onPress={beginFollowing}
-            style={[styles.followButton, { borderColor: t.ruleHairline }]}
+            style={[styles.followButton, { borderColor: t.rule }]}
           >
             <Text style={[styles.followText, { color: t.brandGreen }]}>Follow transcript</Text>
           </Pressable>
@@ -132,10 +132,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  title: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
+  title: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
   followButton: { minHeight: 32, justifyContent: 'center', borderWidth: 1, borderRadius: 6, paddingHorizontal: 10 },
-  followText: { fontFamily: sans(600), fontSize: 11.5 },
-  followingText: { fontFamily: sans(500), fontSize: 11.5 },
+  followText: { fontFamily: sans(600), fontSize: 12.5 },
+  followingText: { fontFamily: sans(500), fontSize: 12.5 },
   segment: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -147,6 +147,6 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRadius: 4,
   },
-  time: { width: 54, fontFamily: mono(500), fontSize: 11.5, lineHeight: 19 },
-  text: { flex: 1, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
+  time: { width: 54, fontFamily: mono(500), fontSize: 12.5, lineHeight: 20.5 },
+  text: { flex: 1, fontFamily: sans(400), fontSize: 14.5, lineHeight: 23 },
 });

@@ -4,7 +4,7 @@
  * Bookmark and share are present in the design but inert here — there is no
  * saved-roles endpoint yet, the same as the resource sheet's bookmark.
  */
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   ArrowSquareOut,
@@ -15,7 +15,7 @@ import {
   MapPin,
   ShareFat,
 } from '../../ds/icons';
-import { MastheadMeta, OrgMark, ScreenHeader } from '../../ds/primitives';
+import { MastheadMeta, OrgMark, PageActions, PageHead, StickyTitle, SwipeBack, useStickyScroll } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { jobFunctionRule, sans, trackDisplay } from '../../ds/tokens';
 import { FactChip, SourceChip } from './parts';
@@ -31,31 +31,39 @@ export interface JobPostingProps {
 
 export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
 
   return (
-    <View style={styles.fill}>
-      <ScreenHeader
-        onBack={onBack}
-        backLabel="Back to the job board"
-        actions={
-          <View style={styles.topActions}>
+    <SwipeBack onBack={onBack} style={styles.fill}>
+      <StickyTitle scrollY={scrollY} title="Role" onBack={onBack} backLabel="Back to the job board" actions={<PageActions />} />
+
+      <Animated.ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        {...handlers}
+      >
+        <PageHead
+          title="Role" onBack={onBack} backLabel="Back to the job board"
+          actions={
+            <>
+              <View style={styles.topActions}>
             <Pressable accessibilityLabel="Save role" hitSlop={8}>
-              <BookmarkSimple size={18} color="#fff" />
+              <BookmarkSimple size={18} color={t.inkMuted} />
             </Pressable>
             <Pressable accessibilityLabel="Share role" hitSlop={8}>
-              <ShareFat size={18} color="#fff" />
+              <ShareFat size={18} color={t.inkMuted} />
             </Pressable>
           </View>
-        }
-      />
-
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+              <PageActions />
+            </>
+          }
+        />
         <View
           style={[
             styles.hero,
             {
               backgroundColor: t.surfacePaper,
-              borderBottomColor: t.ruleHairline,
+              borderBottomColor: t.rule,
               borderLeftColor: jobFunctionRule(t, job.fnKey),
             },
           ]}
@@ -71,7 +79,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
             <OrgMark initials={job.initials ?? orgInitials(job.org)} size={40} />
             <View style={styles.flex}>
               <Text style={[styles.org, { color: t.inkStrong }]}>{job.org}</Text>
-              <MastheadMeta size={10}>{job.orgMeta}</MastheadMeta>
+              <MastheadMeta size={11}>{job.orgMeta}</MastheadMeta>
             </View>
           </View>
 
@@ -104,12 +112,12 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
 
         {!!job.stats.length && (
           <View
-            style={[styles.stats, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+            style={[styles.stats, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
           >
             {job.stats.map((s, i) => (
               <View
                 key={s.label}
-                style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline }]}
+                style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.rule }]}
               >
                 <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
                 <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
@@ -122,12 +130,12 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           Applications are handled entirely by the posting organization. GPFA does not receive or
           process applications and is not party to any hiring decision.
         </Text>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <View
         style={[
           styles.footer,
-          { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline },
+          { backgroundColor: t.surfacePaper, borderTopColor: t.rule },
         ]}
       >
         <View style={styles.flex}>
@@ -146,7 +154,7 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           <ArrowSquareOut size={16} color="#fff" />
         </Pressable>
       </View>
-    </View>
+    </SwipeBack>
   );
 }
 
@@ -175,7 +183,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  posted: { fontFamily: sans(400), fontSize: 11.5 },
+  posted: { fontFamily: sans(400), fontSize: 12.5 },
   title: {
     marginTop: 12,
     fontFamily: sans(600),
@@ -189,7 +197,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  org: { fontFamily: sans(600), fontSize: 13.5 },
+  org: { fontFamily: sans(600), fontSize: 15 },
   facts: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -201,16 +209,16 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingHorizontal: 20,
     fontFamily: sans(600),
-    fontSize: 13,
-    letterSpacing: trackDisplay(13),
+    fontSize: 14.5,
+    letterSpacing: trackDisplay(14.5),
   },
-  statLabel: { fontFamily: sans(400), fontSize: 11.5 },
+  statLabel: { fontFamily: sans(400), fontSize: 12.5 },
   body: {
     marginTop: 8,
     paddingHorizontal: 20,
     fontFamily: sans(400),
-    fontSize: 13.5,
-    lineHeight: 21.6,
+    fontSize: 15,
+    lineHeight: 24,
   },
   bullets: { marginTop: 10, paddingHorizontal: 20 },
   bulletRow: { flexDirection: 'row', gap: 9, paddingVertical: 5 },
@@ -220,7 +228,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginTop: 8,
   },
-  bulletText: { flex: 1, fontFamily: sans(400), fontSize: 13, lineHeight: 20 },
+  bulletText: { flex: 1, fontFamily: sans(400), fontSize: 14.5, lineHeight: 22.5 },
 
   stats: {
     flexDirection: 'row',
@@ -231,14 +239,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   stat: { flex: 1, paddingVertical: 10, paddingHorizontal: 12 },
-  statValue: { marginTop: 3, fontFamily: sans(600), fontSize: 14 },
+  statValue: { marginTop: 3, fontFamily: sans(600), fontSize: 15 },
 
   disclaimer: {
     marginTop: 16,
     paddingHorizontal: 20,
     fontFamily: sans(400),
-    fontSize: 10.5,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 18.5,
   },
 
   footer: {
@@ -250,7 +258,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     paddingHorizontal: 16,
   },
-  footComp: { fontFamily: sans(600), fontSize: 13 },
+  footComp: { fontFamily: sans(600), fontSize: 14.5 },
   applyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,5 +267,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 8,
   },
-  applyText: { fontFamily: sans(600), fontSize: 13.5, color: '#fff' },
+  applyText: { fontFamily: sans(600), fontSize: 15, color: '#fff' },
 });

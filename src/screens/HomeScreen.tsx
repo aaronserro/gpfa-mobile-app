@@ -1,8 +1,9 @@
+import { useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,8 +21,9 @@ import type {
   WorkingGroupsData,
 } from '../api/types';
 import {
-  ArrowRight,
   At,
+  Bell,
+  BellRinging,
   BookOpen,
   CalendarDots,
   ChatCircle,
@@ -29,11 +31,23 @@ import {
   CheckCircle,
   FileText,
   Megaphone,
+  Microphone,
+  Newspaper,
   Play,
+  UsersThree,
+  X,
 } from '../ds/icons';
-import { Badge, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import {
+  ActionButton,
+  IconTile,
+  MastheadMeta,
+  PageActions,
+  SectionCard,
+  StickyTitle,
+} from '../ds/primitives';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, sans, trackDisplay } from '../ds/tokens';
+import { headerTop, mono, sans, trackDisplay } from '../ds/tokens';
 import { remainingLabel, usePodcastPlayer } from '../components/podcast/PlayerProvider';
 
 export interface HomeSectionState<T> {
@@ -91,6 +105,8 @@ export default function HomeScreen({
   onOpenPodcast: (episode: PodcastEpisode) => void;
 }) {
   const { t } = useTheme();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
   const player = usePodcastPlayer();
   const masthead = immediateActions.data?.masthead;
   const upcomingEvents = events.data?.filter((event) => event.status === 'upcoming').slice(0, 2) ?? [];
@@ -100,12 +116,20 @@ export default function HomeScreen({
 
   return (
     <View style={styles.fill}>
-      <ScreenHeader title={masthead?.title ?? 'Home'} accent={masthead?.italic} />
-
-      <ScrollView
+      <StickyTitle
+        scrollY={scrollY}
+        title={masthead?.title ?? 'Welcome back'}
+        em={masthead?.italic ? ` ${masthead.italic}` : undefined}
+        actions={<PageActions />}
+      />
+      <Animated.ScrollView
         style={styles.fill}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: true,
+        })}
+        scrollEventThrottle={16}
         refreshControl={(
           <RefreshControl
             refreshing={refreshing}
@@ -115,164 +139,276 @@ export default function HomeScreen({
           />
         )}
       >
-        <HomeBand state={immediateActions} rows={1}>
-          {(home) => home.actions.length > 0 ? (
-            <HomeSection title="What You Missed">
-              <View style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-                {home.actions.slice(0, 3).map((action, index) => (
-                  <ActionRow key={action.id} action={action} divided={index > 0} onPress={() => onOpenAction(action)} />
-                ))}
-              </View>
-            </HomeSection>
-          ) : null}
-        </HomeBand>
+        {/* Home's page head. There is no header band above it, so this row
+            carries the safe-area inset and the two chrome controls. */}
+        <View
+          style={[
+            styles.greeting,
+            { borderBottomColor: t.rule, paddingTop: headerTop(insets.top) },
+          ]}
+        >
+          <View style={styles.greetingRow}>
+            <Text style={[styles.greetingText, { color: t.inkStrong }]}>
+              {masthead?.title ?? 'Welcome back'}
+              {!!masthead?.italic && <Text style={{ color: t.brandGreen }}> {masthead.italic}</Text>}
+            </Text>
+            <PageActions />
+          </View>
+        </View>
 
-        <HomeBand state={events} rows={2}>
-          {() => upcomingEvents.length > 0 ? (
-            <HomeSection title="Upcoming" action="All events" onAction={onGoEvents}>
-              <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-                {upcomingEvents.map((event, index) => (
-                  <Pressable
-                    key={event.id}
-                    onPress={() => onOpenEvent(event.id)}
-                    style={({ pressed }) => [
-                      styles.eventRow,
-                      index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                      pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
-                    ]}
-                  >
-                    <View style={styles.dateChip}>
-                      <Text style={[styles.dateMonth, { color: t.inkMuted }]}>{event.month}</Text>
-                      <Text style={[styles.dateNumber, { color: t.brandRed }]}>{event.day}</Text>
-                    </View>
-                    <View style={styles.flex}>
-                      <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{event.title}</Text>
-                      <Text style={[styles.rowMeta, { color: t.inkMuted }]}>
-                        {[event.dateLabel, event.timeLabel, event.location, event.format].filter(Boolean).join(' · ')}
-                      </Text>
-                      <View style={styles.eventActions}>
-                        <Badge variant={event.rsvp === 'attending' ? 'tag-green' : 'tag-default'} size={9}>
-                          {event.rsvp === 'attending' ? "You’re going" : 'Not responded'}
-                        </Badge>
+        <View style={styles.sections}>
+          <HomeBand state={immediateActions} rows={1}>
+            {(home) => (
+              <SectionCard title="What You Missed" Glyph={BellRinging} tint="red">
+                {home.actions.length > 0 ? (
+                  <View style={[styles.rows, { borderTopColor: t.rule }]}>
+                    {home.actions.slice(0, 3).map((action, index) => (
+                      <ActionRow
+                        key={action.id}
+                        action={action}
+                        divided={index > 0}
+                        onPress={() => onOpenAction(action)}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <EmptyState
+                    title="You’re all caught up"
+                    body="Mentions, surveys, and announcements that need a reply will appear here."
+                  />
+                )}
+              </SectionCard>
+            )}
+          </HomeBand>
+
+          <HomeBand state={events} rows={2}>
+            {() => upcomingEvents.length > 0 ? (
+              <SectionCard
+                title="Upcoming"
+                Glyph={CalendarDots}
+                tint="red"
+                footer={<ActionButton label="All events" onPress={onGoEvents} />}
+              >
+                <View style={[styles.rows, { borderTopColor: t.rule }]}>
+                  {upcomingEvents.map((event, index) => (
+                    <View
+                      key={event.id}
+                      style={[
+                        styles.eventRow,
+                        index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
+                      ]}
+                    >
+                      <View style={styles.dateChip}>
+                        <Text style={[styles.dateMonth, { color: t.inkMuted }]}>{event.month}</Text>
+                        <Text style={[styles.dateNumber, { color: t.brandRed }]}>{event.day}</Text>
                       </View>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-            </HomeSection>
-          ) : null}
-        </HomeBand>
-
-        <HomeBand state={workingGroups} rows={4}>
-          {(data) => data.home.groups.length > 0 || data.home.threads.length > 0 ? (
-            <HomeSection title="Your Groups" action="Browse all groups" onAction={onGoGroups}>
-              {data.home.groups.length > 0 ? (
-                <View style={styles.groupChips}>
-                  {data.home.groups.map((group) => (
-                    <Pressable
-                      key={group.slug}
-                      onPress={() => onPickGroup(group.slug)}
-                      style={({ pressed }) => [
-                        styles.groupChip,
-                        { borderColor: t.ruleHairline, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper },
-                      ]}
-                    >
-                      <Text style={[styles.groupChipText, { color: t.inkStrong }]}>{group.name}</Text>
-                      {!!group.unread && <Badge variant="secondary">{group.unread}</Badge>}
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-              {data.home.threads.length > 0 ? (
-                <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
-                  {data.home.threads.slice(0, 4).map((thread, index) => (
-                    <Pressable
-                      key={thread.id}
-                      onPress={() => onOpenThread(thread)}
-                      style={({ pressed }) => [
-                        styles.threadRow,
-                        index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-                        pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
-                      ]}
-                    >
-                      {thread.unread ? <ChatCircleDots size={18} color={t.brandRed} /> : <ChatCircle size={18} color={t.inkMuted} />}
                       <View style={styles.flex}>
-                        <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{thread.title}</Text>
-                        <View style={styles.threadMetaRow}>
-                          <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{thread.groupName} · </Text>
-                          {thread.authorId ? (
-                            <Pressable
-                              onPress={() => onOpenMemberProfile(thread.authorId!)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Open ${thread.authorName}'s profile`}
-                            >
-                              <Text style={[styles.rowMeta, styles.authorLink, { color: t.brandGreen }]}>
-                                {thread.authorName}
-                              </Text>
-                            </Pressable>
-                          ) : (
-                            <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{thread.authorName}</Text>
-                          )}
-                          <Text style={[styles.rowMeta, { color: t.inkMuted }]}> · {thread.replies} replies · {thread.age}</Text>
+                        <Pressable
+                          onPress={() => onOpenEvent(event.id)}
+                          style={({ pressed }) => (pressed ? styles.pressed : null)}
+                        >
+                          <Text style={[styles.eventTitle, { color: t.inkStrong }]}>{event.title}</Text>
+                        </Pressable>
+                        <Text style={[styles.stamp, { color: t.inkMuted }]}>
+                          {[event.location, event.dateLabel, event.timeLabel, event.format]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Text>
+                        <View style={styles.eventActions}>
+                          <View style={[styles.rsvp, { borderColor: t.ruleStrong }]}>
+                            {event.rsvp === 'attending' ? (
+                              <CheckCircle size={12} color={t.inkMuted} />
+                            ) : (
+                              <X size={12} color={t.inkMuted} />
+                            )}
+                            <Text style={[styles.rsvpLabel, { color: t.inkMuted }]}>
+                              {event.rsvp === 'attending' ? 'You’re going' : 'Not responded'}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => onOpenEvent(event.id)}
+                            hitSlop={8}
+                            style={({ pressed }) => (pressed ? styles.pressed : null)}
+                          >
+                            <Text style={[styles.detailsLink, { color: t.inkStrong }]}>Details</Text>
+                          </Pressable>
                         </View>
                       </View>
-                      <ArrowRight size={15} color={t.brandGreen} />
-                    </Pressable>
+                    </View>
                   ))}
                 </View>
-              ) : null}
-            </HomeSection>
-          ) : null}
-        </HomeBand>
+              </SectionCard>
+            ) : null}
+          </HomeBand>
 
-        <HomeBand state={news} rows={3}>
-          {() => radarStories.length > 0 ? (
-            <HomeSection title="Industry News" action="Open news" onAction={onGoNews}>
-              <DigestRows
-                rows={radarStories.map((story) => ({
-                  id: story.id,
-                  title: story.title,
-                  meta: `${story.topic} · ${story.publishedAt ?? story.meta}`,
-                  icon: <FileText size={18} color={t.brandAmber} />,
-                  onPress: () => onOpenNewsStory(story),
-                }))}
-              />
-            </HomeSection>
-          ) : null}
-        </HomeBand>
+          <HomeBand state={workingGroups} rows={4}>
+            {(data) => data.home.groups.length > 0 || data.home.threads.length > 0 ? (
+              <SectionCard
+                title="Your Groups"
+                Glyph={UsersThree}
+                tint="blue"
+                footer={<ActionButton label="Browse all groups" onPress={onGoGroups} />}
+              >
+                {data.home.groups.length > 0 && (
+                  <View style={styles.groupChips}>
+                    {data.home.groups.map((group) => (
+                      <Pressable
+                        key={group.slug}
+                        onPress={() => onPickGroup(group.slug)}
+                        style={({ pressed }) => [
+                          styles.groupChip,
+                          { borderColor: t.rule },
+                          pressed ? styles.pressed : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.groupChipText,
+                            { color: t.inkStrong, textDecorationColor: t.ruleStrong },
+                          ]}
+                        >
+                          {group.name}
+                        </Text>
+                        {!!group.unread && (
+                          <View style={[styles.unread, { backgroundColor: t.brandBrickInk }]}>
+                            <Text style={styles.unreadText}>{group.unread}</Text>
+                          </View>
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+                {data.home.threads.length > 0 && (
+                  <View style={[styles.rows, { borderTopColor: t.rule }]}>
+                    {data.home.threads.slice(0, 4).map((thread, index) => (
+                      <Pressable
+                        key={thread.id}
+                        onPress={() => onOpenThread(thread)}
+                        style={({ pressed }) => [
+                          styles.threadRow,
+                          index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
+                          pressed ? styles.pressed : null,
+                        ]}
+                      >
+                        {thread.unread ? (
+                          <ChatCircleDots size={18} color={t.brandRed} />
+                        ) : (
+                          <ChatCircle size={18} color={t.inkMuted} />
+                        )}
+                        <View style={styles.flex}>
+                          <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{thread.title}</Text>
+                          {/* The author is a link inside the stamp rather than
+                              its own Pressable, so the line still wraps as one
+                              run of mono text. A nested Text's onPress wins over
+                              the row's, which opens the thread. */}
+                          <Text style={[styles.stamp, { color: t.inkMuted }]}>
+                            {thread.groupName} ·{' '}
+                            {thread.authorId ? (
+                              <Text
+                                onPress={() => onOpenMemberProfile(thread.authorId!)}
+                                suppressHighlighting
+                                accessibilityRole="link"
+                                accessibilityLabel={`Open ${thread.authorName}'s profile`}
+                                style={[styles.authorLink, { color: t.brandGreen }]}
+                              >
+                                {thread.authorName}
+                              </Text>
+                            ) : (
+                              thread.authorName
+                            )}
+                            {` · ${thread.replies} ${thread.replies === 1 ? 'reply' : 'replies'} · ${thread.age}`}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </SectionCard>
+            ) : null}
+          </HomeBand>
 
-        <HomeBand state={library} rows={3}>
-          {() => documents.length > 0 ? (
-            <HomeSection title="Library" action="Open library" onAction={onGoLibrary}>
-              <DigestRows
-                rows={documents.map((resource) => ({
-                  id: resource.id,
-                  title: resource.title,
-                  meta: [resource.type, resource.authors, resource.pages ? `${resource.pages} pp` : null].filter(Boolean).join(' · '),
-                  icon: <BookOpen size={18} color={t.brandGreen} />,
-                  onPress: () => onOpenResource(resource),
-                }))}
-              />
-            </HomeSection>
-          ) : null}
-        </HomeBand>
+          <HomeBand state={news} rows={3}>
+            {() => radarStories.length > 0 ? (
+              <SectionCard
+                title="Industry News"
+                Glyph={Newspaper}
+                tint="amber"
+                footer={<ActionButton label="Open news" onPress={onGoNews} />}
+              >
+                <DigestRows
+                  rows={radarStories.map((story) => ({
+                    id: story.id,
+                    title: story.title,
+                    meta: `${story.topic} · ${story.publishedAt ?? story.meta}`,
+                    icon: <FileText size={18} color={t.brandAmber} />,
+                    onPress: () => onOpenNewsStory(story),
+                  }))}
+                />
+              </SectionCard>
+            ) : null}
+          </HomeBand>
 
-        <HomeBand state={podcasts} rows={3}>
-          {() => episodes.length > 0 ? (
-            <HomeSection title="Podcast" action="View episodes" onAction={onGoPodcasts}>
-              <DigestRows
-                rows={episodes.map((episode) => ({
-                  id: episode.slug,
-                  title: episode.title,
-                  meta: [episode.duration, remainingLabel(episode, player.positions)].filter(Boolean).join(' · '),
-                  icon: <Play size={18} color={t.brandGreen} />,
-                  onPress: () => onOpenPodcast(episode),
-                }))}
-              />
-            </HomeSection>
-          ) : null}
-        </HomeBand>
-      </ScrollView>
+          {/* Library and Podcast are reachable from Menu › Knowledge, which is
+              where v2's artboard routes them. They stay on Home as well, in the
+              same card language but with the neutral tile, so the four sections
+              the design calls out keep their tinted emphasis. */}
+          <HomeBand state={library} rows={3}>
+            {() => documents.length > 0 ? (
+              <SectionCard
+                title="Library"
+                Glyph={BookOpen}
+                footer={<ActionButton label="Open library" onPress={onGoLibrary} />}
+              >
+                <DigestRows
+                  rows={documents.map((resource) => ({
+                    id: resource.id,
+                    title: resource.title,
+                    meta: [resource.type, resource.authors, resource.pages ? `${resource.pages} pp` : null]
+                      .filter(Boolean)
+                      .join(' · '),
+                    icon: <BookOpen size={18} color={t.inkMuted} />,
+                    onPress: () => onOpenResource(resource),
+                  }))}
+                />
+              </SectionCard>
+            ) : null}
+          </HomeBand>
+
+          <HomeBand state={podcasts} rows={3}>
+            {() => episodes.length > 0 ? (
+              <SectionCard
+                title="Podcast"
+                Glyph={Microphone}
+                footer={<ActionButton label="View episodes" onPress={onGoPodcasts} />}
+              >
+                <DigestRows
+                  rows={episodes.map((episode) => ({
+                    id: episode.slug,
+                    title: episode.title,
+                    meta: [episode.duration, remainingLabel(episode, player.positions)]
+                      .filter(Boolean)
+                      .join(' · '),
+                    icon: <Play size={18} color={t.inkMuted} />,
+                    onPress: () => onOpenPodcast(episode),
+                  }))}
+                />
+              </SectionCard>
+            ) : null}
+          </HomeBand>
+        </View>
+      </Animated.ScrollView>
+    </View>
+  );
+}
+
+/** v2's dashed-outline empty state, used when a section has nothing to show. */
+function EmptyState({ title, body }: { title: string; body: string }) {
+  const { t } = useTheme();
+  return (
+    <View style={[styles.empty, { borderColor: t.ruleStrong }]}>
+      <IconTile Glyph={Bell} />
+      <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>{title}</Text>
+      <Text style={[styles.emptyBody, { color: t.inkMuted }]}>{body}</Text>
     </View>
   );
 }
@@ -294,12 +430,12 @@ function HomeBand<T>({
 function BandSkeleton({ rows }: { rows: number }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.loadingBand, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+    <View style={[styles.loadingBand, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
       <ActivityIndicator color={t.brandGreen} />
-      <MastheadMeta size={9.5}>LOADING</MastheadMeta>
+      <MastheadMeta size={10.5}>LOADING</MastheadMeta>
       <View style={styles.loadingRows}>
         {Array.from({ length: rows }, (_, index) => (
-          <View key={index} style={[styles.loadingRow, { backgroundColor: t.surfaceSoft }]} />
+          <View key={index} style={[styles.loadingRow, { backgroundColor: t.surfaceSubtle }]} />
         ))}
       </View>
     </View>
@@ -312,37 +448,9 @@ function BandError({ error, onRetry }: { error: Error; onRetry: () => void }) {
     <View style={[styles.errorBand, { borderColor: t.brandRed, backgroundColor: t.surfacePaper }]}>
       <Text style={[styles.errorTitle, { color: t.inkStrong }]}>This section could not be loaded</Text>
       <Text style={[styles.errorMessage, { color: t.inkMuted }]} numberOfLines={2}>{error.message}</Text>
-      <Pressable onPress={onRetry} style={[styles.retry, { borderColor: t.ruleHairline }]}>
+      <Pressable onPress={onRetry} style={[styles.retry, { borderColor: t.rule }]}>
         <Text style={[styles.retryText, { color: t.brandGreen }]}>Try again</Text>
       </Pressable>
-    </View>
-  );
-}
-
-function HomeSection({
-  title,
-  action,
-  onAction,
-  children,
-}: {
-  title: string;
-  action?: string;
-  onAction?: () => void;
-  children: React.ReactNode;
-}) {
-  const { t } = useTheme();
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text style={[styles.sectionTitle, { color: t.inkStrong }]}>{title}</Text>
-        {action && onAction ? (
-          <Pressable onPress={onAction} hitSlop={8} style={styles.sectionAction}>
-            <Text style={[styles.sectionActionText, { color: t.brandGreen }]}>{action}</Text>
-            <ArrowRight size={13} color={t.brandGreen} />
-          </Pressable>
-        ) : null}
-      </View>
-      {children}
     </View>
   );
 }
@@ -369,14 +477,14 @@ function ActionRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionRow,
-        divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-        pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
+        divided && { borderTopWidth: 1, borderTopColor: t.rule },
+        pressed ? styles.pressed : null,
       ]}
     >
       {icon}
       <View style={styles.flex}>
         <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{action.title}</Text>
-        <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{action.description}</Text>
+        <Text style={[styles.rowBody, { color: t.inkMuted }]}>{action.description}</Text>
       </View>
       <Text style={[styles.actionLabel, { color: t.brandGreen }]}>{action.actionLabel}</Text>
     </Pressable>
@@ -390,23 +498,22 @@ function DigestRows({
 }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+    <View style={[styles.rows, { borderTopColor: t.rule }]}>
       {rows.map((row, index) => (
         <Pressable
           key={row.id}
           onPress={row.onPress}
           style={({ pressed }) => [
             styles.digestRow,
-            index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
-            pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
+            index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
+            pressed ? styles.pressed : null,
           ]}
         >
           {row.icon}
           <View style={styles.flex}>
             <Text style={[styles.rowTitle, { color: t.inkStrong }]}>{row.title}</Text>
-            {!!row.meta && <Text style={[styles.rowMeta, { color: t.inkMuted }]}>{row.meta}</Text>}
+            {!!row.meta && <Text style={[styles.stamp, { color: t.inkMuted }]}>{row.meta}</Text>}
           </View>
-          <ArrowRight size={15} color={t.brandGreen} />
         </Pressable>
       ))}
     </View>
@@ -417,43 +524,103 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
   scroll: { paddingBottom: 36 },
-  section: { paddingTop: 24 },
-  sectionHead: {
-    minHeight: 44,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
+  pressed: { opacity: 0.7 },
+
+  greeting: { paddingHorizontal: 16, paddingBottom: 18, borderBottomWidth: 1 },
+  greetingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  greetingText: { flex: 1, fontFamily: sans(600), fontSize: 27, lineHeight: 31, letterSpacing: trackDisplay(27) },
+
+  sections: { padding: 16, gap: 16 },
+  rows: { marginTop: 14, borderTopWidth: 1 },
+
+  empty: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTitle: { marginTop: 2, fontFamily: sans(500), fontSize: 15 },
+  emptyBody: { fontFamily: sans(400), fontSize: 14, lineHeight: 21, textAlign: 'center' },
+
+  actionRow: { minHeight: 64, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actionLabel: { maxWidth: 92, fontFamily: sans(600), fontSize: 12.5, textAlign: 'right' },
+
+  eventRow: { paddingTop: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  dateChip: { width: 44, alignItems: 'center' },
+  dateMonth: { fontFamily: mono(400), fontSize: 11, letterSpacing: 0.66, textTransform: 'uppercase' },
+  dateNumber: {
+    marginTop: 1,
+    fontFamily: sans(600),
+    fontSize: 26,
+    lineHeight: 26,
+    letterSpacing: trackDisplay(26),
+    fontVariant: ['tabular-nums'],
+  },
+  eventTitle: { fontFamily: sans(600), fontSize: 16, lineHeight: 22 },
+  eventActions: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  rsvp: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    gap: 6,
+    height: 32,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 32,
   },
-  sectionTitle: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  sectionAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  sectionActionText: { fontFamily: sans(500), fontSize: 12.5 },
-  card: { marginHorizontal: 20, borderWidth: 1, borderRadius: 9, overflow: 'hidden' },
-  band: { borderTopWidth: 1, borderBottomWidth: 1 },
-  actionRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  actionLabel: { maxWidth: 92, fontFamily: sans(600), fontSize: 11.5, textAlign: 'right' },
-  eventRow: { minHeight: 112, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
-  dateChip: { width: 48, alignItems: 'center', paddingTop: 2 },
-  dateMonth: { fontFamily: sans(500), fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
-  dateNumber: { marginTop: 2, fontFamily: sans(600), fontSize: 25, lineHeight: 27, letterSpacing: trackDisplay(25) },
-  eventActions: { marginTop: 9, flexDirection: 'row', alignItems: 'center' },
-  groupChips: { paddingHorizontal: 20, paddingBottom: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  groupChip: { minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  groupChipText: { fontFamily: sans(500), fontSize: 11.5 },
-  threadRow: { minHeight: 72, paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  digestRow: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  rowTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
-  rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5, lineHeight: 16 },
-  threadMetaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline' },
-  authorLink: { fontFamily: sans(600) },
-  loadingBand: { marginTop: 24, marginHorizontal: 20, padding: 16, borderWidth: 1, borderRadius: 9, gap: 10 },
+  rsvpLabel: { fontFamily: mono(400), fontSize: 12.5 },
+  detailsLink: {
+    fontFamily: sans(500),
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+
+  groupChips: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  groupChip: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  groupChipText: { fontFamily: sans(400), fontSize: 14, textDecorationLine: 'underline' },
+  unread: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadText: { fontFamily: sans(600), fontSize: 9.5, color: '#fff' },
+
+  threadRow: { minHeight: 56, paddingVertical: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  digestRow: { minHeight: 56, paddingVertical: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  rowTitle: { fontFamily: sans(600), fontSize: 16, lineHeight: 22 },
+  rowBody: { marginTop: 4, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
+  /** The mono stamp v2 uses for "Platform Feedback · 7m", "Derivatives · Sep 8". */
+  stamp: { marginTop: 5, fontFamily: mono(400), fontSize: 12.5, lineHeight: 18 },
+  authorLink: { fontFamily: mono(500), textDecorationLine: 'underline' },
+
+  loadingBand: { padding: 16, borderWidth: 1, borderRadius: 12, gap: 10 },
   loadingRows: { gap: 7 },
   loadingRow: { height: 10, borderRadius: 4 },
-  errorBand: { marginTop: 24, marginHorizontal: 20, padding: 16, borderWidth: 1, borderRadius: 9 },
-  errorTitle: { fontFamily: sans(600), fontSize: 13.5 },
-  errorMessage: { marginTop: 4, fontFamily: sans(400), fontSize: 11.5, lineHeight: 16 },
-  retry: { alignSelf: 'flex-start', minHeight: 44, marginTop: 8, paddingHorizontal: 12, borderWidth: 1, borderRadius: 7, justifyContent: 'center' },
-  retryText: { fontFamily: sans(600), fontSize: 12 },
+  errorBand: { padding: 16, borderWidth: 1, borderRadius: 12 },
+  errorTitle: { fontFamily: sans(600), fontSize: 15 },
+  errorMessage: { marginTop: 4, fontFamily: sans(400), fontSize: 14, lineHeight: 20 },
+  retry: {
+    alignSelf: 'flex-start',
+    minHeight: 40,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  retryText: { fontFamily: sans(600), fontSize: 14 },
 });

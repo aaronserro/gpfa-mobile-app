@@ -64,7 +64,7 @@ export function useExpoNotificationsIntegration({
       registration ??= await readPushRegistration(memberId);
       if (!registration || !active) return null;
 
-      await ensureMemberUpdatesChannel();
+      await ensureMemberUpdatesChannel(platform);
       const permission = await getNotificationPermissionState();
       if (!permission.allowed) {
         if (active) await onPermissionRevoked();

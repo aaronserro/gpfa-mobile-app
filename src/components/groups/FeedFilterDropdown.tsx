@@ -95,7 +95,7 @@ export default function FeedFilterDropdown<T extends string>({
         style={({ pressed }) => [
           styles.trigger,
           {
-            borderColor: open ? t.surfaceAnchor : t.ruleHairline,
+            borderColor: open ? t.surfaceAnchor : t.rule,
             backgroundColor: pressed ? alpha(t.surfaceSoft, 0.65) : t.surfacePaper,
           },
         ]}
@@ -141,7 +141,7 @@ export default function FeedFilterDropdown<T extends string>({
                   left: anchor.left,
                   top: anchor.top,
                   width: anchor.width,
-                  borderColor: t.ruleHairline,
+                  borderColor: t.rule,
                   backgroundColor: t.surfacePaper,
                   shadowColor: t.inkStrong,
                 },
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   },
   triggerText: { flex: 1, minWidth: 0, gap: 1 },
   label: { fontFamily: sans(500), fontSize: 9.5 },
-  value: { fontFamily: sans(600), fontSize: 11.5 },
+  value: { fontFamily: sans(600), fontSize: 12.5 },
   modalRoot: { flex: 1 },
   menu: {
     position: 'absolute',
@@ -215,9 +215,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    borderRadius: 7,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  optionText: { flex: 1, fontFamily: sans(500), fontSize: 13 },
+  optionText: { flex: 1, fontFamily: sans(500), fontSize: 14.5 },
 });

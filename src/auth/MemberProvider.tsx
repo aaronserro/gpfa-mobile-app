@@ -1,7 +1,7 @@
 /**
  * The signed-in member, made ambient.
  *
- * `ScreenHeader` draws the profile avatar on every screen, including ones
+ * `PageHead` draws the profile avatar on every screen, including ones
  * nested three deep (a post inside a group, a role inside the job board).
  * Threading `memberInitials` through all of them would add a prop to ten
  * components that have no other use for it.

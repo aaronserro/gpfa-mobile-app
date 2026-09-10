@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type {
   ConversationDetail,
@@ -104,6 +105,7 @@ export default function ConversationThread({
   onReachLatest,
 }: ConversationThreadProps) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<FlashListRef<MessageItem>>(null);
   const inputRef = useRef<TextInput>(null);
   const [content, setContent] = useState('');
@@ -298,12 +300,8 @@ export default function ConversationThread({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.fill}
-      behavior="padding"
-      keyboardVerticalOffset={84}
-    >
-      <View style={[styles.threadHeader, { borderBottomColor: t.ruleHairline }]}>
+    <KeyboardAvoidingView style={styles.fill} behavior="padding">
+      <View style={[styles.threadHeader, { borderBottomColor: t.rule }]}>
         <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={8}>
           <CaretLeft size={20} color={t.brandGreen} />
         </Pressable>
@@ -354,7 +352,7 @@ export default function ConversationThread({
       </View>
 
       {actionError && !managing && (
-        <View accessibilityRole="alert" style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
+        <View accessibilityRole="alert" style={[styles.inlineError, { backgroundColor: t.surfaceSoft, borderBottomColor: t.rule }]}>
           <Text style={[styles.inlineErrorText, { color: t.brandRed }]}>{actionError}</Text>
         </View>
       )}
@@ -374,7 +372,7 @@ export default function ConversationThread({
               placeholderTextColor={t.inkFaint}
               maxLength={80}
               editable={!actionPending}
-              style={[styles.renameInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+              style={[styles.renameInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.rule }]}
             />
             <Pressable
               onPress={() => void runAction(() => onRename(titleInput))}
@@ -397,7 +395,7 @@ export default function ConversationThread({
               accessibilityLabel={!participant.isCurrentMember && !participant.hasLeft && participant.isAvailable
                 ? `Open ${participant.name}'s profile`
                 : undefined}
-              style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}
+              style={[styles.memberRow, { borderBottomColor: t.rule }]}
             >
               <Avatar initials={initials(participant.name)} photoUrl={participant.avatarUrl ?? undefined} size={32} />
               <View style={styles.memberText}>
@@ -425,7 +423,7 @@ export default function ConversationThread({
                           : current
                     )}
                     disabled={actionPending}
-                    style={[styles.memberRow, { borderBottomColor: t.ruleHairline }]}
+                    style={[styles.memberRow, { borderBottomColor: t.rule }]}
                   >
                     <Pressable
                       onPress={() => onOpenMemberProfile(person.id)}
@@ -595,7 +593,7 @@ export default function ConversationThread({
                       own ? styles.bubbleOwn : styles.bubbleOther,
                       {
                         backgroundColor: own ? t.brandGreenSoft : t.surfacePaper,
-                        borderColor: own ? alpha(t.brandGreen, 0.32) : t.ruleHairline,
+                        borderColor: own ? alpha(t.brandGreen, 0.32) : t.rule,
                       },
                     ]}
                   >
@@ -608,7 +606,7 @@ export default function ConversationThread({
                           styles.reactionChip,
                           {
                             backgroundColor: reaction.reactedByCurrentMember ? t.brandGreenSoft : t.surfacePaper,
-                            borderColor: reaction.reactedByCurrentMember ? t.brandGreen : t.ruleHairline,
+                            borderColor: reaction.reactedByCurrentMember ? t.brandGreen : t.rule,
                           },
                         ];
                         const label = <Text style={[styles.reactionText, { color: t.inkStrong }]}>{reaction.emoji} {reaction.count}</Text>;
@@ -631,7 +629,7 @@ export default function ConversationThread({
                     </View>
                   )}
                   {!restrictedDirect && reactionPickerMessageId === message.id && (
-                    <View style={[styles.reactionPicker, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                    <View style={[styles.reactionPicker, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
                       {REACTIONS.map((emoji) => {
                         const existing = message.reactions.find((reaction) => reaction.emoji === emoji);
                         return (
@@ -688,7 +686,7 @@ export default function ConversationThread({
                     )}
                   </View>
                   {messageActionsId === message.id && actionsAvailable && (
-                    <View style={[styles.messageActionsMenu, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+                    <View style={[styles.messageActionsMenu, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
                       <Pressable
                         onPress={() => beginEditing(message)}
                         accessibilityRole="button"
@@ -734,12 +732,21 @@ export default function ConversationThread({
       )}
 
       {!managing && restrictedDirect ? (
-        <View accessibilityRole="alert" style={[styles.unavailable, { backgroundColor: t.surfaceSoft, borderTopColor: t.ruleHairline }]}>
+        <View accessibilityRole="alert" style={[styles.unavailable, { backgroundColor: t.surfaceSoft, borderTopColor: t.rule }]}>
           <Text style={[styles.unavailableTitle, { color: t.inkStrong }]}>Messaging unavailable</Text>
           <Text style={[styles.unavailableText, { color: t.inkMuted }]}>This conversation is read-only. Existing messages remain available.</Text>
         </View>
       ) : !managing ? (
-      <View style={[styles.composer, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+      <View
+        style={[
+          styles.composer,
+          {
+            backgroundColor: t.surfacePaper,
+            borderTopColor: t.rule,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
         {editingMessage && (
           <View style={styles.editingHeader}>
             <View style={styles.editingHeaderText}>
@@ -761,7 +768,7 @@ export default function ConversationThread({
             </Pressable>
           </View>
         )}
-        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: composerError ? t.brandRed : t.ruleHairline }]}>
+        <View style={[styles.inputShell, { backgroundColor: t.surfacePage, borderColor: composerError ? t.brandRed : t.rule }]}>
           <TextInput
             ref={inputRef}
             value={composerContent}
@@ -828,79 +835,79 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerText: { flex: 1, minWidth: 0 },
-  title: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
-  subtitle: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
+  title: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
+  subtitle: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
   manageButton: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7 },
-  manageLabel: { fontFamily: sans(600), fontSize: 11.5 },
+  manageLabel: { fontFamily: sans(600), fontSize: 12.5 },
   inlineError: { borderBottomWidth: 1, paddingHorizontal: 16, paddingVertical: 8 },
-  inlineErrorText: { fontFamily: sans(400), fontSize: 11.5 },
+  inlineErrorText: { fontFamily: sans(400), fontSize: 12.5 },
   managePanel: { flex: 1 },
   manageContent: { padding: 16, paddingBottom: 30 },
-  manageHeading: { marginTop: 10, marginBottom: 8, fontFamily: sans(600), fontSize: 13.5 },
+  manageHeading: { marginTop: 10, marginBottom: 8, fontFamily: sans(600), fontSize: 15 },
   renameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  renameInput: { flex: 1, height: 40, borderWidth: 1, borderRadius: 7, paddingHorizontal: 11, fontFamily: sans(400), fontSize: 13 },
-  primaryAction: { minWidth: 64, height: 40, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  primaryActionLabel: { fontFamily: sans(600), fontSize: 12 },
+  renameInput: { flex: 1, height: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, fontFamily: sans(400), fontSize: 14.5 },
+  primaryAction: { minWidth: 64, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  primaryActionLabel: { fontFamily: sans(600), fontSize: 13 },
   memberRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, paddingVertical: 8 },
   memberText: { flex: 1, minWidth: 0 },
-  memberName: { fontFamily: sans(600), fontSize: 12.5 },
-  memberMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 10.5 },
+  memberName: { fontFamily: sans(600), fontSize: 13.5 },
+  memberMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  selectMark: { fontFamily: sans(700), fontSize: 12 },
-  wideAction: { minHeight: 40, borderRadius: 7, alignItems: 'center', justifyContent: 'center', marginTop: 12, paddingHorizontal: 14 },
-  actionError: { marginTop: 12, fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
-  leaveAction: { minHeight: 40, borderWidth: 1, borderRadius: 7, alignItems: 'center', justifyContent: 'center', marginTop: 24, paddingHorizontal: 14 },
-  leaveLabel: { fontFamily: sans(600), fontSize: 12 },
+  selectMark: { fontFamily: sans(700), fontSize: 13 },
+  wideAction: { minHeight: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 12, paddingHorizontal: 14 },
+  actionError: { marginTop: 12, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
+  leaveAction: { minHeight: 40, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 24, paddingHorizontal: 14 },
+  leaveLabel: { fontFamily: sans(600), fontSize: 13 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
-  stateTitle: { fontFamily: sans(600), fontSize: 15 },
-  stateText: { maxWidth: 300, textAlign: 'center', fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  stateTitle: { fontFamily: sans(600), fontSize: 16 },
+  stateText: { maxWidth: 300, textAlign: 'center', fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   retry: { marginTop: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8 },
-  retryText: { fontFamily: sans(600), fontSize: 12 },
+  retryText: { fontFamily: sans(600), fontSize: 13 },
   transcriptContent: { padding: 16 },
   loadOlderContainer: { paddingBottom: 12 },
   loadOlder: { alignSelf: 'center', minHeight: 36, borderWidth: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  loadOlderLabel: { fontFamily: sans(600), fontSize: 11.5 },
+  loadOlderLabel: { fontFamily: sans(600), fontSize: 12.5 },
   emptyConversation: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 48 },
   messageSeparator: { height: 12 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '88%' },
   messageRowOwn: { alignSelf: 'flex-end', justifyContent: 'flex-end' },
   messageColumn: { flexShrink: 1, alignItems: 'flex-start' },
   messageColumnOwn: { alignItems: 'flex-end' },
-  sender: { marginBottom: 4, marginLeft: 4, fontFamily: sans(500), fontSize: 11 },
+  sender: { marginBottom: 4, marginLeft: 4, fontFamily: sans(500), fontSize: 12 },
   bubble: { borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 },
   bubbleOwn: { borderRadius: 16, borderBottomRightRadius: 4 },
   bubbleOther: { borderRadius: 16, borderBottomLeftRadius: 4 },
-  messageText: { fontFamily: sans(400), fontSize: 14, lineHeight: 20 },
+  messageText: { fontFamily: sans(400), fontSize: 15, lineHeight: 21.5 },
   reactionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 5 },
   reactionChip: { minHeight: 26, borderWidth: 1, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 8 },
-  reactionText: { fontFamily: sans(500), fontSize: 11 },
+  reactionText: { fontFamily: sans(500), fontSize: 12 },
   reactionPicker: { flexDirection: 'row', borderWidth: 1, borderRadius: 18, marginTop: 6, paddingHorizontal: 4, paddingVertical: 3 },
   reactionOption: { width: 34, height: 32, alignItems: 'center', justifyContent: 'center' },
   reactionOptionText: { fontSize: 19 },
   messageMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  reactLabel: { marginTop: 4, fontFamily: sans(600), fontSize: 10.5 },
-  time: { marginTop: 4, paddingHorizontal: 4, fontFamily: sans(400), fontSize: 10.5 },
+  reactLabel: { marginTop: 4, fontFamily: sans(600), fontSize: 11.5 },
+  time: { marginTop: 4, paddingHorizontal: 4, fontFamily: sans(400), fontSize: 11.5 },
   messageActionsButton: { width: 44, height: 44, marginVertical: -12, alignItems: 'center', justifyContent: 'center' },
   messageActionsMenu: { flexDirection: 'row', alignSelf: 'flex-end', borderWidth: 1, borderRadius: 8, marginTop: 6, padding: 3 },
   messageAction: { minWidth: 88, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 },
-  messageActionLabel: { fontFamily: sans(600), fontSize: 11.5 },
-  systemMessage: { alignSelf: 'center', paddingVertical: 4, fontFamily: sans(400), fontSize: 11.5 },
+  messageActionLabel: { fontFamily: sans(600), fontSize: 12.5 },
+  systemMessage: { alignSelf: 'center', paddingVertical: 4, fontFamily: sans(400), fontSize: 12.5 },
   newMessagesButton: { alignSelf: 'center', minHeight: 34, justifyContent: 'center', borderRadius: 17, marginVertical: 8, paddingHorizontal: 16 },
-  newMessagesText: { fontFamily: sans(600), fontSize: 11.5 },
+  newMessagesText: { fontFamily: sans(600), fontSize: 12.5 },
   unavailable: { alignItems: 'center', borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 12 },
-  unavailableTitle: { fontFamily: sans(600), fontSize: 13 },
-  unavailableText: { marginTop: 3, textAlign: 'center', fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
-  composer: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
+  unavailableTitle: { fontFamily: sans(600), fontSize: 14.5 },
+  unavailableText: { marginTop: 3, textAlign: 'center', fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
+  composer: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10 },
   editingHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingBottom: 8 },
   editingHeaderText: { flex: 1, minWidth: 0 },
-  editingLabel: { fontFamily: sans(600), fontSize: 11.5 },
-  editingPreview: { marginTop: 2, fontFamily: sans(400), fontSize: 10.5 },
+  editingLabel: { fontFamily: sans(600), fontSize: 12.5 },
+  editingPreview: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   cancelEdit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  inputShell: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
-  input: { minHeight: 44, maxHeight: 112, paddingHorizontal: 12, paddingTop: 10, fontFamily: sans(400), fontSize: 14 },
+  inputShell: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  input: { minHeight: 44, maxHeight: 112, paddingHorizontal: 12, paddingTop: 10, fontFamily: sans(400), fontSize: 15 },
   composerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 6 },
-  counter: { flex: 1, paddingHorizontal: 6, fontFamily: sans(400), fontSize: 10.5 },
+  counter: { flex: 1, paddingHorizontal: 6, fontFamily: sans(400), fontSize: 11.5 },
   send: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   saveEdit: { width: 58, paddingHorizontal: 10 },
-  saveEditLabel: { fontFamily: sans(600), fontSize: 11 },
+  saveEditLabel: { fontFamily: sans(600), fontSize: 12 },
 });

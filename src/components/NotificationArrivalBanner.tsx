@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   icon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1, minWidth: 0 },
   label: { fontFamily: mono(500), fontSize: 9.5, letterSpacing: 0.3, marginBottom: 3 },
-  title: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
-  body: { marginTop: 2, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  title: { fontFamily: sans(600), fontSize: 15, lineHeight: 20 },
+  body: { marginTop: 2, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
   close: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
 });

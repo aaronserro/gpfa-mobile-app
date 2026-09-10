@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f7fafb"
+      "backgroundColor": "#050810"
     },
     "ios": {
       "bundleIdentifier": "org.gpfa.mobile",

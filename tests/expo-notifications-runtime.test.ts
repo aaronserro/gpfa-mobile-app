@@ -139,7 +139,7 @@ test('fixture mode remains a no-op before native permission or token APIs', () =
   assert.match(portalSource, /if \(!USING_REMOTE_API\)[\s\S]*fixture-disabled/);
   assert.match(
     hookSource,
-    /if \(!USING_REMOTE_API \|\| !memberId \|\| !enabled\) return;[\s\S]*await ensureMemberUpdatesChannel\(\)/
+    /if \(!USING_REMOTE_API \|\| !memberId \|\| !enabled\) return;[\s\S]*await ensureMemberUpdatesChannel\(platform\)/
   );
 });
 
@@ -147,8 +147,14 @@ test('silent refresh creates the Android channel before checking permission or r
   const hookSource = readFileSync(join(ROOT, 'src/hooks/useExpoNotificationsIntegration.ts'), 'utf8');
   assert.match(
     hookSource,
-    /await ensureMemberUpdatesChannel\(\);[\s\S]*await getNotificationPermissionState\(\);[\s\S]*getCurrentExpoPushToken/
+    /await ensureMemberUpdatesChannel\(platform\);[\s\S]*await getNotificationPermissionState\(\);[\s\S]*getCurrentExpoPushToken/
   );
+});
+
+test('channel setup does not dynamically enumerate the React Native namespace', () => {
+  const notificationsSource = readFileSync(join(ROOT, 'src/lib/expo-notifications.ts'), 'utf8');
+  assert.doesNotMatch(notificationsSource, /import\(['"]react-native['"]\)/);
+  assert.match(notificationsSource, /if \(platform !== 'android'\) return;/);
 });
 
 test('the app requests permission only from the explicit enable flow', () => {
@@ -157,7 +163,7 @@ test('the app requests permission only from the explicit enable flow', () => {
   assert.doesNotMatch(hookSource, /requestNotificationPermission/);
   assert.match(
     appSource,
-    /const completeEnablePushNotifications[\s\S]*await ensureMemberUpdatesChannel\(\);[\s\S]*await requestNotificationPermission\(\);[\s\S]*getCurrentExpoPushToken\(\)[\s\S]*registerPushDevice/
+    /const completeEnablePushNotifications[\s\S]*await ensureMemberUpdatesChannel\(platform\);[\s\S]*await requestNotificationPermission\(\);[\s\S]*getCurrentExpoPushToken\(\)[\s\S]*registerPushDevice/
   );
 });
 

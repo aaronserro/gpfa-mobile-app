@@ -7,12 +7,25 @@
  * something is typed, so the resting state is the institutional index.
  */
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { CaretRight, MagnifyingGlass } from '../ds/icons';
-import { ScreenHeader } from '../ds/primitives';
+import {
+  Buildings,
+  CaretRight,
+  ChartBar,
+  CrownSimple,
+  MagnifyingGlass,
+  PiggyBank,
+  type Icon,
+} from '../ds/icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import { Avatar, Chip, OrgMark, PageActions, PageHead } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { alpha, orgSectorRule, sans, trackDisplay } from '../ds/tokens';
+import { alpha, headerTop, orgSectorRule, sans, trackDisplay } from '../ds/tokens';
+import type { OrgSector } from '../ds/tokens';
+import { initials as initialsOf } from '../lib/format';
 import OrgProfile from '../components/directory/OrgProfile';
 import MessagesInbox from '../components/directory/MessagesInbox';
 import type {
@@ -42,7 +55,6 @@ export function jobsForOrg(jobs: JobListing[], org: MemberOrg): JobListing[] {
 export interface DirectoryScreenProps {
   member: Member;
   /** Returns from the Directory root to its parent navigation surface. */
-  onBack?: () => void;
   /** Alphabetical by `name` — the index groups them but does not sort them. */
   orgs: MemberOrg[];
   /** Everyone in the directory, flat; `orgId` joins each to an organization. */
@@ -95,9 +107,25 @@ export interface DirectoryScreenProps {
   onReachLatestMessage: (ordinal: number) => void;
 }
 
+/** The chip glyph per sector, paired with the rule colour that sector already owns. */
+const SECTOR_GLYPH: Record<OrgSector, Icon> = {
+  'Pension Fund': PiggyBank,
+  'Sovereign Wealth Fund': CrownSimple,
+  'Insurance Asset Manager': Buildings,
+  'Asset Manager': ChartBar,
+};
+const sectorGlyph = (sector: OrgSector): Icon => SECTOR_GLYPH[sector];
+
+/** The chip says the kind, not the full sector name — the card has little width. */
+const SECTOR_LABEL: Record<OrgSector, string> = {
+  'Pension Fund': 'Pension',
+  'Sovereign Wealth Fund': 'Sovereign',
+  'Insurance Asset Manager': 'Insurance',
+  'Asset Manager': 'Asset manager',
+};
+
 export default function DirectoryScreen({
   member,
-  onBack,
   orgs,
   people,
   jobs,
@@ -140,9 +168,24 @@ export default function DirectoryScreen({
 }: DirectoryScreenProps) {
   const { t } = useTheme();
 
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [orgId, setOrgId] = useState<string | null>(initialOrgId);
   const [section, setSection] = useState<DirectoryTab>(initialTab);
+
+  // Members / Messages also swaps on a horizontal swipe, so the switch above
+  // is a signpost rather than the only way across.
+  const sectionSwipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-24, 24])
+        .failOffsetY([-16, 16])
+        .onEnd((e) => {
+          if (e.translationX < -56) runOnJS(setSection)('messages');
+          else if (e.translationX > 56) runOnJS(setSection)('directory');
+        }),
+    []
+  );
 
   const q = query.trim().toLowerCase();
   const openOrg = orgId ? orgs.find((o) => o.id === orgId) ?? null : null;
@@ -201,7 +244,7 @@ export default function DirectoryScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
-      <ScreenHeader title="Directory" onBack={onBack} backLabel="Back to More">
+      <PageHead actions={<PageActions />} title="Member " em="directory.">
         <View style={styles.tabs}>
           {(
             [
@@ -231,29 +274,9 @@ export default function DirectoryScreen({
             );
           })}
         </View>
-        {section === 'directory' && (
-          <View
-            style={[
-              styles.searchBar,
-              { backgroundColor: t.surfacePage, borderColor: t.ruleHairline },
-            ]}
-          >
-            <MagnifyingGlass size={15} color={t.inkMuted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search organizations or people"
-              placeholderTextColor={t.inkFaint}
-              style={[styles.searchInput, { color: t.inkStrong }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
-          </View>
-        )}
-      </ScreenHeader>
-
+      </PageHead>
+      <GestureDetector gesture={sectionSwipe}>
+      <View style={styles.fill}>
       {section === 'messages' ? (
         <MessagesInbox
           member={member}
@@ -301,61 +324,129 @@ export default function DirectoryScreen({
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        {matchedOrgs.map((o) => (
-          <Pressable
-            key={o.id}
-            onPress={() => setOrgId(o.id)}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.row,
-              {
-                borderBottomColor: t.ruleHairline,
-                borderLeftColor: orgSectorRule(t, o.sector),
-                backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
-              },
-            ]}
-          >
-            <View style={styles.rowMain}>
-              <Text numberOfLines={1} style={[styles.rowName, { color: t.inkStrong }]}>
-                {o.name}
-              </Text>
-              <Text style={[styles.rowSub, { color: t.inkMuted }]}>{o.sector}</Text>
-            </View>
-            <Text style={[styles.rowCount, { color: t.inkMuted }]}>{o.members}</Text>
-          </Pressable>
-        ))}
-
-        {matchedPeople.map((p) => (
-          <View
-            key={p.id}
-            style={[
-              styles.row,
-              {
-                borderBottomColor: t.ruleHairline,
-                borderLeftColor: t.ruleStrong,
-              },
-            ]}
-          >
-            <Pressable onPress={() => onOpenMemberProfile(p.id)} style={styles.personMain} accessibilityRole="button">
-              <View style={styles.rowMain}>
-                <Text style={[styles.rowName, { color: t.inkStrong }]}>{p.name}</Text>
-                <Text numberOfLines={1} style={[styles.rowSub, { color: t.inkMuted }]}>
-                  {p.meta}
-                </Text>
-              </View>
-              <CaretRight size={14} color={t.ruleStrong} />
-            </Pressable>
-            <Pressable
-              onPress={() => openMessagesFor(p.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`Message ${p.name}`}
-              hitSlop={6}
-              style={styles.messageAction}
-            >
-              <Text style={[styles.messageActionText, { color: t.brandGreen }]}>Message</Text>
-            </Pressable>
+        <View style={styles.searchWrap}>
+          <View style={[styles.searchBar, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
+            <MagnifyingGlass size={16} color={t.inkMuted} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search organizations or people"
+              placeholderTextColor={t.inkMuted}
+              style={[styles.searchInput, { color: t.inkStrong }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
           </View>
-        ))}
+        </View>
+        <Text style={[styles.count, { color: t.inkMuted }]}>
+          {matchedOrgs.length} {matchedOrgs.length === 1 ? 'organization' : 'organizations'}
+        </Text>
+        <View style={styles.cards}>
+          {matchedOrgs.map((o) => {
+            const roster = people.filter((person) => person.orgId === o.id);
+            return (
+              <View
+                key={o.id}
+                style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}
+              >
+                <Pressable
+                  onPress={() => setOrgId(o.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={o.fullName ?? o.name}
+                  android_ripple={{ color: alpha(t.inkStrong, 0.08) }}
+                  style={({ pressed }) => [
+                    styles.cardBody,
+                    pressed && Platform.OS !== 'android'
+                      ? { backgroundColor: t.surfaceSubtle }
+                      : null,
+                  ]}
+                >
+                  <View style={styles.cardTop}>
+                    <OrgMark initials={o.short} logoUrl={o.logoUrl} size={46} />
+                    <View style={styles.flex}>
+                      <Text style={[styles.orgName, { color: t.inkStrong }]}>
+                        {o.fullName ?? o.name}
+                      </Text>
+                      <View style={styles.cardChips}>
+                        <Chip Glyph={sectorGlyph(o.sector)} glyphColor={orgSectorRule(t, o.sector)}>
+                          {SECTOR_LABEL[o.sector]}
+                        </Chip>
+                        <Chip>{o.country}</Chip>
+                      </View>
+                    </View>
+                  </View>
+                  {!!o.blurb && (
+                    <Text numberOfLines={2} style={[styles.orgBlurb, { color: t.inkMuted }]}>
+                      {o.blurb}
+                    </Text>
+                  )}
+                </Pressable>
+
+                <View style={[styles.cardFoot, { borderTopColor: t.rule }]}>
+                  <View style={styles.avatars}>
+                    {roster.slice(0, 3).map((person, index) => (
+                      <View key={person.id} style={index > 0 ? styles.avatarStacked : null}>
+                        <Avatar
+                          initials={person.initials ?? initialsOf(person.name)}
+                          photoUrl={person.photoUrl}
+                          size={28}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[styles.memberCount, { color: t.inkBody }]}>
+                    {o.members} {o.members === 1 ? 'member' : 'members'}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+
+          {matchedPeople.map((p) => (
+            <View
+              key={p.id}
+              style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}
+            >
+              <Pressable
+                onPress={() => onOpenMemberProfile(p.id)}
+                accessibilityRole="button"
+                android_ripple={{ color: alpha(t.inkStrong, 0.08) }}
+                style={({ pressed }) => [
+                  styles.personRow,
+                  pressed && Platform.OS !== 'android'
+                    ? { backgroundColor: t.surfaceSubtle }
+                    : null,
+                ]}
+              >
+                <Avatar
+                  initials={p.initials ?? initialsOf(p.name)}
+                  photoUrl={p.photoUrl}
+                  size={40}
+                />
+                <View style={styles.flex}>
+                  <Text style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
+                  <Text numberOfLines={1} style={[styles.personMeta, { color: t.inkMuted }]}>
+                    {p.meta}
+                  </Text>
+                </View>
+                <CaretRight size={16} color={t.ruleStrong} />
+              </Pressable>
+              <View style={[styles.cardFoot, { borderTopColor: t.rule }]}>
+                <Pressable
+                  onPress={() => openMessagesFor(p.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${p.name}`}
+                  hitSlop={6}
+                  style={({ pressed }) => (pressed ? styles.pressed : null)}
+                >
+                  <Text style={[styles.messageActionText, { color: t.brandGreen }]}>Message</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
 
         {orgCount === 0 && matchedPeople.length === 0 && (
           <Text style={[styles.empty, { color: t.inkMuted }]}>
@@ -364,6 +455,8 @@ export default function DirectoryScreen({
         )}
       </ScrollView>
       )}
+      </View>
+      </GestureDetector>
     </View>
   );
 }
@@ -373,53 +466,69 @@ const styles = StyleSheet.create({
 
   tabs: { flexDirection: 'row', gap: 22, paddingTop: 4 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 8, borderBottomWidth: 2 },
-  tabLabel: { fontFamily: sans(600), fontSize: 13 },
+  tabLabel: { fontFamily: sans(600), fontSize: 14.5 },
   tabBadge: { minWidth: 19, height: 19, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   tabBadgeText: { fontFamily: sans(600), fontSize: 9.5 },
 
+  topStrip: { paddingHorizontal: 16, borderBottomWidth: 1 },
+  stripSpacer: { flex: 1 },
+  searchWrap: { paddingHorizontal: 16, paddingTop: 16 },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    height: 34,
-    borderRadius: 17,
+    gap: 10,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    marginTop: 12,
+    paddingHorizontal: 14,
   },
   searchInput: {
     flex: 1,
     height: '100%',
     padding: 0,
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 15,
   },
 
   list: { paddingBottom: 24 },
+  count: { paddingTop: 16, paddingHorizontal: 16, fontFamily: sans(400), fontSize: 14 },
 
-  row: {
+  flex: { flex: 1, minWidth: 0 },
+  pressed: { opacity: 0.7 },
+  cards: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
+  card: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  cardBody: { padding: 16 },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  orgName: {
+    fontFamily: sans(600),
+    fontSize: 18,
+    lineHeight: 23,
+    letterSpacing: trackDisplay(18),
+  },
+  cardChips: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  orgBlurb: { marginTop: 12, fontFamily: sans(400), fontSize: 14.5, lineHeight: 22 },
+  cardFoot: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 11,
-    paddingRight: 20,
-    paddingLeft: 17,
-    borderBottomWidth: 1,
-    borderLeftWidth: 3,
+    gap: 10,
+    borderTopWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
-  rowMain: { flex: 1, minWidth: 0 },
-  personMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rowName: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
-  rowSub: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
-  rowCount: { fontFamily: sans(500), fontSize: 12, fontVariant: ['tabular-nums'] },
-  messageAction: { paddingVertical: 6, paddingLeft: 4 },
-  messageActionText: { fontFamily: sans(600), fontSize: 11.5 },
+  avatars: { flexDirection: 'row' },
+  // The stack overlaps by a third so three fit without crowding the count.
+  avatarStacked: { marginLeft: -8 },
+  memberCount: { fontFamily: sans(400), fontSize: 14 },
+  personRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
+  personName: { fontFamily: sans(600), fontSize: 16 },
+  personMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 14 },
+  messageActionText: { fontFamily: sans(600), fontSize: 14 },
 
   empty: {
     paddingVertical: 40,
     paddingHorizontal: 24,
     textAlign: 'center',
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 14.5,
   },
 });

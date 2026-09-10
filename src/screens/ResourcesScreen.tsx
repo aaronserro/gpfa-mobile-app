@@ -11,7 +11,6 @@ import {
 import {
   ActivityIndicator,
   Animated,
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,7 +32,14 @@ import {
   Play,
   X,
 } from '../ds/icons';
-import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import {
+  Avatar,
+  MastheadMeta,
+  PageActions,
+  PageHead,
+  StickyTitle,
+  useStickyScroll,
+} from '../ds/primitives';
 import { useSheetTransition } from '../hooks/useSheetTransition';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
@@ -61,7 +67,6 @@ import type {
   JobListing,
   LibraryResource,
   Member,
-  NewsStory,
   PodcastEpisode,
   PodcastPerson,
   PodcastTranscriptSegment,
@@ -132,8 +137,8 @@ const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
         styles.epRow,
         {
           backgroundColor: t.surfacePaper,
-          borderTopColor: t.ruleHairline,
-          borderBottomColor: t.ruleHairline,
+          borderTopColor: t.rule,
+          borderBottomColor: t.rule,
         },
         first && styles.epRowFirst,
         last && styles.epRowLast,
@@ -146,7 +151,7 @@ const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
         style={[
           styles.epPlay,
           {
-            borderColor: playing ? t.surfaceAnchor : t.ruleHairline,
+            borderColor: playing ? t.surfaceAnchor : t.rule,
             backgroundColor: playing ? t.surfaceAnchor : t.surfacePaper,
           },
           (!episode.audioUrl || loading) && styles.disabled,
@@ -165,7 +170,7 @@ const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
         <Text numberOfLines={1} style={[styles.epTitle, { color: t.inkStrong }]}>
           {episode.title}
         </Text>
-        <MastheadMeta size={10}>{episodeMeta(episode)}</MastheadMeta>
+        <MastheadMeta size={11}>{episodeMeta(episode)}</MastheadMeta>
         <View style={styles.epFoot}>
           <Waveform
             peaks={episode.peaks ?? fallbackPeaks(episode.slug)}
@@ -199,8 +204,8 @@ export interface ResourcesScreenProps {
   resources: LibraryResource[];
   episodes: PodcastEpisode[];
   jobs: JobListing[];
-  /** Resource-scoped News Radar stories shown on the hub and in the News branch. */
-  news: NewsStory[];
+  /** Canonical total from the same paginated News Radar feed opened by this card. */
+  newsCount: number;
   /** Set to open the screen straight on a sub-view — the now-playing bar uses it. */
   initialView?: View_;
   /** Episode to show on mount, e.g. from the now-playing bar's Episode action. */
@@ -236,7 +241,7 @@ export default function ResourcesScreen({
   resources,
   episodes,
   jobs,
-  news,
+  newsCount,
   initialView = 'hub',
   initialEpisodeSlug = null,
   initialJobId = null,
@@ -252,6 +257,7 @@ export default function ResourcesScreen({
   onGoNews,
 }: ResourcesScreenProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const insets = useSafeAreaInsets();
   const player = usePodcastPlayer();
 
@@ -442,7 +448,7 @@ export default function ResourcesScreen({
   };
 
   const sortToggle = (
-    <View style={[styles.segment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+    <View style={[styles.segment, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
       {(['newest', 'oldest'] as SortId[]).map((id) => {
         const on = sortId === id;
         return (
@@ -467,8 +473,18 @@ export default function ResourcesScreen({
 
   /* ── hub ──────────────────────────────────────────────────────────────── */
   const hub = view === 'hub' ? (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <ScreenHeader title="Resources" accent="." onBack={onBack} backLabel="Back to More" />
+    <Animated.ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+      {...handlers}
+    >
+      <PageHead
+        title="Resources"
+        em="."
+        onBack={onBack}
+        backLabel="Back to More"
+        actions={<PageActions />}
+      />
 
       <View style={styles.hubCards}>
         <HubCard
@@ -504,21 +520,25 @@ export default function ResourcesScreen({
           color={t.brandAmber}
           title="News Radar"
           body="Coverage the secretariat tracks across the membership, plus GPFA's own publications."
-          meta={`${news.length} STOR${news.length === 1 ? 'Y' : 'IES'}`}
+          meta={`${newsCount} STOR${newsCount === 1 ? 'Y' : 'IES'}`}
           onPress={() => onGoNews?.()}
         />
       </View>
-    </ScrollView>
+    </Animated.ScrollView>
   ) : null;
 
   /* ── library ──────────────────────────────────────────────────────────── */
   const library = view === 'library' ? (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <Animated.ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+      {...handlers}
+    >
       <SubHead title="Resource library" onBack={() => setView('hub')} />
 
       <View style={styles.controls}>
         <View
-          style={[styles.search, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+          style={[styles.search, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
         >
           <MagnifyingGlass size={15} color={t.inkFaint} />
           <TextInput
@@ -552,7 +572,7 @@ export default function ResourcesScreen({
                 style={[
                   styles.typeFilter,
                   {
-                    borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                    borderColor: selected ? t.surfaceAnchor : t.rule,
                     backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
                   },
                 ]}
@@ -570,7 +590,7 @@ export default function ResourcesScreen({
           })}
         </ScrollView>
         <View style={styles.controlRow}>
-          <MastheadMeta size={10.5}>
+          <MastheadMeta size={11.5}>
             {q || resourceType !== ALL_RESOURCE_TYPES
               ? `${filtered.length} OF ${resources.length} RESOURCES`
               : `${resources.length} RESOURCES`}
@@ -579,7 +599,7 @@ export default function ResourcesScreen({
         </View>
       </View>
 
-      <View style={[styles.band, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+      <View style={[styles.band, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
         {filtered.map((r, i) => {
           const skin = resourceTypeStyle(t, r.type);
           return (
@@ -588,7 +608,7 @@ export default function ResourcesScreen({
               onPress={() => setSheet({ kind: 'resource', id: r.id })}
               style={({ pressed }) => [
                 styles.docRow,
-                i > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                i > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
                 pressed && { backgroundColor: alpha(t.surfaceSoft, 0.45) },
               ]}
             >
@@ -604,7 +624,7 @@ export default function ResourcesScreen({
                   >
                     <Text style={[styles.typeChipText, { color: skin.ink }]}>{r.type}</Text>
                   </View>
-                  <MastheadMeta size={10}>
+                  <MastheadMeta size={11}>
                     {r.updatedAt}
                     {r.pages ? ` · ${r.pages}P` : ''}
                   </MastheadMeta>
@@ -627,19 +647,20 @@ export default function ResourcesScreen({
                 setQuery('');
                 setResourceType(ALL_RESOURCE_TYPES);
               }}
-              style={[styles.clearFilters, { borderColor: t.ruleHairline }]}
+              style={[styles.clearFilters, { borderColor: t.rule }]}
             >
               <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Clear filters</Text>
             </Pressable>
           </View>
         )}
       </View>
-    </ScrollView>
+    </Animated.ScrollView>
   ) : null;
 
   /* ── podcasts ─────────────────────────────────────────────────────────── */
   const podcasts = view === 'podcasts' ? (
-    <FlatList
+    <Animated.FlatList
+      {...handlers}
       data={listEpisodes}
       keyExtractor={(episode) => episode.slug}
       renderItem={renderPodcastEpisode}
@@ -655,13 +676,13 @@ export default function ResourcesScreen({
           {!!featured && (
             <View style={styles.featuredWrap}>
               <View
-                style={[styles.featured, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+                style={[styles.featured, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
               >
                 <View style={styles.featuredTop}>
                   <View style={[styles.newChip, { borderColor: alpha(t.brandRed, 0.5) }]}>
                     <Text style={[styles.newChipText, { color: t.brandRed }]}>New</Text>
                   </View>
-                  <MastheadMeta size={11}>{episodeMeta(featured)}</MastheadMeta>
+                  <MastheadMeta size={12}>{episodeMeta(featured)}</MastheadMeta>
                 </View>
                 <Pressable onPress={() => setSheet({ kind: 'episode', slug: featured.slug })}>
                   <Text style={[styles.featuredTitle, { color: t.inkStrong }]}>{featured.title}</Text>
@@ -694,7 +715,7 @@ export default function ResourcesScreen({
             </View>
           )}
           <View style={[styles.controlRow, styles.podControls]}>
-            <MastheadMeta size={10.5}>{episodes.length} EPISODES</MastheadMeta>
+            <MastheadMeta size={11.5}>{episodes.length} EPISODES</MastheadMeta>
             {sortToggle}
           </View>
         </>
@@ -723,7 +744,7 @@ export default function ResourcesScreen({
               <Text style={[styles.typeChipText, { color: skin.ink }]}>{sheetResource.type}</Text>
             </View>
             <Text style={[styles.sheetTitle, { color: t.inkStrong }]}>{sheetResource.title}</Text>
-            <MastheadMeta size={11} style={styles.sheetMeta}>
+            <MastheadMeta size={12} style={styles.sheetMeta}>
               {[
                 sheetResource.authors,
                 sheetResource.updatedAt,
@@ -738,7 +759,7 @@ export default function ResourcesScreen({
               <View
                 style={[
                   styles.artifactCard,
-                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                  { borderColor: t.rule, backgroundColor: t.surfaceSoft },
                 ]}
               >
                 <FileText size={24} color={t.brandGreen} />
@@ -755,7 +776,7 @@ export default function ResourcesScreen({
               <View
                 style={[
                   styles.artifactCard,
-                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                  { borderColor: t.rule, backgroundColor: t.surfaceSoft },
                 ]}
               >
                 <ArrowSquareOut size={24} color={t.brandGreen} />
@@ -770,7 +791,7 @@ export default function ResourcesScreen({
               <View
                 style={[
                   styles.artifactCard,
-                  { borderColor: t.ruleHairline, backgroundColor: t.surfaceSoft },
+                  { borderColor: t.rule, backgroundColor: t.surfaceSoft },
                 ]}
               >
                 <FileText size={24} color={t.inkFaint} />
@@ -786,7 +807,7 @@ export default function ResourcesScreen({
             {!!sheetResource.tags.length && (
               <View style={styles.tags}>
                 {sheetResource.tags.map((tag) => (
-                  <View key={tag} style={[styles.tag, { borderColor: t.ruleHairline }]}>
+                  <View key={tag} style={[styles.tag, { borderColor: t.rule }]}>
                     <Text style={[styles.tagText, { color: t.inkMuted }]}>{tag}</Text>
                   </View>
                 ))}
@@ -815,7 +836,7 @@ export default function ResourcesScreen({
                   style={[
                     canPreview ? styles.secondaryBtn : styles.primaryBtn,
                     canPreview
-                      ? { borderColor: t.ruleHairline }
+                      ? { borderColor: t.rule }
                       : { backgroundColor: t.surfaceAnchor },
                     (resourceActionPending || !onSaveResource) && styles.disabled,
                   ]}
@@ -862,9 +883,9 @@ export default function ResourcesScreen({
             ) : null}
 
             {sheetRelatedResources.length ? (
-              <View style={[styles.relatedBlock, { borderTopColor: t.ruleHairline }]}>
+              <View style={[styles.relatedBlock, { borderTopColor: t.rule }]}>
                 <Text style={[styles.relatedHeading, { color: t.inkStrong }]}>More in the library</Text>
-                <View style={[styles.relatedList, { borderColor: t.ruleHairline }]}>
+                <View style={[styles.relatedList, { borderColor: t.rule }]}>
                   {sheetRelatedResources.map((resource, index) => (
                     <Pressable
                       key={resource.id}
@@ -874,7 +895,7 @@ export default function ResourcesScreen({
                       }}
                       style={({ pressed }) => [
                         styles.relatedRow,
-                        index > 0 && { borderTopColor: t.ruleHairline, borderTopWidth: 1 },
+                        index > 0 && { borderTopColor: t.rule, borderTopWidth: 1 },
                         pressed && { backgroundColor: t.surfaceSoft },
                       ]}
                     >
@@ -882,7 +903,7 @@ export default function ResourcesScreen({
                         <Text style={[styles.relatedTitle, { color: t.inkStrong }]} numberOfLines={2}>
                           {resource.title}
                         </Text>
-                        <MastheadMeta size={10}>
+                        <MastheadMeta size={11}>
                           {resource.type}
                         </MastheadMeta>
                       </View>
@@ -914,13 +935,13 @@ export default function ResourcesScreen({
         <Text style={[styles.typeChipText, { color: t.brandRed }]}>Episode</Text>
       </View>
       <Text style={[styles.sheetTitle, { color: t.inkStrong }]}>{sheetEpisode.title}</Text>
-      <MastheadMeta size={11} style={styles.sheetMeta}>
+      <MastheadMeta size={12} style={styles.sheetMeta}>
         {episodeMeta(sheetEpisode)}
       </MastheadMeta>
       <Text style={[styles.sheetBody, { color: t.inkBody }]}>{sheetEpisode.summary}</Text>
 
       {!!sheetEpisode.people.length && (
-        <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
+        <View style={[styles.peopleBlock, { borderTopColor: t.rule }]}>
           <View style={styles.peopleList}>
             {sheetEpisode.people.map((p) => (
               <Pressable
@@ -983,7 +1004,7 @@ export default function ResourcesScreen({
           <Pressable
             onPress={() => void openTranscript(sheetEpisode)}
             disabled={transcript?.slug === sheetEpisode.slug && transcript.loading}
-            style={[styles.secondaryBtn, { borderColor: t.ruleHairline }]}
+            style={[styles.secondaryBtn, { borderColor: t.rule }]}
           >
             <Article size={15} color={t.brandGreen} />
             <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>
@@ -999,7 +1020,7 @@ export default function ResourcesScreen({
           <Pressable
             onPress={() => void downloadPodcast('audio', sheetEpisode)}
             disabled={downloadKind !== null}
-            style={[styles.secondaryBtn, { borderColor: t.ruleHairline }, downloadKind && styles.disabled]}
+            style={[styles.secondaryBtn, { borderColor: t.rule }, downloadKind && styles.disabled]}
           >
             {downloadKind === 'audio' ? (
               <ActivityIndicator size="small" color={t.brandGreen} />
@@ -1013,7 +1034,7 @@ export default function ResourcesScreen({
           <Pressable
             onPress={() => void downloadPodcast('transcript', sheetEpisode)}
             disabled={downloadKind !== null}
-            style={[styles.secondaryBtn, { borderColor: t.ruleHairline }, downloadKind && styles.disabled]}
+            style={[styles.secondaryBtn, { borderColor: t.rule }, downloadKind && styles.disabled]}
           >
             {downloadKind === 'transcript' ? (
               <ActivityIndicator size="small" color={t.brandGreen} />
@@ -1041,7 +1062,7 @@ export default function ResourcesScreen({
       ) : null}
       {transcript?.slug === sheetEpisode.slug && !transcript.loading ? (
         transcript.error ? (
-          <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
+          <View style={[styles.peopleBlock, { borderTopColor: t.rule }]}>
             <Text style={[styles.sheetBody, { color: t.brandRed }]}>{transcript.error}</Text>
           </View>
         ) : transcript.segments.length ? (
@@ -1054,7 +1075,7 @@ export default function ResourcesScreen({
             manualScrollVersion={manualScrollVersion}
           />
         ) : (
-          <View style={[styles.peopleBlock, { borderTopColor: t.ruleHairline }]}>
+          <View style={[styles.peopleBlock, { borderTopColor: t.rule }]}>
             <Text style={[styles.sheetBody, { color: t.inkMuted }]}>Transcript unavailable.</Text>
           </View>
         )
@@ -1097,8 +1118,36 @@ export default function ResourcesScreen({
         )
     : null;
 
+  // One bar for whichever pane is showing — only one renders at a time, so they
+  // can share the scroll driver.
+  const sticky =
+    view === 'hub'
+      ? { title: 'Resources', em: '.', onBack, backLabel: 'Back to More' }
+      : view === 'library'
+        ? { title: 'Resource library', onBack: () => setView('hub'), backLabel: 'Back to resources' }
+        : view === 'podcasts'
+          ? {
+              title: 'Podcasts',
+              onBack: () => {
+                if (navigationRequest?.origin === 'home') onBack?.();
+                else setView('hub');
+              },
+              backLabel: 'Back to resources',
+            }
+          : null;
+
   return (
     <View style={styles.fill}>
+      {!!sticky && (
+        <StickyTitle
+          scrollY={scrollY}
+          title={sticky.title}
+          em={sticky.em}
+          onBack={sticky.onBack}
+          backLabel={sticky.backLabel}
+          actions={<PageActions />}
+        />
+      )}
       {view === 'hub' && hub}
       {view === 'library' && library}
       {view === 'podcasts' && podcasts}
@@ -1134,7 +1183,7 @@ function HubCard({
       onPress={onPress}
       style={({ pressed }) => [
         styles.hubCard,
-        { backgroundColor: t.surfacePaper, borderColor: pressed ? t.ruleStrong : t.ruleHairline },
+        { backgroundColor: t.surfacePaper, borderColor: pressed ? t.ruleStrong : t.rule },
       ]}
     >
       {/* The library card's patterned band, flattened to the soft tint plus the
@@ -1149,7 +1198,7 @@ function HubCard({
         <Text style={[styles.hubTitle, { color: t.inkStrong }]}>{title}</Text>
         <Text style={[styles.hubText, { color: t.inkMuted }]}>{body}</Text>
         <View style={styles.hubFoot}>
-          <MastheadMeta size={10.5}>{meta}</MastheadMeta>
+          <MastheadMeta size={11.5}>{meta}</MastheadMeta>
           <ArrowRight size={16} color={t.brandGreen} />
         </View>
       </View>
@@ -1158,7 +1207,14 @@ function HubCard({
 }
 
 function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
-  return <ScreenHeader title={title} onBack={onBack} backLabel="Back to resources" />;
+  return (
+    <PageHead
+      title={title}
+      onBack={onBack}
+      backLabel="Back to resources"
+      actions={<PageActions />}
+    />
+  );
 }
 
 function resourceExternalHost(href: string): string {
@@ -1214,7 +1270,7 @@ function Sheet_({
           },
         ]}
       >
-        <View style={[styles.sheetHead, { borderBottomColor: t.ruleHairline }]}>
+        <View style={[styles.sheetHead, { borderBottomColor: t.rule }]}>
           <Pressable
             onPress={() => requestClose()}
             disabled={closing}
@@ -1282,7 +1338,7 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
 
   hubCards: { paddingHorizontal: 20, paddingTop: 12, gap: 14 },
-  hubCard: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  hubCard: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   hubBand: {
     height: 96,
     justifyContent: 'flex-end',
@@ -1306,21 +1362,21 @@ const styles = StyleSheet.create({
   },
   hubLabelText: {
     fontFamily: sans(600),
-    fontSize: 10.5,
+    fontSize: 11.5,
     textTransform: 'uppercase',
     letterSpacing: 0.84,
   },
   hubBody: { padding: 16, paddingTop: 14 },
   hubTitle: {
     fontFamily: sans(600),
-    fontSize: 17,
-    letterSpacing: trackDisplay(17),
+    fontSize: 19,
+    letterSpacing: trackDisplay(19),
   },
   hubText: {
     marginTop: 5,
     fontFamily: sans(400),
-    fontSize: 12.5,
-    lineHeight: 19,
+    fontSize: 13.5,
+    lineHeight: 20.5,
   },
   hubFoot: {
     marginTop: 10,
@@ -1337,7 +1393,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     paddingHorizontal: 12,
   },
-  typeFilterText: { fontFamily: sans(500), fontSize: 11.5 },
+  typeFilterText: { fontFamily: sans(500), fontSize: 12.5 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1352,7 +1408,7 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 0,
     fontFamily: sans(400),
-    fontSize: 13.5,
+    fontSize: 15,
   },
   controlRow: {
     flexDirection: 'row',
@@ -1373,7 +1429,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentText: { fontSize: 11.5 },
+  segmentText: { fontSize: 12.5 },
 
   band: { marginTop: 10, borderTopWidth: 1, borderBottomWidth: 1 },
 
@@ -1396,9 +1452,9 @@ const styles = StyleSheet.create({
   docBody: { flex: 1 },
   docTitle: {
     fontFamily: sans(600),
-    fontSize: 14,
-    lineHeight: 19,
-    letterSpacing: trackDisplay(14),
+    fontSize: 15,
+    lineHeight: 20.5,
+    letterSpacing: trackDisplay(15),
   },
   docMetaRow: {
     flexDirection: 'row',
@@ -1422,11 +1478,11 @@ const styles = StyleSheet.create({
   },
 
   empty: { paddingVertical: 36, paddingHorizontal: 24, alignItems: 'center' },
-  emptyTitle: { fontFamily: sans(500), fontSize: 14 },
+  emptyTitle: { fontFamily: sans(500), fontSize: 15 },
   emptyBody: {
     marginTop: 6,
     fontFamily: sans(400),
-    fontSize: 12.5,
+    fontSize: 13.5,
     textAlign: 'center',
   },
   clearFilters: {
@@ -1454,7 +1510,7 @@ const styles = StyleSheet.create({
   },
   newChipText: {
     fontFamily: sans(600),
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -1468,8 +1524,8 @@ const styles = StyleSheet.create({
   featuredBody: {
     marginTop: 8,
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 20.8,
+    fontSize: 14.5,
+    lineHeight: 23,
   },
   featuredFoot: {
     marginTop: 14,
@@ -1481,10 +1537,10 @@ const styles = StyleSheet.create({
   playbackError: {
     marginTop: 10,
     fontFamily: sans(400),
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18.5,
   },
-  people: { flex: 1, fontFamily: sans(400), fontSize: 12 },
+  people: { flex: 1, fontFamily: sans(400), fontSize: 13 },
   downloadActions: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featuredPlay: {
     width: 44,
@@ -1513,8 +1569,8 @@ const styles = StyleSheet.create({
   epBody: { flex: 1, minWidth: 0 },
   epTitle: {
     fontFamily: sans(500),
-    fontSize: 13.5,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 20,
   },
   epFoot: {
     flexDirection: 'row',
@@ -1524,7 +1580,7 @@ const styles = StyleSheet.create({
   },
   epProgress: {
     fontFamily: sans(500),
-    fontSize: 10.5,
+    fontSize: 11.5,
   },
 
   sheetWrap: { ...StyleSheet.absoluteFillObject, zIndex: 80, justifyContent: 'flex-end' },
@@ -1556,8 +1612,8 @@ const styles = StyleSheet.create({
   sheetBody: {
     marginTop: 12,
     fontFamily: sans(400),
-    fontSize: 13.5,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24.5,
   },
   artifactCard: {
     flexDirection: 'row',
@@ -1565,12 +1621,12 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 16,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 14,
   },
   artifactBody: { flex: 1, minWidth: 0 },
-  artifactTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
-  artifactDescription: { marginTop: 4, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  artifactTitle: { fontFamily: sans(600), fontSize: 15, lineHeight: 20 },
+  artifactDescription: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1583,16 +1639,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 8,
   },
-  tagText: { fontFamily: sans(400), fontSize: 10.5 },
+  tagText: { fontFamily: sans(400), fontSize: 11.5 },
 
   peopleBlock: { marginTop: 18, paddingTop: 14, borderTopWidth: 1 },
   peopleList: { marginTop: 10, gap: 10 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   personBody: { flex: 1 },
-  personName: { fontFamily: sans(600), fontSize: 13 },
-  personRole: { fontFamily: sans(400), fontSize: 11.5 },
+  personName: { fontFamily: sans(600), fontSize: 14.5 },
+  personRole: { fontFamily: sans(400), fontSize: 12.5 },
   transcriptSegment: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
-  transcriptTime: { width: 42, fontFamily: sans(500), fontSize: 11, lineHeight: 20 },
+  transcriptTime: { width: 42, fontFamily: sans(500), fontSize: 12, lineHeight: 22 },
   transcriptText: { flex: 1, marginTop: 0 },
 
   sheetActions: {
@@ -1612,7 +1668,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     fontFamily: sans(500),
-    fontSize: 13.5,
+    fontSize: 15,
     color: '#fff',
   },
   secondaryBtn: {
@@ -1624,9 +1680,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
   },
-  secondaryBtnText: { fontFamily: sans(400), fontSize: 13 },
+  secondaryBtnText: { fontFamily: sans(400), fontSize: 14.5 },
   relatedBlock: { marginTop: 22, paddingTop: 18, borderTopWidth: 1 },
-  relatedHeading: { fontFamily: sans(600), fontSize: 15, lineHeight: 20 },
+  relatedHeading: { fontFamily: sans(600), fontSize: 16, lineHeight: 21.5 },
   relatedList: { marginTop: 10, borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
   relatedRow: {
     minHeight: 64,
@@ -1637,5 +1693,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   relatedBody: { flex: 1, minWidth: 0 },
-  relatedTitle: { fontFamily: sans(500), fontSize: 12.5, lineHeight: 17, marginBottom: 4 },
+  relatedTitle: { fontFamily: sans(500), fontSize: 13.5, lineHeight: 18.5, marginBottom: 4 },
 });

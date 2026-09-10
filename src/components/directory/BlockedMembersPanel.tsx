@@ -45,7 +45,7 @@ export default function BlockedMembersPanel({
           <Text style={[styles.stateText, { color: t.inkMuted }]}>Loading blocked members…</Text>
         </View>
       ) : error && members.length === 0 ? (
-        <View accessibilityRole="alert" style={[styles.state, styles.stateCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+        <View accessibilityRole="alert" style={[styles.state, styles.stateCard, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
           <Text style={[styles.stateTitle, { color: t.inkStrong }]}>Blocked members unavailable</Text>
           <Text style={[styles.stateText, { color: t.inkMuted }]}>{error.message}</Text>
           <Pressable
@@ -57,16 +57,16 @@ export default function BlockedMembersPanel({
           </Pressable>
         </View>
       ) : members.length === 0 ? (
-        <View style={[styles.stateCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+        <View style={[styles.stateCard, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
           <Text style={[styles.stateText, { color: t.inkMuted }]}>You have not blocked any members.</Text>
         </View>
       ) : (
-        <View style={[styles.list, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+        <View style={[styles.list, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
           {members.map((member) => {
             const available = member.availability === 'active';
             const name = available ? member.name : 'Unavailable member';
             return (
-              <View key={member.memberId} style={[styles.row, { borderBottomColor: t.ruleHairline }]}>
+              <View key={member.memberId} style={[styles.row, { borderBottomColor: t.rule }]}>
                 <Avatar
                   initials={available ? initials(member.name) : '—'}
                   photoUrl={available ? member.avatarUrl ?? undefined : undefined}
@@ -118,19 +118,19 @@ export default function BlockedMembersPanel({
 
 const styles = StyleSheet.create({
   section: { marginTop: 30, gap: 12 },
-  heading: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  help: { marginTop: 5, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
+  heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  help: { marginTop: 5, fontFamily: sans(400), fontSize: 13, lineHeight: 19.5 },
   state: { alignItems: 'center', gap: 8, paddingVertical: 18 },
-  stateCard: { borderWidth: 1, borderRadius: 8, padding: 16 },
-  stateTitle: { fontFamily: sans(600), fontSize: 13.5 },
-  stateText: { fontFamily: sans(400), fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  retry: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderRadius: 7, paddingHorizontal: 14 },
-  retryText: { fontFamily: sans(600), fontSize: 12 },
+  stateCard: { borderWidth: 1, borderRadius: 12, padding: 16 },
+  stateTitle: { fontFamily: sans(600), fontSize: 15 },
+  stateText: { fontFamily: sans(400), fontSize: 13, lineHeight: 19.5, textAlign: 'center' },
+  retry: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 14 },
+  retryText: { fontFamily: sans(600), fontSize: 13 },
   list: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, padding: 12 },
   identity: { flex: 1, minWidth: 0 },
-  name: { fontFamily: sans(600), fontSize: 13.5 },
-  meta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5 },
+  name: { fontFamily: sans(600), fontSize: 15 },
+  meta: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5 },
   inlineError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  loadMore: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderRadius: 7 },
+  loadMore: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderRadius: 8 },
 });

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowRight, CalendarDots, CheckCircle, Megaphone } from '../ds/icons';
-import { Badge, MastheadMeta, ScreenEnter, ScreenHeader } from '../ds/primitives';
+import { Badge, MastheadMeta, PageActions, PageHead, ScreenEnter, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type {
@@ -32,6 +32,7 @@ export default function UpdatesScreen({
   onSubmitSurvey: (surveyId: string, answers: MobileSurveyAnswer[]) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const [filter, setFilter] = useState<UpdatesFilter>('all');
   const [selection, setSelection] = useState<UpdateSelection | null>(initialSelection);
   const [readIds, setReadIds] = useState<string[]>([]);
@@ -69,7 +70,14 @@ export default function UpdatesScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Updates" onBack={onBack} backLabel="Back to More">
+      <StickyTitle scrollY={scrollY} title="Updates" onBack={onBack} backLabel="Back to More" actions={<PageActions />} />
+
+      <Animated.ScrollView
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        {...handlers}
+      >
+        <PageHead title="Updates" onBack={onBack} backLabel="Back to More" actions={<PageActions />}>
         <View style={[styles.segment, { backgroundColor: t.surfaceSoft }]}>
           {(
             [
@@ -92,15 +100,13 @@ export default function UpdatesScreen({
             );
           })}
         </View>
-      </ScreenHeader>
-
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        </PageHead>
         <View style={styles.summaryRow}>
           <Text style={[styles.summaryTitle, { color: t.inkStrong }]}>Member updates</Text>
-          <MastheadMeta size={10}>{`${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`}</MastheadMeta>
+          <MastheadMeta size={11}>{`${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`}</MastheadMeta>
         </View>
 
-        <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+        <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           {rows.map((row, index) => {
             if (row.kind === 'announcement') {
               const unread = row.item.unread && !readIds.includes(row.item.id);
@@ -114,7 +120,7 @@ export default function UpdatesScreen({
                   }}
                   style={({ pressed }) => [
                     styles.row,
-                    index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                    index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
                     pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
                   ]}
                 >
@@ -125,7 +131,7 @@ export default function UpdatesScreen({
                   <View style={styles.flex}>
                     <View style={styles.metaRow}>
                       <Text style={[styles.kindLabel, { color: t.brandBlue }]}>Announcement</Text>
-                      <MastheadMeta size={9.5}>{row.item.dateLabel}</MastheadMeta>
+                      <MastheadMeta size={10.5}>{row.item.dateLabel}</MastheadMeta>
                     </View>
                     <Text style={[styles.rowTitle, { color: t.inkStrong }]} numberOfLines={2}>{row.item.title}</Text>
                     <Text style={[styles.rowCopy, { color: t.inkMuted }]} numberOfLines={2}>{row.item.summary}</Text>
@@ -141,7 +147,7 @@ export default function UpdatesScreen({
                 onPress={() => setSelection({ kind: 'survey', id: row.item.id })}
                 style={({ pressed }) => [
                   styles.row,
-                  index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                  index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
                   pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
                 ]}
               >
@@ -151,7 +157,7 @@ export default function UpdatesScreen({
                 <View style={styles.flex}>
                   <View style={styles.metaRow}>
                     <Text style={[styles.kindLabel, { color: t.brandAmber }]}>Member survey</Text>
-                    <MastheadMeta size={9.5}>{row.item.closesLabel}</MastheadMeta>
+                    <MastheadMeta size={10.5}>{row.item.closesLabel}</MastheadMeta>
                   </View>
                   <Text style={[styles.rowTitle, { color: t.inkStrong }]} numberOfLines={2}>{row.item.title}</Text>
                   <View style={styles.statusRow}>
@@ -166,7 +172,7 @@ export default function UpdatesScreen({
             );
           })}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -179,13 +185,15 @@ function AnnouncementDetail({
   onBack: () => void;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Announcement" onBack={onBack} backLabel="Back to Updates" />
-      <ScrollView contentContainerStyle={styles.articleScroll} showsVerticalScrollIndicator={false}>
+      <StickyTitle scrollY={scrollY} title="Announcement" onBack={onBack} backLabel="Back to Updates" actions={<PageActions />} />
+      <Animated.ScrollView contentContainerStyle={styles.articleScroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title="Announcement" onBack={onBack} backLabel="Back to Updates" actions={<PageActions />} />
         <View style={styles.metaRow}>
           <Text style={[styles.kindLabel, { color: t.brandBlue }]}>GPFA announcement</Text>
-          <MastheadMeta size={10}>{announcement.dateLabel}</MastheadMeta>
+          <MastheadMeta size={11}>{announcement.dateLabel}</MastheadMeta>
         </View>
         <Text style={[styles.articleTitle, { color: t.inkStrong }]}>{announcement.title}</Text>
         <Text style={[styles.articleDeck, { color: t.inkMuted }]}>{announcement.summary}</Text>
@@ -196,7 +204,7 @@ function AnnouncementDetail({
         {announcement.body.map((paragraph) => (
           <Text key={paragraph} style={[styles.paragraph, { color: t.inkBody }]}>{paragraph}</Text>
         ))}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -211,6 +219,7 @@ function SurveyFlow({
   onSubmit: (surveyId: string, answers: MobileSurveyAnswer[]) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const statements = useMemo(
@@ -249,7 +258,7 @@ function SurveyFlow({
   if (submitted) {
     return (
       <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-        <ScreenHeader title="Survey" onBack={onBack} backLabel="Back to Updates" />
+        <PageHead title="Survey" onBack={onBack} backLabel="Back to Updates" actions={<PageActions />} />
         <View style={styles.confirmation}>
           <View style={[styles.confirmationIcon, { backgroundColor: t.brandGreenSoft }]}>
             <CheckCircle size={32} color={t.brandGreen} weight="fill" />
@@ -266,13 +275,14 @@ function SurveyFlow({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Member survey" onBack={leave} backLabel="Back to Updates" />
+      <StickyTitle scrollY={scrollY} title="Member survey" onBack={leave} backLabel="Back to Updates" actions={<PageActions />} />
       <View style={[styles.progressTrack, { backgroundColor: t.surfaceSoft }]}>
         <View style={[styles.progressFill, { backgroundColor: t.brandGreen, width: `${statements.length ? ((step + 1) / statements.length) * 100 : 0}%` }]} />
       </View>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.fill} contentContainerStyle={styles.surveyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <MastheadMeta size={10}>{`STATEMENT ${step + 1} OF ${statements.length} · ${survey.closesLabel}`}</MastheadMeta>
+      <Animated.ScrollView style={styles.fill} contentContainerStyle={styles.surveyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" {...handlers}>
+        <PageHead title="Member survey" onBack={leave} backLabel="Back to Updates" actions={<PageActions />} />
+        <MastheadMeta size={11}>{`STATEMENT ${step + 1} OF ${statements.length} · ${survey.closesLabel}`}</MastheadMeta>
         <Text style={[styles.surveyTitle, { color: t.inkStrong }]}>{survey.title}</Text>
         <Text style={[styles.surveyDescription, { color: t.inkMuted }]}>{step === 0 ? survey.description : 'Choose the response that best reflects your organization.'}</Text>
 
@@ -299,7 +309,7 @@ function SurveyFlow({
                       styles.option,
                       {
                         backgroundColor: selected ? t.brandGreenSoft : t.surfacePaper,
-                        borderColor: selected ? t.brandGreen : t.ruleHairline,
+                        borderColor: selected ? t.brandGreen : t.rule,
                       },
                     ]}
                   >
@@ -320,14 +330,14 @@ function SurveyFlow({
                 }))}
                 placeholder="Please specify"
                 placeholderTextColor={t.inkFaint}
-                style={[styles.otherInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+                style={[styles.otherInput, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.rule }]}
               />
             )}
           </ScreenEnter>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
-      <View style={[styles.surveyFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline, paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.surveyFooter, { backgroundColor: t.surfacePaper, borderTopColor: t.rule, paddingBottom: Math.max(insets.bottom, 12) }]}>
         <Text style={[styles.footerCount, { color: t.inkMuted }]}>{answeredCount} of {statements.length} answered</Text>
         {step > 0 && (
           <Pressable onPress={() => setStep((current) => current - 1)} style={styles.textButton}>
@@ -378,52 +388,52 @@ function surveyStatementCount(survey: MobileSurveyPreview) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  segment: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 9 },
-  segmentButton: { flex: 1, minHeight: 34, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  segmentLabel: { fontFamily: sans(600), fontSize: 10.5 },
+  segment: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 12 },
+  segmentButton: { flex: 1, minHeight: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  segmentLabel: { fontFamily: sans(600), fontSize: 11.5 },
   list: { paddingVertical: 22, paddingBottom: 32 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 11 },
-  summaryTitle: { fontFamily: sans(600), fontSize: 17, letterSpacing: trackDisplay(17) },
+  summaryTitle: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
   band: { borderTopWidth: 1, borderBottomWidth: 1 },
   row: { minHeight: 112, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 15 },
-  typeIcon: { width: 40, height: 40, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  typeIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   unreadDot: { position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
-  kindLabel: { fontFamily: sans(600), fontSize: 10.5 },
-  rowTitle: { fontFamily: sans(600), fontSize: 14, lineHeight: 19 },
-  rowCopy: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  kindLabel: { fontFamily: sans(600), fontSize: 11.5 },
+  rowTitle: { fontFamily: sans(600), fontSize: 15, lineHeight: 20.5 },
+  rowCopy: { marginTop: 3, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 },
-  questionCount: { fontFamily: sans(400), fontSize: 11.5 },
+  questionCount: { fontFamily: sans(400), fontSize: 12.5 },
   articleScroll: { padding: 20, paddingBottom: 40 },
   articleTitle: { fontFamily: sans(600), fontSize: 27, lineHeight: 32, letterSpacing: trackDisplay(27) },
-  articleDeck: { marginTop: 10, fontFamily: sans(400), fontSize: 15, lineHeight: 22 },
+  articleDeck: { marginTop: 10, fontFamily: sans(400), fontSize: 16, lineHeight: 23.5 },
   notice: { marginVertical: 22, borderLeftWidth: 3, padding: 14 },
-  noticeLabel: { fontFamily: sans(600), fontSize: 12 },
-  noticeCopy: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
-  paragraph: { marginBottom: 16, fontFamily: sans(400), fontSize: 14, lineHeight: 23 },
+  noticeLabel: { fontFamily: sans(600), fontSize: 13 },
+  noticeCopy: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
+  paragraph: { marginBottom: 16, fontFamily: sans(400), fontSize: 15, lineHeight: 24.5 },
   progressTrack: { height: 3 },
   progressFill: { height: 3 },
   surveyScroll: { padding: 20, paddingBottom: 24 },
   surveyTitle: { marginTop: 10, fontFamily: sans(600), fontSize: 23, lineHeight: 28, letterSpacing: trackDisplay(23) },
-  surveyDescription: { marginTop: 8, fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
+  surveyDescription: { marginTop: 8, fontFamily: sans(400), fontSize: 15, lineHeight: 22 },
   questionBlock: { marginTop: 30 },
-  questionPrompt: { fontFamily: sans(600), fontSize: 17, lineHeight: 23 },
+  questionPrompt: { fontFamily: sans(600), fontSize: 19, lineHeight: 25.5 },
   optionList: { gap: 9, marginTop: 16 },
-  option: { minHeight: 54, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  option: { minHeight: 54, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   radio: { width: 20, height: 20, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   radioFill: { width: 10, height: 10, borderRadius: 5 },
-  optionLabel: { flex: 1, fontFamily: sans(500), fontSize: 13.5, lineHeight: 19 },
-  otherInput: { marginTop: 12, minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 13 },
+  optionLabel: { flex: 1, fontFamily: sans(500), fontSize: 15, lineHeight: 21 },
+  otherInput: { marginTop: 12, minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 14.5 },
   surveyFooter: { minHeight: 72, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 12 },
   footerCount: { flex: 1, fontFamily: mono(400), fontSize: 9.5 },
   textButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 8 },
-  textButtonLabel: { fontFamily: sans(600), fontSize: 12.5 },
+  textButtonLabel: { fontFamily: sans(600), fontSize: 13.5 },
   continueButton: { minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },
-  continueLabel: { fontFamily: sans(600), fontSize: 12.5 },
+  continueLabel: { fontFamily: sans(600), fontSize: 13.5 },
   confirmation: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   confirmationIcon: { width: 66, height: 66, borderRadius: 33, alignItems: 'center', justifyContent: 'center' },
   confirmationTitle: { marginTop: 18, fontFamily: sans(600), fontSize: 22, letterSpacing: trackDisplay(22) },
-  confirmationCopy: { marginTop: 8, maxWidth: 320, textAlign: 'center', fontFamily: sans(400), fontSize: 13.5, lineHeight: 21 },
+  confirmationCopy: { marginTop: 8, maxWidth: 320, textAlign: 'center', fontFamily: sans(400), fontSize: 15, lineHeight: 23.5 },
   outlineButton: { marginTop: 22, minHeight: 44, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
-  outlineButtonText: { fontFamily: sans(600), fontSize: 13 },
+  outlineButtonText: { fontFamily: sans(600), fontSize: 14.5 },
 });

@@ -21,7 +21,7 @@ export default function PodcastShowNotes({
   if (!notes) return null;
 
   return (
-    <View style={[styles.section, { borderTopColor: t.ruleHairline }]}>
+    <View style={[styles.section, { borderTopColor: t.rule }]}>
       <Text style={[styles.title, { color: t.inkStrong }]}>About this episode</Text>
       <Markdown
         options={{
@@ -59,14 +59,14 @@ const styles = StyleSheet.create({
   title: {
     marginBottom: 10,
     fontFamily: sans(600),
-    fontSize: 15,
-    letterSpacing: trackDisplay(15),
+    fontSize: 16,
+    letterSpacing: trackDisplay(16),
   },
-  paragraph: { marginBottom: 10, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
-  heading: { marginTop: 10, marginBottom: 7, fontFamily: sans(600), fontSize: 16, lineHeight: 21 },
-  subheading: { marginTop: 8, marginBottom: 6, fontFamily: sans(600), fontSize: 14, lineHeight: 19 },
+  paragraph: { marginBottom: 10, fontFamily: sans(400), fontSize: 14.5, lineHeight: 23 },
+  heading: { marginTop: 10, marginBottom: 7, fontFamily: sans(600), fontSize: 18, lineHeight: 23.5 },
+  subheading: { marginTop: 8, marginBottom: 6, fontFamily: sans(600), fontSize: 15, lineHeight: 20.5 },
   link: { textDecorationLine: 'underline', fontFamily: sans(500) },
-  codeInline: { fontFamily: mono(400), fontSize: 12 },
+  codeInline: { fontFamily: mono(400), fontSize: 13 },
   codeBlock: { marginBottom: 10, padding: 10, borderRadius: 6 },
   blockquote: { marginBottom: 10, paddingLeft: 12, borderLeftWidth: 2 },
   list: { marginBottom: 10 },

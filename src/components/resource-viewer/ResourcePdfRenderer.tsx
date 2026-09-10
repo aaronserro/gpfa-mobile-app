@@ -112,6 +112,6 @@ const styles = StyleSheet.create({
   },
   pageText: {
     fontFamily: sans(600),
-    fontSize: 12,
+    fontSize: 13,
   },
 });

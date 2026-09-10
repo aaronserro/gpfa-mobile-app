@@ -75,8 +75,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     borderWidth: 1,
-    borderRadius: 7,
+    borderRadius: 8,
     paddingHorizontal: 13,
   },
-  label: { fontFamily: sans(600), fontSize: 12 },
+  label: { fontFamily: sans(600), fontSize: 13 },
 });

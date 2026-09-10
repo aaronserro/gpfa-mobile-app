@@ -127,7 +127,9 @@ test('profile, settings, mentions, and realtime preserve privacy boundaries', as
   ]);
 
   assert.match(profile, /This member profile is unavailable\./);
-  assert.match(profile, /More actions for \$\{profile\.fullName\}/);
+  assert.match(profile, /<BlockMemberAction/);
+  assert.match(profile, /mode="block"/);
+  assert.doesNotMatch(profile, /More actions for \$\{profile\.fullName\}/);
   assert.match(profile, /await onBlockMember\(memberId\);\s*onBack\(\)/s);
   assert.match(settings, /<BlockedMembersPanel/);
   assert.match(mentions, /server-filtered roster replaces the candidate set/);

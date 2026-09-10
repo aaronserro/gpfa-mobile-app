@@ -57,7 +57,7 @@ export default function ForumFilePicker({
         onPress={pick}
         accessibilityRole="button"
         accessibilityLabel="Attach files"
-        style={[styles.attach, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+        style={[styles.attach, { borderColor: t.rule, backgroundColor: t.surfacePage }]}
       >
         <Paperclip size={14} color={t.inkMuted} />
         <Text style={[styles.attachText, { color: t.inkMuted }]}>Attach files</Text>
@@ -66,7 +66,7 @@ export default function ForumFilePicker({
       {files.length > 0 && (
         <View style={styles.list}>
           {files.map((file) => (
-            <View key={file.uri} style={[styles.file, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            <View key={file.uri} style={[styles.file, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
               <FileText size={14} color={t.inkMuted} />
               <View style={styles.fileCopy}>
                 <Text numberOfLines={1} style={[styles.fileName, { color: t.inkStrong }]}>{file.name}</Text>
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 11,
   },
-  attachText: { fontFamily: sans(600), fontSize: 12 },
+  attachText: { fontFamily: sans(600), fontSize: 13 },
   list: { marginTop: 8, gap: 6 },
   file: {
     minHeight: 42,
@@ -121,6 +121,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
   },
   fileCopy: { flex: 1, minWidth: 0 },
-  fileName: { fontFamily: sans(500), fontSize: 12 },
+  fileName: { fontFamily: sans(500), fontSize: 13 },
   fileMeta: { marginTop: 2, fontFamily: mono(400), fontSize: 9.5 },
 });

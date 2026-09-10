@@ -2,22 +2,11 @@ import { useEffect, useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { BlockedMemberListItem, OwnProfile, OwnProfileUpdateInput } from '../api/types';
 import BlockedMembersPanel from '../components/directory/BlockedMembersPanel';
-import { Avatar, ScreenHeader } from '../ds/primitives';
+import { Avatar, PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans, trackDisplay } from '../ds/tokens';
 
@@ -55,6 +44,7 @@ export default function ProfileSettingsScreen({
   onUnblockMember: (memberId: string) => Promise<void>;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const [fullName, setFullName] = useState(profile.name);
   const [roleTitle, setRoleTitle] = useState(profile.role ?? '');
   const [country, setCountry] = useState(profile.country);
@@ -155,14 +145,16 @@ export default function ProfileSettingsScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Edit profile" onBack={onBack} backLabel="Back to account" />
+      <StickyTitle scrollY={scrollY} title="Edit profile" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
+      <Animated.ScrollView
         style={styles.fill}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        {...handlers}
       >
+        <PageHead title="Edit profile" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
         <View style={styles.avatarRow}>
           <Avatar initials={profile.initials ?? ''} photoUrl={profile.avatarUrl ?? undefined} size={72} />
           <View style={styles.flex}>
@@ -213,7 +205,7 @@ export default function ProfileSettingsScreen({
           onLoadMore={onLoadMoreBlockedMembers}
           onUnblock={onUnblockMember}
         />
-      </ScrollView>
+      </Animated.ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -228,7 +220,7 @@ function SecondaryButton({ label, disabled, destructive = false, onPress }: { la
       onPress={onPress}
       style={({ pressed }) => [
         styles.secondaryButton,
-        { borderColor: t.ruleHairline, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, opacity: disabled ? 0.55 : 1 },
+        { borderColor: t.rule, backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, opacity: disabled ? 0.55 : 1 },
       ]}
     >
       <Text style={[styles.secondaryText, { color: destructive ? t.brandRed : t.inkStrong }]}>{label}</Text>
@@ -259,7 +251,7 @@ function Field({
         style={[
           styles.input,
           multiline && styles.multiline,
-          { color: t.inkStrong, borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
+          { color: t.inkStrong, borderColor: t.rule, backgroundColor: t.surfacePaper },
         ]}
         placeholderTextColor={t.inkFaint}
       />
@@ -274,14 +266,14 @@ const styles = StyleSheet.create({
   scroll: { padding: 20, paddingBottom: 40 },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24 },
   photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -12, marginBottom: 24 },
-  secondaryButton: { minHeight: 38, borderWidth: 1, borderRadius: 7, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { fontFamily: sans(600), fontSize: 12 },
-  name: { fontFamily: sans(600), fontSize: 17, letterSpacing: trackDisplay(17) },
+  secondaryButton: { minHeight: 38, borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { fontFamily: sans(600), fontSize: 13 },
+  name: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
   field: { marginBottom: 16 },
-  label: { fontFamily: sans(600), fontSize: 13, marginBottom: 7 },
-  help: { marginTop: 5, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 15 },
+  label: { fontFamily: sans(600), fontSize: 14.5, marginBottom: 7 },
+  help: { marginTop: 5, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 16 },
   multiline: { minHeight: 112, paddingTop: 12 },
   save: { minHeight: 50, borderRadius: 8, marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  saveText: { color: '#fff', fontFamily: sans(600), fontSize: 15 },
+  saveText: { color: '#fff', fontFamily: sans(600), fontSize: 16 },
 });

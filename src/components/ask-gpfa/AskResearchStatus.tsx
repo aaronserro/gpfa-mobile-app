@@ -75,7 +75,7 @@ export default function AskResearchStatus({
       </Pressable>
 
       {(live || open) && stream.trace.length > 0 && (
-        <View style={[styles.trace, { borderLeftColor: t.ruleHairline }]}>
+        <View style={[styles.trace, { borderLeftColor: t.rule }]}>
           {stream.trace.map((row) => (
             <View key={row.id} style={styles.traceRow}>
               {row.status === 'pending' && live ? (
@@ -98,11 +98,11 @@ export default function AskResearchStatus({
 const styles = StyleSheet.create({
   root: { marginBottom: 8 },
   statusRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  statusText: { flex: 1, fontFamily: sans(500), fontSize: 11.5 },
-  elapsed: { fontFamily: mono(500), fontSize: 10 },
+  statusText: { flex: 1, fontFamily: sans(500), fontSize: 12.5 },
+  elapsed: { fontFamily: mono(500), fontSize: 11 },
   trace: { marginLeft: 7, paddingLeft: 13, borderLeftWidth: 1, gap: 6 },
   traceRow: { minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  traceText: { flex: 1, fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
+  traceText: { flex: 1, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
   statusDot: { width: 8, height: 8, marginHorizontal: 4, borderRadius: 4 },
-  warning: { marginTop: 6, fontFamily: sans(400), fontSize: 11, lineHeight: 16 },
+  warning: { marginTop: 6, fontFamily: sans(400), fontSize: 12, lineHeight: 17.5 },
 });

@@ -43,12 +43,11 @@ interface ExpoConstantsShape {
 }
 
 /** Android 13 does not show its permission prompt until a channel exists. */
-export async function ensureMemberUpdatesChannel(): Promise<void> {
-  const [{ Platform }, Notifications] = await Promise.all([
-    import('react-native'),
-    import('expo-notifications'),
-  ]);
-  if (Platform.OS !== 'android') return;
+export async function ensureMemberUpdatesChannel(platform: 'ios' | 'android'): Promise<void> {
+  // Dynamic namespace imports enumerate React Native's deprecated getters,
+  // including PushNotificationIOS, which crashes when that legacy module is absent.
+  if (platform !== 'android') return;
+  const Notifications = await import('expo-notifications');
 
   await Notifications.setNotificationChannelAsync(MEMBER_UPDATES_CHANNEL, {
     name: 'Member updates',

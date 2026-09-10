@@ -185,12 +185,12 @@ const styles = StyleSheet.create({
   meta: { flex: 1, minWidth: 0 },
   title: {
     fontFamily: sans(500),
-    fontSize: 12.5,
+    fontSize: 13.5,
   },
   time: {
     marginTop: 2,
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
   },
   action: {
     flexDirection: 'row',
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontFamily: sans(400),
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   close: {
     width: 44,

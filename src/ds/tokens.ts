@@ -20,6 +20,13 @@ export interface Theme {
 
   surfacePage: string;
   surfacePaper: string;
+  /**
+   * `--soft` in the v2 artboard: the fill behind icon tiles, hashtag chips and
+   * the header's search field. Lighter than `surfaceSoft`, which the artboard
+   * keeps as `--soft-2` for avatars and the stronger chip fill. The two collapse
+   * to one value in dark, where there is no room below the paper for a second.
+   */
+  surfaceSubtle: string;
   surfaceSoft: string;
   surfaceAnchor: string;
   surfaceAnchorSoft: string;
@@ -42,9 +49,23 @@ export interface Theme {
   brandBrick: string;
   brandBrickInk: string;
 
+  /**
+   * `--rule` in the v2 artboard — the border on every card, hairline row and
+   * chip. A step lighter than `ruleHairline` in light so a page of stacked
+   * cards doesn't read as a grid; the same value in dark.
+   */
+  rule: string;
   ruleHairline: string;
   ruleStrong: string;
   ruleOnAnchor: string;
+
+  /**
+   * The wash behind a section card's 38px icon tile. Each pairs with the brand
+   * colour the glyph is drawn in — red, blue, amber.
+   */
+  tintRed: string;
+  tintBlue: string;
+  tintAmber: string;
 
   primary: string;
   primaryForeground: string;
@@ -56,6 +77,7 @@ export interface Theme {
   input: string;
 
   radius: number;
+  /** --radius-xl. The v2 card radius; `radiusBtn` stays 8 for controls. */
   radiusCard: number;
   radiusBtn: number;
   radiusPill: number;
@@ -67,7 +89,7 @@ const shared = {
   brandGreenOnDark: '#a5d69d',
   brandLeaf: '#479338',
   radius: 4,
-  radiusCard: 8,
+  radiusCard: 12,
   radiusBtn: 8,
   radiusPill: 9999,
 };
@@ -77,6 +99,7 @@ export const light: Theme = {
   name: 'light',
   surfacePage: '#f7fafb',
   surfacePaper: '#ffffff',
+  surfaceSubtle: '#eef3f4',
   surfaceSoft: '#dce9ec',
   surfaceAnchorSoft: '#294851',
 
@@ -96,9 +119,14 @@ export const light: Theme = {
   brandBrick: '#be5050',
   brandBrickInk: '#b04545',
 
+  rule: '#dbe6e9',
   ruleHairline: '#c8d8dc',
   ruleStrong: '#9cb4bb',
   ruleOnAnchor: 'rgba(239,247,248,.18)',
+
+  tintRed: '#fbeceb',
+  tintBlue: '#e7f0f5',
+  tintAmber: '#faf1e3',
 
   // shadcn-style semantic aliases
   primary: '#33565f',
@@ -116,6 +144,8 @@ export const dark: Theme = {
   name: 'dark',
   surfacePage: '#081416',
   surfacePaper: '#0d1c1f',
+  // --soft and --soft-2 are the same value in dark.
+  surfaceSubtle: '#162b2f',
   surfaceSoft: '#162b2f',
   surfaceAnchorSoft: '#173942',
 
@@ -136,9 +166,15 @@ export const dark: Theme = {
   brandBrick: '#e09a94',
   brandBrickInk: '#ecb8b3',
 
+  // --rule and --rule-hairline converge in dark.
+  rule: '#1f3438',
   ruleHairline: '#1f3438',
   ruleStrong: '#315058',
   ruleOnAnchor: 'rgba(244,251,252,.2)',
+
+  tintRed: 'rgba(224,129,125,.14)',
+  tintBlue: 'rgba(140,203,224,.14)',
+  tintAmber: 'rgba(216,162,62,.14)',
 
   primary: '#a5d69d',
   primaryForeground: '#07171b',
@@ -300,11 +336,15 @@ export const topPad = (insetTop: number, designTop: number): number =>
   Math.max(insetTop, 0) + (designTop - FRAME_STATUS_BAR);
 
 /**
- * The single design-top every screen header uses. Screens previously ran at 54,
- * 66 and FRAME_STATUS_BAR, which put the first row at three different heights
- * as you moved between tabs; `ScreenHeader` is now the only caller.
+ * The header top padding, shared by every screen head. The v2
+ * artboard pads the header 54 from the frame
+ * top and its status row is the same 54, so the control row sits directly under
+ * the status area with no extra gap; on device the safe-area inset replaces
+ * that allowance one-for-one, which is why this takes the inset rather than
+ * going through `topPad`. The floor keeps the row clear on Android handsets
+ * that report a very small inset.
  */
-export const HEADER_TOP = 66;
+export const headerTop = (insetTop: number): number => Math.max(insetTop, 12);
 
 /**
  * Per library type: chip ink, fill and border.

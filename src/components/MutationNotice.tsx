@@ -57,5 +57,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  message: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 12.5, lineHeight: 18 },
+  message: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 13.5, lineHeight: 19.5 },
 });

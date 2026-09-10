@@ -6,10 +6,19 @@
  */
 import { useState } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef } from 'react';
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { ArrowRight, Fire, MagnifyingGlass, UsersThree } from '../../ds/icons';
-import { ScreenHeader } from '../../ds/primitives';
+import { ChatText, Fire, Funnel, MagnifyingGlass, UsersThree } from '../../ds/icons';
+import { Chip, PageActions, PageHead, StickyTitle } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
 import { HatchBanner } from './parts';
@@ -46,258 +55,287 @@ export default function GroupDirectory({
   onOpen,
 }: GroupDirectoryProps) {
   const { t } = useTheme();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [sortOpen, setSortOpen] = useState(false);
   const [failedImages, setFailedImages] = useState<Record<string, boolean | undefined>>({});
 
   const sections = [
     { label: 'Your groups', groups: subscribed },
     { label: 'All groups', groups: rest },
   ].filter((s) => s.groups.length > 0);
+  const total = subscribed.length + rest.length;
 
   return (
     <View style={styles.fill}>
-      <ScreenHeader title="Working groups">
-        <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
-          <MagnifyingGlass size={15} color={t.inkMuted} />
-          <TextInput
-            value={query}
-            onChangeText={onQuery}
-            placeholder="Search working groups"
-            placeholderTextColor={t.inkFaint}
-            style={[styles.searchInput, { color: t.inkStrong }]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-        </View>
-      </ScreenHeader>
+      <StickyTitle
+        scrollY={scrollY}
+        title="Working "
+        em="groups."
+        actions={<PageActions />}
+      />
+      <Animated.ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: true,
+        })}
+        scrollEventThrottle={16}
+      >
+        <PageHead
+          actions={<PageActions />}
+          title="Working "
+          em="groups."
+        />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.directoryControls}>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            directionalLockEnabled
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.sortStrip}
-          >
-            {SORTS.map((option) => {
-              const active = option.id === sort;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => onSort(option.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.sortChip,
-                    {
-                      backgroundColor: active ? t.surfaceAnchor : pressed ? alpha(t.surfaceSoft, 0.65) : t.surfacePaper,
-                      borderColor: active ? t.surfaceAnchor : t.ruleHairline,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.sortChipText, { color: active ? t.inkInverse : t.inkMuted }]}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {sections.map((s) => (
-          <View key={s.label}>
-            <View style={styles.sectionHead}>
-              <Text style={[styles.sectionLabel, { color: t.inkStrong }]}>{s.label}</Text>
+        <View style={styles.body}>
+          <View style={styles.controls}>
+            <View style={[styles.search, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
+              <MagnifyingGlass size={16} color={t.inkMuted} />
+              <TextInput
+                value={query}
+                onChangeText={onQuery}
+                placeholder="Search groups"
+                placeholderTextColor={t.inkMuted}
+                style={[styles.searchInput, { color: t.inkStrong }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
             </View>
+            <Pressable
+              onPress={() => setSortOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel="Sort groups"
+              accessibilityState={{ expanded: sortOpen }}
+              style={({ pressed }) => [
+                styles.sortButton,
+                { backgroundColor: t.surfacePaper, borderColor: t.rule },
+                pressed ? styles.pressed : null,
+              ]}
+            >
+              <Funnel size={16} color={t.inkStrong} />
+              <Text style={[styles.sortButtonText, { color: t.inkStrong }]}>Sort</Text>
+            </Pressable>
+          </View>
 
-            <View style={styles.cards}>
+          {sortOpen && (
+            <View style={styles.sortStrip}>
+              {SORTS.map((option) => {
+                const active = option.id === sort;
+                return (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => {
+                      onSort(option.id);
+                      setSortOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={({ pressed }) => [
+                      styles.sortChip,
+                      {
+                        backgroundColor: active ? t.surfaceAnchor : t.surfacePaper,
+                        borderColor: active ? t.surfaceAnchor : t.rule,
+                      },
+                      pressed ? styles.pressed : null,
+                    ]}
+                  >
+                    <Text style={[styles.sortChipText, { color: active ? '#fff' : t.inkBody }]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          <Text style={[styles.count, { color: t.inkMuted }]}>
+            {total} working {total === 1 ? 'group' : 'groups'}
+          </Text>
+
+          {sections.map((s) => (
+            <View key={s.label} style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: t.inkStrong }]}>{s.label}</Text>
               {s.groups.map((g) => (
                 <Pressable
                   key={g.id}
                   onPress={() => onOpen(g.id)}
                   accessibilityRole="button"
+                  android_ripple={{ color: alpha(t.inkStrong, 0.08) }}
                   style={({ pressed }) => [
                     styles.card,
-                    {
-                      backgroundColor: t.surfacePaper,
-                      borderColor: pressed ? t.ruleStrong : t.ruleHairline,
-                    },
+                    { backgroundColor: t.surfacePaper, borderColor: t.rule },
+                    pressed && Platform.OS !== 'android'
+                      ? { backgroundColor: t.surfaceSubtle }
+                      : null,
                   ]}
                 >
-                    <View style={styles.bannerFrame}>
-                      <HatchBanner />
-                      {!!g.cardImageUrl && !failedImages[g.id] && (
-                        <Image
-                          source={g.cardImageUrl}
-                          style={styles.bannerImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={160}
-                          accessibilityIgnoresInvertColors
-                          onError={() => setFailedImages((prev) => ({ ...prev, [g.id]: true }))}
-                        />
+                  {/* The card art sits above the v2 body, edge to edge. The
+                      hatch is the fallback, and stays behind the image so a
+                      slow or broken load never shows a bare rectangle. */}
+                  <View style={styles.bannerFrame}>
+                    <HatchBanner height={112} />
+                    {!!g.cardImageUrl && !failedImages[g.id] && (
+                      <Image
+                        source={g.cardImageUrl}
+                        style={styles.bannerImage}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        transition={160}
+                        accessibilityIgnoresInvertColors
+                        onError={() => setFailedImages((prev) => ({ ...prev, [g.id]: true }))}
+                      />
+                    )}
+                  </View>
+
+                  <View style={styles.cardBody}>
+                    <Text style={[styles.groupName, { color: t.inkStrong }]}>{g.n}</Text>
+
+                    <View style={styles.cardChips}>
+                      {g.joined && <Chip Glyph={ChatText}>Subscribed</Chip>}
+                      <Chip Glyph={UsersThree}>
+                        {`${g.memberCount ?? g.members.length} members`}
+                      </Chip>
+                      {g.trending && (
+                        <Chip Glyph={Fire} glyphColor={t.brandAmber}>
+                          Trending
+                        </Chip>
                       )}
                     </View>
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardTop}>
-                        <Text style={[styles.groupName, { color: t.inkStrong }]}>{g.n}</Text>
-                        <View style={styles.cardChips}>
-                          {g.trending && (
-                            <View
-                              style={[styles.trendChip, { borderColor: alpha(t.brandAmber, 0.4) }]}
-                            >
-                              <Fire size={11} weight="fill" color={t.brandAmber} />
-                              <Text style={[styles.trendText, { color: t.brandAmber }]}>Trending</Text>
-                            </View>
-                          )}
-                          <View style={[styles.memberChip, { backgroundColor: t.surfaceSoft }]}>
-                            <UsersThree size={11} weight="fill" color={t.inkStrong} />
-                            <Text style={[styles.memberChipText, { color: t.inkStrong }]}>
-                              {g.memberCount ?? g.members.length}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
 
-                      {!!g.meta && (
-                        <Text numberOfLines={3} style={[styles.groupBio, { color: t.inkMuted }]}>{g.meta}</Text>
-                      )}
+                    {!!g.meta && (
+                      <Text numberOfLines={3} style={[styles.groupBio, { color: t.inkMuted }]}>
+                        {g.meta}
+                      </Text>
+                    )}
 
-                      <View style={styles.cardFoot}>
-                        {g.joined && (
-                          <Text style={[styles.cardSubCount, { color: t.inkFaint }]}>
-                            Subscribed
-                          </Text>
-                        )}
-                        <View style={[styles.openBtn, { backgroundColor: t.surfaceAnchor }]}>
-                          <Text style={styles.openBtnText}>Open</Text>
-                          <ArrowRight size={12} color="#fff" />
+                    {(() => {
+                      const latest = latestPost(g);
+                      return latest ? (
+                        <View style={[styles.cardFoot, { borderTopColor: t.rule }]}>
+                          <Text style={[styles.cardStamp, { color: t.inkMuted }]}>{latest}</Text>
                         </View>
-                      </View>
-                    </View>
+                      ) : null;
+                    })()}
+                  </View>
                 </Pressable>
               ))}
             </View>
-          </View>
-        ))}
+          ))}
 
-        {sections.length === 0 && (
-          <Text style={[styles.empty, { color: t.inkMuted }]}>
-            {query.trim() ? `No working group matches “${query.trim()}”.` : 'No working groups yet.'}
+          {sections.length === 0 && (
+            <Text style={[styles.empty, { color: t.inkMuted }]}>
+              {query.trim() ? `No working group matches “${query.trim()}”.` : 'No working groups yet.'}
+            </Text>
+          )}
+
+          <Text style={[styles.disclaimer, { color: t.inkFaint }]}>
+            Content reflects member discussion and is not investment advice.
           </Text>
-        )}
-
-        <Text style={[styles.disclaimer, { color: t.inkFaint }]}>
-          Content reflects member discussion and is not investment advice.
-        </Text>
-      </ScrollView>
+        </View>
+      </Animated.ScrollView>
     </View>
   );
 }
 
+/**
+ * v2 closes each group card with a mono stamp — "Aaron S. posted 7m ago".
+ * `Group` carries no last-activity field, so it comes from the freshest thread
+ * (`mins` is the feed's age-in-minutes sort key) and the card simply omits the
+ * footer when the group has no posts yet.
+ */
+function latestPost(group: Group): string | null {
+  const newest = group.threads.reduce<Group['threads'][number] | null>((best, thread) => {
+    if (!thread.time) return best;
+    if (!best) return thread;
+    return (thread.mins ?? Infinity) < (best.mins ?? Infinity) ? thread : best;
+  }, null);
+  if (!newest) return null;
+  return `${shortName(newest.author)} posted ${newest.time}`;
+}
+
+/** "Aaron Serro" → "Aaron S.", the form v2 uses on directory and group cards. */
+function shortName(name: string): string {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  const last = rest[rest.length - 1];
+  return last ? `${first} ${last[0]}.` : first;
+}
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  pressed: { opacity: 0.7 },
+  scroll: { paddingBottom: 26 },
+  body: { padding: 16, gap: 12 },
 
+  controls: { flexDirection: 'row', gap: 10 },
   search: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 15 },
+  sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 34,
-    borderRadius: 17,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    marginTop: 12,
   },
-  searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 13 },
-  directoryControls: { paddingTop: 14, paddingHorizontal: 16 },
-  sortStrip: { gap: 8 },
+  sortButtonText: { fontFamily: sans(500), fontSize: 15 },
+  sortStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   sortChip: {
-    minHeight: 30,
+    height: 36,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderRadius: 32,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sortChipText: { fontFamily: sans(600), fontSize: 12 },
+  sortChipText: { fontFamily: sans(400), fontSize: 14 },
 
-  scroll: { paddingBottom: 26 },
-  sectionHead: {
-    paddingTop: 18,
-    paddingBottom: 4,
-    paddingHorizontal: 16,
-  },
+  count: { fontFamily: sans(400), fontSize: 14 },
+  section: { gap: 12 },
   sectionLabel: {
+    marginTop: 6,
     fontFamily: sans(600),
-    fontSize: 13,
-    letterSpacing: trackDisplay(13),
+    fontSize: 15,
+    letterSpacing: trackDisplay(15),
   },
 
-  cards: { gap: 12, paddingTop: 8, paddingBottom: 4, paddingHorizontal: 16 },
-  card: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  card: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   bannerFrame: { height: 112, position: 'relative', overflow: 'hidden' },
   bannerImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  cardBody: { paddingTop: 13, paddingHorizontal: 14, paddingBottom: 14 },
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardBody: { padding: 16 },
   groupName: {
-    flex: 1,
     fontFamily: sans(600),
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: trackDisplay(16),
+    fontSize: 18,
+    lineHeight: 23,
+    letterSpacing: trackDisplay(18),
   },
-  cardChips: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  trendChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 20,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderRadius: 32,
-  },
-  trendText: { fontFamily: sans(400), fontSize: 10 },
-  memberChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 20,
-    paddingHorizontal: 8,
-    borderRadius: 32,
-  },
-  memberChipText: { fontFamily: sans(500), fontSize: 10.5, fontVariant: ['tabular-nums'] },
-  groupBio: { marginTop: 8, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.75 },
-  cardSubCount: { fontFamily: mono(400), fontSize: 10.5 },
-  cardFoot: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  openBtn: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  openBtnText: { fontFamily: sans(600), fontSize: 12.5, color: '#fff' },
+  cardChips: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  groupBio: { marginTop: 12, fontFamily: sans(400), fontSize: 14.5, lineHeight: 22 },
+  cardFoot: { marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
+  cardStamp: { fontFamily: mono(400), fontSize: 12.5 },
 
   empty: {
     paddingVertical: 40,
     paddingHorizontal: 24,
     textAlign: 'center',
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 15,
   },
   disclaimer: {
     paddingTop: 14,
-    paddingHorizontal: 16,
     fontFamily: sans(400),
-    fontSize: 10.5,
-    lineHeight: 16.8,
+    fontSize: 13,
+    lineHeight: 20,
   },
 });

@@ -258,7 +258,7 @@ export default function GroupsScreen({
         replyPending={!!pendingMutations[`reply:create:${thread.id}`]}
         deletingReplies={pendingMutations}
         onDeleteReply={(replyId) => onDeleteReply(thread.id, replyId)}
-        canReportPost={isSubscribed(group) && !!thread.canReport}
+        canReportPost={thread.canReport}
         canModerate={canModerateSelectedGroup}
         reportingTarget={reportingTarget}
         reportPending={reportPending}

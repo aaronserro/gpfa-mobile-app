@@ -1,7 +1,7 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ArrowFatUp, ArrowSquareOut, At, Bell, BellRinging, CaretRight, CheckCircle, Desktop, LockSimple, Moon, PencilSimple, Sun, User } from '../ds/icons';
-import { Avatar, ScreenHeader } from '../ds/primitives';
+import { Avatar, PageActions, PageHead, StickyTitle, SwipeBack, useStickyScroll } from '../ds/primitives';
 import { useTheme, type ThemePreference } from '../ds/ThemeProvider';
 import { alpha, sans, trackDisplay } from '../ds/tokens';
 import { initials as initialsOf } from '../lib/format';
@@ -37,12 +37,14 @@ export default function AccountScreen({
   onSignOut: () => void;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
 
   return (
-    <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Account" onBack={onBack} backLabel="Back to more" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.identity, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+    <SwipeBack onBack={onBack} style={[styles.fill, { backgroundColor: t.surfacePage }]}>
+      <StickyTitle scrollY={scrollY} title="Account" onBack={onBack} backLabel="Back to more" actions={<PageActions />} />
+      <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title="Account" onBack={onBack} backLabel="Back to more" actions={<PageActions />} />
+        <View style={[styles.identity, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={48} />
           <View style={styles.flex}>
             <Text style={[styles.name, { color: t.inkStrong }]}>{member.name}</Text>
@@ -53,7 +55,7 @@ export default function AccountScreen({
         </View>
 
         <SectionLabel label="Account" />
-        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           <ActionRow
             icon={<User size={19} color={t.brandGreen} />}
             label="View profile"
@@ -102,7 +104,7 @@ export default function AccountScreen({
             divided
             onPress={onOpenSecurity}
           />
-          <View style={[styles.row, styles.divided, { borderTopColor: t.ruleHairline }]}>
+          <View style={[styles.row, styles.divided, { borderTopColor: t.rule }]}>
             <CheckCircle size={19} color={t.brandGreen} />
             <View style={styles.flex}>
               <Text style={[styles.rowLabel, { color: t.inkStrong }]}>Active on this device</Text>
@@ -112,7 +114,7 @@ export default function AccountScreen({
         </View>
 
         <SectionLabel label="Appearance" />
-        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           <ThemeRow
             icon={<Sun size={19} color={t.brandAmber} />}
             label="Light"
@@ -145,7 +147,7 @@ export default function AccountScreen({
             styles.signOut,
             {
               backgroundColor: pressed ? alpha(t.brandRed, 0.1) : t.surfacePaper,
-              borderColor: t.ruleHairline,
+              borderColor: t.rule,
               opacity: signingOut ? 0.65 : 1,
             },
           ]}
@@ -162,8 +164,8 @@ export default function AccountScreen({
             <Text style={[styles.rowDescription, { color: t.inkMuted }]}>Revoke this device's session</Text>
           </View>
         </Pressable>
-      </ScrollView>
-    </View>
+      </Animated.ScrollView>
+    </SwipeBack>
   );
 }
 
@@ -192,7 +194,7 @@ function ActionRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+        divided && { borderTopWidth: 1, borderTopColor: t.rule },
         pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
       ]}
     >
@@ -227,7 +229,7 @@ function ThemeRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.themeRow,
-        divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+        divided && { borderTopWidth: 1, borderTopColor: t.rule },
         pressed && { backgroundColor: alpha(t.surfaceSoft, 0.48) },
       ]}
     >
@@ -244,17 +246,17 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
   scroll: { padding: 20, paddingBottom: 36 },
-  identity: { minHeight: 82, borderWidth: 1, borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  name: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  meta: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5 },
-  sectionLabel: { marginTop: 22, marginBottom: 9, fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
-  group: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  identity: { minHeight: 82, borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  name: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  meta: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5 },
+  sectionLabel: { marginTop: 22, marginBottom: 9, fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
+  group: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   row: { minHeight: 68, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   divided: { borderTopWidth: 1 },
-  rowLabel: { fontFamily: sans(600), fontSize: 14.5 },
-  rowDescription: { marginTop: 2, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  rowLabel: { fontFamily: sans(600), fontSize: 16 },
+  rowDescription: { marginTop: 2, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
   themeRow: { minHeight: 58, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   radio: { width: 20, height: 20, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5 },
-  signOut: { minHeight: 68, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  signOut: { minHeight: 68, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
 });

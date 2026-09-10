@@ -3534,6 +3534,7 @@ function workingGroupDetailReplyToReply(reply: WorkingGroupDetailReply): Reply {
     attachments: deleted ? [] : reply.attachments.map(workingGroupDetailAttachmentToForumAttachment),
     deleted,
     removed: reply.removed,
+    canReport: reply.canReport,
   };
 }
 

@@ -6,10 +6,10 @@
  * pinned here instead, so a long roster never scrolls the control away.
  */
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ArrowRight, ChatCircle } from '../../ds/icons';
-import { Avatar, OrgMark, ScreenHeader } from '../../ds/primitives';
+import { Avatar, OrgMark, PageActions, PageHead, StickyTitle, SwipeBack, useStickyScroll } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, jobFunctionRule, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf, orgInitials } from '../../lib/format';
@@ -32,6 +32,7 @@ export interface OrgProfileProps {
 
 export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpenPerson, onMessagePerson }: OrgProfileProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const [tab, setTab] = useState<ProfileTab>('members');
 
   const stats: { value: number; label: string }[] = [
@@ -44,35 +45,19 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
   const location = [org.city, org.country].filter(Boolean).join(', ');
 
   return (
-    <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader
-        title={org.fullName ?? org.name}
-        onBack={onBack}
-        backLabel="Back to directory"
-      >
-        <View style={styles.orgRow}>
-          <OrgMark initials={orgInitials(org.short)} logoUrl={org.logoUrl} size={44} />
-          <View style={styles.flex}>
-            <Text style={[styles.orgMeta, { color: t.inkMuted }]}>
-              {[org.short, location].filter(Boolean).join(' · ')}
-            </Text>
-            {!!org.blurb && (
-              <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
-            )}
-          </View>
-        </View>
-      </ScreenHeader>
+    <SwipeBack onBack={onBack} style={[styles.fill, { backgroundColor: t.surfacePage }]}>
+      <StickyTitle scrollY={scrollY} title={org.fullName ?? org.name} onBack={onBack} backLabel="Back to directory" actions={<PageActions />} />
 
       <View
         style={[
           styles.stats,
-          { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline },
+          { backgroundColor: t.surfacePaper, borderBottomColor: t.rule },
         ]}
       >
         {stats.map((s, i) => (
           <View
             key={s.label}
-            style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.ruleHairline }]}
+            style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.rule }]}
           >
             <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
             <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
@@ -81,7 +66,7 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
       </View>
 
       <View
-        style={[styles.tabs, { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline }]}
+        style={[styles.tabs, { backgroundColor: t.surfacePaper, borderBottomColor: t.rule }]}
       >
         {(
           [
@@ -104,7 +89,20 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
         })}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title={org.fullName ?? org.name} onBack={onBack} backLabel="Back to directory" actions={<PageActions />}>
+          <View style={styles.orgRow}>
+            <OrgMark initials={orgInitials(org.short)} logoUrl={org.logoUrl} size={44} />
+            <View style={styles.flex}>
+              <Text style={[styles.orgMeta, { color: t.inkMuted }]}>
+                {[org.short, location].filter(Boolean).join(' · ')}
+              </Text>
+              {!!org.blurb && (
+                <Text style={[styles.blurb, { color: t.inkBody }]}>{org.blurb}</Text>
+              )}
+            </View>
+          </View>
+        </PageHead>
         {tab === 'members' ? (
           <>
             <SectionHead
@@ -116,13 +114,13 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
             <View
               style={[
                 styles.rows,
-                { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
+                { backgroundColor: t.surfacePaper, borderColor: t.rule },
               ]}
             >
               {people.map((p) => (
                 <View
                   key={p.id}
-                  style={[styles.personRow, { borderBottomColor: t.ruleHairline }]}
+                  style={[styles.personRow, { borderBottomColor: t.rule }]}
                 >
                   <Pressable
                     onPress={() => onOpenPerson(p.id)}
@@ -172,7 +170,7 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
             <View
               style={[
                 styles.rows,
-                { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline },
+                { backgroundColor: t.surfacePaper, borderColor: t.rule },
               ]}
             >
               {jobs.map((j) => (
@@ -182,7 +180,7 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
                   style={({ pressed }) => [
                     styles.jobRow,
                     {
-                      borderBottomColor: t.ruleHairline,
+                      borderBottomColor: t.rule,
                       borderLeftColor: jobFunctionRule(t, j.fnKey),
                       backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent',
                     },
@@ -205,8 +203,8 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
             </View>
           </>
         )}
-      </ScrollView>
-    </View>
+      </Animated.ScrollView>
+    </SwipeBack>
   );
 }
 
@@ -226,8 +224,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
 
   orgRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 13, paddingTop: 12 },
-  orgMeta: { fontFamily: sans(400), fontSize: 12 },
-  blurb: { marginTop: 6, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
+  orgMeta: { fontFamily: sans(400), fontSize: 13 },
+  blurb: { marginTop: 6, fontFamily: sans(400), fontSize: 14.5, lineHeight: 23 },
 
   stats: { flexDirection: 'row', borderBottomWidth: 1 },
   stat: { flex: 1, gap: 2.4, paddingVertical: 13.6, paddingHorizontal: 16 },
@@ -237,11 +235,11 @@ const styles = StyleSheet.create({
     letterSpacing: trackDisplay(20),
     fontVariant: ['tabular-nums'],
   },
-  statLabel: { fontFamily: sans(400), fontSize: 11.5 },
+  statLabel: { fontFamily: sans(400), fontSize: 12.5 },
 
   tabs: { flexDirection: 'row', gap: 22, paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 1 },
   tab: { paddingBottom: 9, borderBottomWidth: 2 },
-  tabLabel: { fontFamily: sans(600), fontSize: 13 },
+  tabLabel: { fontFamily: sans(600), fontSize: 14.5 },
 
   scroll: { paddingBottom: 24 },
   sectionHead: {
@@ -252,8 +250,8 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     paddingHorizontal: 20,
   },
-  sectionLabel: { fontFamily: sans(600), fontSize: 13, letterSpacing: trackDisplay(13) },
-  sectionCount: { fontFamily: sans(400), fontSize: 12 },
+  sectionLabel: { fontFamily: sans(600), fontSize: 14.5, letterSpacing: trackDisplay(14.5) },
+  sectionCount: { fontFamily: sans(400), fontSize: 13 },
   rows: { borderTopWidth: 1, borderBottomWidth: 1 },
 
   personRow: {
@@ -277,8 +275,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingRight: 12,
   },
-  personName: { fontFamily: sans(500), fontSize: 13.5 },
-  personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
+  personName: { fontFamily: sans(500), fontSize: 15 },
+  personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
 
   jobRow: {
     flexDirection: 'row',
@@ -290,14 +288,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderLeftWidth: 3,
   },
-  jobTitle: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
-  jobMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
+  jobTitle: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
+  jobMeta: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
 
   empty: {
     paddingVertical: 28,
     paddingHorizontal: 20,
     textAlign: 'center',
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 14.5,
   },
 });

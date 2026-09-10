@@ -62,7 +62,7 @@ export default function MemberSheet({
           styles.sheet,
           {
             backgroundColor: t.surfacePaper,
-            borderTopColor: t.ruleHairline,
+            borderTopColor: t.rule,
             paddingBottom: Math.max(insets.bottom, 18),
             // Invisible for the one frame between mount and layout, so it never
             // paints at its resting position before the rise begins.
@@ -78,7 +78,7 @@ export default function MemberSheet({
           },
         ]}
       >
-        <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
+        <View style={[styles.grabber, { backgroundColor: t.rule }]} />
 
         <View style={styles.head}>
           <Avatar initials={member.initials ?? initialsOf(member.name)} photoUrl={member.avatarUrl ?? undefined} size={44} />
@@ -98,13 +98,13 @@ export default function MemberSheet({
             accessibilityRole="button"
             accessibilityLabel="Close"
             hitSlop={8}
-            style={[styles.close, { borderColor: t.ruleHairline }]}
+            style={[styles.close, { borderColor: t.rule }]}
           >
             <X size={14} color={t.inkMuted} />
           </Pressable>
         </View>
 
-        <View style={{ borderTopWidth: 1, borderTopColor: t.ruleHairline }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: t.rule }}>
           <Row icon={User} label="View profile" onPress={() => requestClose(onOpenProfile)} />
           <Row
             icon={Repeat}
@@ -149,7 +149,7 @@ function Row({
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.row,
-        divided && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+        divided && { borderTopWidth: 1, borderTopColor: t.rule },
         { backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : 'transparent' },
       ]}
     >
@@ -176,8 +176,8 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginTop: 8 },
 
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 20, paddingTop: 14 },
-  name: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  meta: { marginTop: 3, fontFamily: mono(400), fontSize: 10, letterSpacing: 0.4 },
+  name: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  meta: { marginTop: 3, fontFamily: mono(400), fontSize: 11, letterSpacing: 0.4 },
   close: {
     width: 32,
     height: 32,
@@ -194,6 +194,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 20,
   },
-  rowLabel: { flex: 1, fontFamily: sans(500), fontSize: 14 },
-  rowCount: { fontFamily: mono(400), fontSize: 11 },
+  rowLabel: { flex: 1, fontFamily: sans(500), fontSize: 15 },
+  rowCount: { fontFamily: mono(400), fontSize: 12 },
 });

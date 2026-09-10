@@ -94,7 +94,7 @@ export function EventAttendees({
       </Pressable>
 
       {open && (
-        <View style={[styles.roster, { borderTopColor: t.ruleHairline }]}>
+        <View style={[styles.roster, { borderTopColor: t.rule }]}>
           {attendees.map((attendee, index) => (
             <Pressable
               key={`${attendee.name}-${index}`}
@@ -104,7 +104,7 @@ export function EventAttendees({
               accessibilityLabel={attendee.id ? `Open ${attendee.name}'s profile` : undefined}
               style={({ pressed }) => [
                 styles.rosterRow,
-                index > 0 && { borderTopWidth: 1, borderTopColor: t.ruleHairline },
+                index > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
                 pressed && attendee.id ? styles.pressed : null,
               ]}
             >
@@ -128,18 +128,18 @@ export function EventAttendees({
 }
 
 const styles = StyleSheet.create({
-  label: { fontFamily: sans(500), fontSize: 11.5 },
-  empty: { marginTop: 5, fontFamily: sans(400), fontSize: 13 },
-  countOnly: { marginTop: 5, fontFamily: sans(500), fontSize: 13 },
+  label: { fontFamily: sans(500), fontSize: 12.5 },
+  empty: { marginTop: 5, fontFamily: sans(400), fontSize: 14.5 },
+  countOnly: { marginTop: 5, fontFamily: sans(500), fontSize: 14.5 },
   summary: { minHeight: 44, marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 7 },
   pressed: { opacity: 0.78 },
   stack: { flexDirection: 'row', paddingLeft: 1 },
   overlap: { marginLeft: -9 },
-  count: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 12.5 },
-  toggle: { fontFamily: sans(600), fontSize: 11.5 },
+  count: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 13.5 },
+  toggle: { fontFamily: sans(600), fontSize: 12.5 },
   roster: { marginTop: 8, borderTopWidth: 1 },
   rosterRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  name: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 12.5 },
+  name: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 13.5 },
   org: { maxWidth: '42%', fontFamily: mono(500), fontSize: 9.5, letterSpacing: 0.4 },
-  more: { paddingVertical: 9, fontFamily: sans(400), fontSize: 12.5 },
+  more: { paddingVertical: 9, fontFamily: sans(400), fontSize: 13.5 },
 });

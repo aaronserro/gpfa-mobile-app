@@ -40,7 +40,7 @@ export function FactChip({
       style={[
         styles.fact,
         {
-          borderColor: amber ? alpha(t.brandAmber, 0.4) : t.ruleHairline,
+          borderColor: amber ? alpha(t.brandAmber, 0.4) : t.rule,
           backgroundColor: amber ? t.brandAmberSoft : t.surfacePage,
         },
       ]}
@@ -74,5 +74,5 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  factText: { fontFamily: sans(400), fontSize: 11.5 },
+  factText: { fontFamily: sans(400), fontSize: 12.5 },
 });

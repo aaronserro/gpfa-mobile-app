@@ -134,7 +134,7 @@ export const MentionInput = forwardRef<TextInput, MentionInputProps>(function Me
         styles.suggestions,
         {
           backgroundColor: t.surfacePaper,
-          borderColor: t.ruleHairline,
+          borderColor: t.rule,
         },
       ]}
     >
@@ -156,7 +156,7 @@ export const MentionInput = forwardRef<TextInput, MentionInputProps>(function Me
                 styles.suggestion,
                 {
                   backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
-                  borderBottomColor: t.ruleHairline,
+                  borderBottomColor: t.rule,
                 },
               ]}
             >
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   memberText: { flex: 1, minWidth: 0 },
-  memberName: { fontFamily: sans(600), fontSize: 12.5 },
-  memberHandle: { marginTop: 2, fontFamily: mono(400), fontSize: 10.5 },
-  emptyText: { paddingVertical: 12, paddingHorizontal: 10, fontFamily: sans(400), fontSize: 12 },
+  memberName: { fontFamily: sans(600), fontSize: 13.5 },
+  memberHandle: { marginTop: 2, fontFamily: mono(400), fontSize: 11.5 },
+  emptyText: { paddingVertical: 12, paddingHorizontal: 10, fontFamily: sans(400), fontSize: 13 },
 });

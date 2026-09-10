@@ -7,7 +7,18 @@ import { useEffect, useRef, useState } from 'react';
  * Presentational. The post list arrives filtered and ordered; the tab and the
  * type filter are held by the caller so a trip into a post and back keeps them.
  */
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import {
+  Alert,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import {
   ArrowFatUp,
@@ -20,7 +31,7 @@ import {
   Trash,
   type Icon,
 } from '../../ds/icons';
-import { Avatar, MastheadMeta, ScreenHeader } from '../../ds/primitives';
+import { Avatar, MastheadMeta, PageActions, PageHead, StickyTitle, SwipeBack, useStickyScroll } from '../../ds/primitives';
 import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import FeedFilterDropdown from './FeedFilterDropdown';
 import ForumModerationPanel from './ForumModerationPanel';
@@ -196,6 +207,7 @@ export default function GroupView({
   onOpenResource,
 }: GroupViewProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const [memberQuery, setMemberQuery] = useState('');
   const [feedQuery, setFeedQuery] = useState(feedControls.query);
   const [openFeedFilter, setOpenFeedFilter] = useState<FeedFilterAxis | null>(null);
@@ -254,38 +266,46 @@ export default function GroupView({
     });
   };
 
-  return (
-    <View style={styles.fill}>
-      <ScreenHeader
-        title={group.n}
-        onBack={onBack}
-        backLabel="Back to working groups"
-        actions={
-          <Pressable
-            onPress={onToggleSubscribe}
-            disabled={!!pendingMutations[`subscription:${group.id}`]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: subscribed, disabled: !!pendingMutations[`subscription:${group.id}`] }}
+  // The subscribe control rides in the head's action slot beside the chrome
+  // buttons; the tab strip sits under the title, as it did in the old band.
+  const subscribeAction = (
+    <>
+        <Pressable
+          onPress={onToggleSubscribe}
+          disabled={!!pendingMutations[`subscription:${group.id}`]}
+          accessibilityRole="button"
+          accessibilityState={{
+            selected: subscribed,
+            disabled: !!pendingMutations[`subscription:${group.id}`],
+          }}
+          style={[
+            subscribed ? styles.subBtnOn : styles.subBtnOff,
+            // The head is the page surface, so subscribed is an outline chip
+            // and the call to action takes the anchor fill.
+            subscribed ? { borderColor: t.rule } : { backgroundColor: t.surfaceAnchor },
+          ]}
+        >
+          {subscribed && <CheckCircle size={12} weight="fill" color={t.inkMuted} />}
+          <Text
             style={[
-              subscribed ? styles.subBtnOn : styles.subBtnOff,
-              subscribed
-                ? { borderColor: t.ruleOnAnchor }
-                : { backgroundColor: t.brandGreenOnDark },
+              subscribed ? styles.subTextOn : styles.subTextOff,
+              { color: subscribed ? t.inkBody : '#fff' },
             ]}
           >
-            {subscribed && <CheckCircle size={12} weight="fill" color={t.brandGreenOnDark} />}
-            <Text
-              style={[
-                subscribed ? styles.subTextOn : styles.subTextOff,
-                { color: subscribed ? '#fff' : '#07171b' },
-              ]}
-            >
-              {subscribed ? 'Subscribed' : 'Subscribe'}
-            </Text>
-          </Pressable>
-        }
-      >
+            {subscribed ? 'Subscribed' : 'Subscribe'}
+          </Text>
+        </Pressable>
+      <PageActions />
+    </>
+  );
 
+  const head = (
+    <PageHead
+      title={group.n}
+      onBack={onBack}
+      backLabel="Back to working groups"
+      actions={subscribeAction}
+    >
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
           {groupTabs.map(([id, label]) => {
             const on = id === tab;
@@ -302,13 +322,24 @@ export default function GroupView({
             );
           })}
         </ScrollView>
-      </ScreenHeader>
+    </PageHead>
+  );
+
+  return (
+    <SwipeBack onBack={onBack} style={styles.fill}>
+      <StickyTitle
+        scrollY={scrollY}
+        title={group.n}
+        onBack={onBack}
+        backLabel="Back to working groups"
+        actions={subscribeAction}
+      />
 
       <View style={styles.fill}>
         {tab === 'posts' && (
           <>
             {hasNewPosts && (
-              <View style={[styles.newPostsBar, { backgroundColor: t.surfacePaper, borderBottomColor: t.ruleHairline }]}
+              <View style={[styles.newPostsBar, { backgroundColor: t.surfacePaper, borderBottomColor: t.rule }]}
                 accessibilityLiveRegion="polite">
                 <Pressable
                   onPress={() => void showNewPosts()}
@@ -323,27 +354,36 @@ export default function GroupView({
                 </Pressable>
               </View>
             )}
-            <ScrollView
+            <Animated.ScrollView
               ref={feedScrollRef}
               contentContainerStyle={styles.list}
               showsVerticalScrollIndicator={false}
-              scrollEventThrottle={400}
+              // 16 rather than 400: the sticky bar needs every frame. The feed's
+              // own bookkeeping rides along as the event's listener.
+              scrollEventThrottle={16}
               onContentSizeChange={() => {
                 if (pendingFeedAnchor.current && !refreshingNewPosts) {
                   requestAnimationFrame(restoreFeedAnchor);
                 }
               }}
-              onScroll={({ nativeEvent }) => {
-                feedScrollOffset.current = nativeEvent.contentOffset.y;
-                if (!hasMore || loadingMore || !onLoadMore) return;
-                const distanceFromBottom =
-                  nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y;
-                if (distanceFromBottom < 220) onLoadMore();
-              }}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                {
+                  useNativeDriver: true,
+                  listener: ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+                    feedScrollOffset.current = nativeEvent.contentOffset.y;
+                    if (!hasMore || loadingMore || !onLoadMore) return;
+                    const distanceFromBottom =
+                      nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y;
+                    if (distanceFromBottom < 220) onLoadMore();
+                  },
+                }
+              )}
             >
+              {head}
               <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
               <View style={styles.feedControls}>
-                <View style={[styles.feedSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+                <View style={[styles.feedSearch, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
                   <MagnifyingGlass size={15} color={t.inkMuted} />
                   <TextInput
                     value={feedQuery}
@@ -412,7 +452,7 @@ export default function GroupView({
                 <View
                   style={[
                     styles.emptyCard,
-                    { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) },
+                    { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) },
                   ]}
                 >
                   <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Loading feed</Text>
@@ -422,7 +462,7 @@ export default function GroupView({
                 <View
                   style={[
                     styles.emptyCard,
-                    { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) },
+                    { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) },
                   ]}
                 >
                   <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Feed unavailable</Text>
@@ -432,7 +472,7 @@ export default function GroupView({
                 <View
                   style={[
                     styles.emptyCard,
-                    { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) },
+                    { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) },
                   ]}
                 >
                   <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>Nothing to show</Text>
@@ -466,13 +506,13 @@ export default function GroupView({
                     </View>
                   ))}
                   {(hasMore || loadingMore) && (
-                    <View style={[styles.moreRow, { borderColor: t.ruleHairline }]}>
+                    <View style={[styles.moreRow, { borderColor: t.rule }]}>
                       <Text style={[styles.moreText, { color: t.inkMuted }]}>{loadingMore ? 'Loading more posts...' : 'More posts load as you scroll'}</Text>
                     </View>
                   )}
                 </View>
               )}
-            </ScrollView>
+            </Animated.ScrollView>
 
             <Pressable
               onPress={onCompose}
@@ -490,16 +530,21 @@ export default function GroupView({
         )}
 
         {tab === 'about' && (
-          <ScrollView contentContainerStyle={styles.about} showsVerticalScrollIndicator={false}>
+          <Animated.ScrollView
+            contentContainerStyle={styles.about}
+            showsVerticalScrollIndicator={false}
+            {...handlers}
+          >
+            {head}
             {!!group.meta && (
-              <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+              <View style={[styles.infoPanel, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
                 <Text style={[styles.panelTitle, { color: t.inkStrong }]}>About</Text>
                 <Text style={[styles.aboutBio, { color: t.inkMuted }]}>{group.meta}</Text>
               </View>
             )}
 
             {coLeads.length > 0 && (
-              <View style={[styles.infoPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+              <View style={[styles.infoPanel, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
                 <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Leadership</Text>
                 {coLeads.map((c) => (
                   <Pressable
@@ -521,7 +566,7 @@ export default function GroupView({
             )}
 
             {canModerate && (
-              <View style={[styles.infoPanel, styles.dashedPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+              <View style={[styles.infoPanel, styles.dashedPanel, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
                 <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Admin Actions</Text>
                 <InfoActionRow Icon={FileText} label="Moderation queue" value={moderationPosts.length} onPress={() => onTab('moderation')} />
               </View>
@@ -541,7 +586,7 @@ export default function GroupView({
               </View>
             </View>
 
-            <View style={[styles.notifCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            <View style={[styles.notifCard, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
               <Text style={[styles.notifTitle, { color: t.inkStrong }]}>Notifications</Text>
               <Text style={[styles.notifBody, { color: t.inkMuted }]}>
                 {subscribed
@@ -555,7 +600,7 @@ export default function GroupView({
                   styles.notifBtn,
                   {
                     backgroundColor: subscribed ? t.surfacePaper : t.surfaceAnchor,
-                    borderColor: subscribed ? t.ruleHairline : t.surfaceAnchor,
+                    borderColor: subscribed ? t.rule : t.surfaceAnchor,
                   },
                 ]}
               >
@@ -564,7 +609,7 @@ export default function GroupView({
                 </Text>
               </Pressable>
             </View>
-          </ScrollView>
+          </Animated.ScrollView>
         )}
 
         {tab === 'resources' && (
@@ -605,8 +650,13 @@ export default function GroupView({
         )}
 
         {tab === 'members' && (
-          <ScrollView contentContainerStyle={styles.members} showsVerticalScrollIndicator={false}>
-            <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+          <Animated.ScrollView
+            contentContainerStyle={styles.members}
+            showsVerticalScrollIndicator={false}
+            {...handlers}
+          >
+            {head}
+            <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
               <MagnifyingGlass size={15} color={t.inkMuted} />
               <TextInput
                 value={memberQuery}
@@ -620,7 +670,7 @@ export default function GroupView({
                 clearButtonMode="while-editing"
               />
             </View>
-            <MastheadMeta size={9.5} color={t.inkFaint} style={styles.membersMeta}>
+            <MastheadMeta size={10.5} color={t.inkFaint} style={styles.membersMeta}>
               {`${visibleMembers.length} OF ${memberCount} MEMBERS · ${coLeads.length} CO-LEAD${coLeads.length === 1 ? '' : 'S'}`}
             </MastheadMeta>
             {visibleMembers.map((m) => (
@@ -632,7 +682,7 @@ export default function GroupView({
                 accessibilityLabel={m.id ? `Open ${m.name}'s profile` : undefined}
                 style={[
                   styles.memberRow,
-                  { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline },
+                  { backgroundColor: t.surfacePaper, borderTopColor: t.rule },
                 ]}
               >
                 <Avatar initials={m.initials ?? initialsOf(m.name)} size={36} />
@@ -643,7 +693,7 @@ export default function GroupView({
                   </View>
                   <Text style={[styles.personRole, { color: t.inkMuted }]}>{m.role}</Text>
                 </View>
-                <MastheadMeta size={9.5} color={t.inkFaint}>
+                <MastheadMeta size={10.5} color={t.inkFaint}>
                   {m.org}
                 </MastheadMeta>
               </Pressable>
@@ -651,10 +701,10 @@ export default function GroupView({
             {visibleMembers.length === 0 && (
               <Text style={[styles.personEmpty, { color: t.inkMuted }]}>No members match this search.</Text>
             )}
-          </ScrollView>
+          </Animated.ScrollView>
         )}
       </View>
-    </View>
+    </SwipeBack>
   );
 }
 
@@ -738,7 +788,7 @@ function GroupResourcesPanel({
         </View>
       </View>
 
-      <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+      <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
         <MagnifyingGlass size={15} color={t.inkMuted} />
         <TextInput
           value={query}
@@ -762,13 +812,13 @@ function GroupResourcesPanel({
       )}
 
       {resources.length === 0 ? (
-        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+        <View style={[styles.emptyCard, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
           <FileText size={22} color={t.inkMuted} />
           <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No group resources yet</Text>
           <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Approved resources for this working group will appear here.</Text>
         </View>
       ) : filtered.length === 0 ? (
-        <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+        <View style={[styles.emptyCard, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
           <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No matching resources</Text>
           <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Adjust the search to show all group resources.</Text>
         </View>
@@ -789,7 +839,7 @@ function GroupResourcesPanel({
           styles.submitResourceButton,
           {
             backgroundColor: subscribed ? t.surfaceAnchor : t.muted,
-            borderColor: subscribed ? t.surfaceAnchor : t.ruleHairline,
+            borderColor: subscribed ? t.surfaceAnchor : t.rule,
           },
         ]}
       >
@@ -811,7 +861,7 @@ function ResourceCard({ resource, onOpen }: { resource: LibraryResource; onOpen:
       accessibilityState={{ disabled: !resource.href }}
       style={({ pressed }) => [
         styles.resourceCard,
-        { borderColor: t.ruleHairline, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
+        { borderColor: t.rule, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
       ]}
     >
       <View style={styles.resourceCardHead}>
@@ -943,7 +993,7 @@ function ModerationPanel({
                 style={[
                   styles.threadStatusFilter,
                   {
-                    borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                    borderColor: selected ? t.surfaceAnchor : t.rule,
                     backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
                   },
                 ]}
@@ -962,7 +1012,7 @@ function ModerationPanel({
         </View>
 
         {filteredPosts.length === 0 ? (
-          <View style={[styles.emptyCard, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+          <View style={[styles.emptyCard, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
             <FileText size={22} color={t.inkMuted} />
             <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>No {emptyStatusLabel} threads</Text>
             <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Threads with this status will appear here.</Text>
@@ -979,7 +1029,7 @@ function ModerationPanel({
                   key={post.id}
                   style={[
                     styles.moderationCard,
-                    { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
+                    { borderColor: t.rule, backgroundColor: t.surfacePaper },
                   ]}
                 >
                   <Pressable
@@ -1001,7 +1051,7 @@ function ModerationPanel({
                     <Text style={[styles.resourceMeta, { color: t.inkFaint }]}>{post.author} · {post.time}</Text>
                   </Pressable>
                   {!!onChangePostStatus && (
-                    <View style={[styles.moderationActions, { borderTopColor: t.ruleHairline }]}>
+                    <View style={[styles.moderationActions, { borderTopColor: t.rule }]}>
                       {status !== 'open' && (
                         <Pressable
                           onPress={() => onChangePostStatus(post.id, 'open')}
@@ -1012,7 +1062,7 @@ function ModerationPanel({
                           style={({ pressed }) => [
                             styles.moderationAction,
                             {
-                              borderColor: t.ruleHairline,
+                              borderColor: t.rule,
                               backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
                               opacity: statusPending ? 0.55 : 1,
                             },
@@ -1031,7 +1081,7 @@ function ModerationPanel({
                           style={({ pressed }) => [
                             styles.moderationAction,
                             {
-                              borderColor: t.ruleHairline,
+                              borderColor: t.rule,
                               backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
                               opacity: statusPending ? 0.55 : 1,
                             },
@@ -1050,7 +1100,7 @@ function ModerationPanel({
                           style={({ pressed }) => [
                             styles.moderationAction,
                             {
-                              borderColor: t.ruleHairline,
+                              borderColor: t.rule,
                               backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
                               opacity: statusPending ? 0.55 : 1,
                             },
@@ -1061,12 +1111,12 @@ function ModerationPanel({
                       )}
                     </View>
                   )}
-                  <View style={[styles.directRemovalRow, { borderTopColor: t.ruleHairline }]}>
+                  <View style={[styles.directRemovalRow, { borderTopColor: t.rule }]}>
                     <Pressable
                       onPress={() => onOpenPost(post.id)}
                       accessibilityRole="button"
                       accessibilityLabel={`Open ${post.title} for review`}
-                      style={[styles.moderationAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+                      style={[styles.moderationAction, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
                     >
                       <Text style={[styles.moderationActionText, { color: t.inkMuted }]}>Open / Review</Text>
                     </Pressable>
@@ -1153,7 +1203,7 @@ function PostCard({
   }
 
   return (
-    <View style={[styles.card, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+    <View style={[styles.card, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
       <View style={styles.cardMetaRow}>
         <Pressable
           onPress={onOpenAuthor}
@@ -1188,7 +1238,7 @@ function PostCard({
           <View
             style={[
               styles.strip,
-              { borderColor: alpha(t.ruleHairline, 0.6), backgroundColor: alpha(t.surfaceSoft, 0.3) },
+              { borderColor: alpha(t.rule, 0.6), backgroundColor: alpha(t.surfaceSoft, 0.3) },
             ]}
           >
             <TypeIcon size={13} color={t.inkMuted} />
@@ -1212,7 +1262,7 @@ function PostCard({
           accessibilityRole="button"
           accessibilityLabel="Upvote post"
           accessibilityState={{ disabled: upvotePending }}
-          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
+          style={[styles.cardAction, { borderColor: t.rule, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
         >
           <ArrowFatUp
             size={13}
@@ -1228,7 +1278,7 @@ function PostCard({
           onPress={onOpen}
           accessibilityRole="button"
           accessibilityLabel="Open replies"
-          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+          style={[styles.cardAction, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
         >
           <ChatCircle size={13} color={t.inkMuted} />
           <Text style={[styles.cardActionText, { color: t.inkMuted }]}>{replyCount}</Text>
@@ -1240,7 +1290,7 @@ function PostCard({
           accessibilityRole="button"
           accessibilityLabel={`${reposted ? 'Remove repost' : 'Repost'} (${repostCount} ${repostCount === 1 ? 'repost' : 'reposts'})`}
           accessibilityState={{ selected: reposted, disabled: repostPending }}
-          style={[styles.cardAction, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper, opacity: repostPending ? 0.55 : 1 }]}
+          style={[styles.cardAction, { borderColor: t.rule, backgroundColor: t.surfacePaper, opacity: repostPending ? 0.55 : 1 }]}
         >
           <Repeat
             size={13}
@@ -1288,11 +1338,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
   },
-  subTextOn: { fontFamily: sans(500), fontSize: 11.5 },
-  subTextOff: { fontFamily: sans(600), fontSize: 11.5 },
+  subTextOn: { fontFamily: sans(500), fontSize: 12.5 },
+  subTextOff: { fontFamily: sans(600), fontSize: 12.5 },
   tabs: { flexDirection: 'row' },
   tab: { paddingTop: 9, paddingBottom: 10, paddingHorizontal: 14, borderBottomWidth: 2 },
-  tabLabel: { fontFamily: sans(600), fontSize: 12.5 },
+  tabLabel: { fontFamily: sans(600), fontSize: 13.5 },
 
   newPostsBar: {
     position: 'absolute',
@@ -1305,7 +1355,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   newPostsButton: { minHeight: 34, justifyContent: 'center', borderRadius: 17, paddingHorizontal: 18 },
-  newPostsText: { fontFamily: sans(600), fontSize: 12 },
+  newPostsText: { fontFamily: sans(600), fontSize: 13 },
   list: { paddingBottom: 96 },
   feedControls: { paddingTop: 12, gap: 8 },
   feedSearch: {
@@ -1319,35 +1369,35 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 4,
   },
-  feedSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 13.5, paddingVertical: 8 },
+  feedSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 15, paddingVertical: 8 },
   applySearch: { minHeight: 34, justifyContent: 'center', borderRadius: 6, paddingHorizontal: 11 },
-  applySearchText: { color: '#fff', fontFamily: sans(600), fontSize: 11.5 },
+  applySearchText: { color: '#fff', fontFamily: sans(600), fontSize: 12.5 },
   filterRow: {
     flexDirection: 'row',
     gap: 6,
     paddingHorizontal: 16,
   },
   resultsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
-  resultsText: { fontFamily: sans(500), fontSize: 11.5 },
-  clearText: { fontFamily: sans(600), fontSize: 11.5 },
+  resultsText: { fontFamily: sans(500), fontSize: 12.5 },
+  clearText: { fontFamily: sans(600), fontSize: 12.5 },
 
   cards: { gap: 12, paddingTop: 12, paddingHorizontal: 16 },
-  card: { borderWidth: 1, borderRadius: 8, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
+  card: { borderWidth: 1, borderRadius: 12, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   cardAuthorIdentity: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  cardAuthor: { flexShrink: 1, fontFamily: mono(400), fontSize: 11 },
-  cardDot: { fontFamily: mono(400), fontSize: 11 },
+  cardAuthor: { flexShrink: 1, fontFamily: mono(400), fontSize: 12 },
+  cardDot: { fontFamily: mono(400), fontSize: 12 },
   cardType: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  cardTypeText: { fontFamily: mono(400), fontSize: 11 },
-  cardTime: { fontFamily: mono(400), fontSize: 11 },
+  cardTypeText: { fontFamily: mono(400), fontSize: 12 },
+  cardTime: { fontFamily: mono(400), fontSize: 12 },
   cardTitle: {
     marginTop: 10,
     fontFamily: sans(600),
-    fontSize: 16,
-    lineHeight: 21.6,
-    letterSpacing: trackDisplay(16),
+    fontSize: 18,
+    lineHeight: 24.5,
+    letterSpacing: trackDisplay(18),
   },
-  cardBody: { marginTop: 6, fontFamily: sans(400), fontSize: 13, lineHeight: 20.8 },
+  cardBody: { marginTop: 6, fontFamily: sans(400), fontSize: 14.5, lineHeight: 23 },
   strip: {
     marginTop: 11,
     flexDirection: 'row',
@@ -1358,11 +1408,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  stripText: { flex: 1, fontFamily: mono(400), fontSize: 10 },
+  stripText: { flex: 1, fontFamily: mono(400), fontSize: 11 },
   cardTags: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   cardActions: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   moreRow: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
-  moreText: { fontFamily: sans(400), fontSize: 12 },
+  moreText: { fontFamily: sans(400), fontSize: 13 },
   cardAction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1372,7 +1422,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
   },
-  cardActionText: { fontFamily: mono(400), fontSize: 11 },
+  cardActionText: { fontFamily: mono(400), fontSize: 12 },
 
   emptyCard: {
     margin: 16,
@@ -1380,11 +1430,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  emptyTitle: { fontFamily: sans(600), fontSize: 13.5 },
-  emptyBody: { marginTop: 5, fontFamily: sans(400), fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  emptyTitle: { fontFamily: sans(600), fontSize: 15 },
+  emptyBody: { marginTop: 5, fontFamily: sans(400), fontSize: 13, lineHeight: 19.5, textAlign: 'center' },
 
   fab: {
     position: 'absolute',
@@ -1402,27 +1452,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  fabText: { fontFamily: sans(600), fontSize: 14, color: '#fff' },
+  fabText: { fontFamily: sans(600), fontSize: 15, color: '#fff' },
 
   about: { padding: 16, paddingBottom: 40, gap: 18 },
-  aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
-  infoPanel: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
+  aboutBio: { marginTop: 8, fontFamily: sans(400), fontSize: 14.5, lineHeight: 22.5 },
+  infoPanel: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 8 },
   dashedPanel: { borderStyle: 'dashed' },
-  panelTitle: { fontFamily: sans(600), fontSize: 14, letterSpacing: trackDisplay(14) },
+  panelTitle: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
   infoRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
   infoActionRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, paddingHorizontal: 2 },
   infoIcon: { width: 30, height: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  infoLabel: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 13 },
-  infoValue: { fontFamily: mono(600), fontSize: 12, fontVariant: ['tabular-nums'] },
+  infoLabel: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 14.5 },
+  infoValue: { fontFamily: mono(600), fontSize: 13, fontVariant: ['tabular-nums'] },
   leadRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 4 },
   aboutHead: { fontFamily: mono(600), fontSize: 9.5, letterSpacing: 1.7 },
-  personName: { fontFamily: sans(600), fontSize: 13 },
-  personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
-  personEmpty: { padding: 14, fontFamily: sans(400), fontSize: 12.5 },
+  personName: { fontFamily: sans(600), fontSize: 14.5 },
+  personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
+  personEmpty: { padding: 14, fontFamily: sans(400), fontSize: 13.5 },
   topics: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  notifCard: { borderWidth: 1, borderRadius: 8, padding: 14 },
-  notifTitle: { fontFamily: sans(600), fontSize: 13 },
-  notifBody: { marginTop: 4, fontFamily: sans(400), fontSize: 12, lineHeight: 18.6 },
+  notifCard: { borderWidth: 1, borderRadius: 12, padding: 14 },
+  notifTitle: { fontFamily: sans(600), fontSize: 14.5 },
+  notifBody: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 20 },
   notifBtn: {
     marginTop: 12,
     minHeight: 40,
@@ -1431,21 +1481,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notifBtnText: { fontFamily: sans(600), fontSize: 13 },
+  notifBtnText: { fontFamily: sans(600), fontSize: 14.5 },
 
   resources: { padding: 16, paddingBottom: 40, gap: 12 },
   resourceHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   countPill: { minWidth: 28, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  countPillText: { fontFamily: mono(600), fontSize: 11, fontVariant: ['tabular-nums'] },
+  countPillText: { fontFamily: mono(600), fontSize: 12, fontVariant: ['tabular-nums'] },
   resourceList: { gap: 10 },
-  resourceCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 8 },
+  resourceCard: { borderWidth: 1, borderRadius: 12, padding: 13, gap: 8 },
   resourceCardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  resourceTitle: { fontFamily: sans(600), fontSize: 14, lineHeight: 19.6, letterSpacing: trackDisplay(14) },
+  resourceTitle: { fontFamily: sans(600), fontSize: 15, lineHeight: 21, letterSpacing: trackDisplay(15) },
   resourceChips: { marginTop: 7, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   resourceTypeChip: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 32, paddingVertical: 3, paddingHorizontal: 8 },
   resourceTypeText: { fontFamily: mono(400), fontSize: 9.5, letterSpacing: 0.55, textTransform: 'uppercase' },
-  resourceSummary: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
-  resourceMeta: { fontFamily: mono(400), fontSize: 10.5 },
+  resourceSummary: { fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
+  resourceMeta: { fontFamily: mono(400), fontSize: 11.5 },
   submitResourceButton: {
     minHeight: 44,
     borderWidth: 1,
@@ -1455,8 +1505,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
-  submitResourceText: { fontFamily: sans(600), fontSize: 13 },
-  moderationCard: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  submitResourceText: { fontFamily: sans(600), fontSize: 14.5 },
+  moderationCard: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   threadStatusFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   threadStatusFilter: {
     minHeight: 36,
@@ -1465,7 +1515,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 12,
   },
-  threadStatusFilterText: { fontFamily: sans(600), fontSize: 11.5 },
+  threadStatusFilterText: { fontFamily: sans(600), fontSize: 12.5 },
   moderationCardContent: { padding: 13, gap: 8 },
   moderationActions: {
     flexDirection: 'row',
@@ -1491,7 +1541,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
   },
-  moderationActionText: { fontFamily: sans(600), fontSize: 12 },
+  moderationActionText: { fontFamily: sans(600), fontSize: 13 },
 
   members: { paddingTop: 14, paddingBottom: 40 },
   memberSearch: {
@@ -1505,7 +1555,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
   },
-  memberSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 13.5, paddingVertical: 8 },
+  memberSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 15, paddingVertical: 8 },
   membersMeta: { paddingHorizontal: 16, paddingBottom: 10 },
   memberRow: {
     flexDirection: 'row',

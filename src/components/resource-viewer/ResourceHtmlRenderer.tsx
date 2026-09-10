@@ -73,7 +73,7 @@ const NativeHtmlImageRenderer: CustomBlockRenderer = ({ tnode }) => {
     return (
       <View
         accessibilityLabel={`${alt} unavailable`}
-        style={[styles.imageFallback, { backgroundColor: t.surfaceSoft, borderColor: t.ruleHairline }]}
+        style={[styles.imageFallback, { backgroundColor: t.surfaceSoft, borderColor: t.rule }]}
       >
         <Text style={[styles.imageFallbackText, { color: t.inkMuted }]}>{alt}</Text>
       </View>
@@ -182,15 +182,15 @@ export function ResourceHtmlRenderer({
       body: {
         color: t.inkBody,
         fontFamily: sans(400),
-        fontSize: 15,
-        lineHeight: 23,
+        fontSize: 16,
+        lineHeight: 24.5,
       },
       h1: { color: t.inkStrong, fontFamily: sans(700), fontSize: 25, lineHeight: 31, marginBottom: 14 },
       h2: { color: t.inkStrong, fontFamily: sans(700), fontSize: 21, lineHeight: 27, marginBottom: 12, marginTop: 18 },
       h3: { color: t.inkStrong, fontFamily: sans(600), fontSize: 18, lineHeight: 24, marginBottom: 10, marginTop: 16 },
-      h4: { color: t.inkStrong, fontFamily: sans(600), fontSize: 16, lineHeight: 22, marginBottom: 8, marginTop: 14 },
-      h5: { color: t.inkStrong, fontFamily: sans(600), fontSize: 14, lineHeight: 20, marginBottom: 8, marginTop: 12 },
-      h6: { color: t.inkMuted, fontFamily: sans(600), fontSize: 13, lineHeight: 19, marginBottom: 8, marginTop: 12 },
+      h4: { color: t.inkStrong, fontFamily: sans(600), fontSize: 18, lineHeight: 25, marginBottom: 8, marginTop: 14 },
+      h5: { color: t.inkStrong, fontFamily: sans(600), fontSize: 15, lineHeight: 21.5, marginBottom: 8, marginTop: 12 },
+      h6: { color: t.inkMuted, fontFamily: sans(600), fontSize: 14.5, lineHeight: 21, marginBottom: 8, marginTop: 12 },
       p: { marginBottom: 12, marginTop: 0 },
       a: { color: t.brandBlue, textDecorationLine: 'underline' as const },
       strong: { color: t.inkStrong, fontFamily: sans(600) },
@@ -207,23 +207,23 @@ export function ResourceHtmlRenderer({
         paddingHorizontal: 14,
         paddingVertical: 10,
       },
-      code: { backgroundColor: t.surfaceSoft, color: t.inkStrong, fontFamily: mono(400), fontSize: 12.5 },
+      code: { backgroundColor: t.surfaceSoft, color: t.inkStrong, fontFamily: mono(400), fontSize: 13.5 },
       pre: {
         backgroundColor: t.surfaceSoft,
         color: t.inkStrong,
         fontFamily: mono(400),
-        fontSize: 12.5,
-        lineHeight: 19,
+        fontSize: 13.5,
+        lineHeight: 20.5,
         marginBottom: 14,
         padding: 12,
       },
       ul: { marginBottom: 12, marginTop: 0 },
       ol: { marginBottom: 12, marginTop: 0 },
       li: { marginBottom: 5 },
-      table: { borderColor: t.ruleHairline, borderWidth: 1, marginBottom: 14 },
+      table: { borderColor: t.rule, borderWidth: 1, marginBottom: 14 },
       th: { backgroundColor: t.surfaceSoft, color: t.inkStrong, fontFamily: sans(600), padding: 8 },
-      td: { borderColor: t.ruleHairline, borderWidth: 1, padding: 8 },
-      hr: { backgroundColor: t.ruleHairline, height: StyleSheet.hairlineWidth, marginBottom: 16, marginTop: 16 },
+      td: { borderColor: t.rule, borderWidth: 1, padding: 8 },
+      hr: { backgroundColor: t.rule, height: StyleSheet.hairlineWidth, marginBottom: 16, marginTop: 16 },
     }),
     [t]
   );
@@ -280,5 +280,5 @@ const styles = StyleSheet.create({
     padding: 16,
     width: '100%',
   },
-  imageFallbackText: { fontFamily: sans(400), fontSize: 12, textAlign: 'center' },
+  imageFallbackText: { fontFamily: sans(400), fontSize: 13, textAlign: 'center' },
 });

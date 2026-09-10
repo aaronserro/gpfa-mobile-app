@@ -45,27 +45,27 @@ export default function AskMarkdownAnswer({
             pre: { component: HorizontalBlock },
           },
           styles: {
-            text: { color: t.inkBody, fontFamily: sans(400), fontSize: 13.5, lineHeight: 21 },
+            text: { color: t.inkBody, fontFamily: sans(400), fontSize: 15, lineHeight: 23.5 },
             paragraph: { marginTop: 0, marginBottom: 8 },
             heading1: { color: t.inkStrong, fontFamily: sans(700), fontSize: 19, lineHeight: 25, marginBottom: 8 },
-            heading2: { color: t.inkStrong, fontFamily: sans(700), fontSize: 17, lineHeight: 23, marginBottom: 7 },
-            heading3: { color: t.inkStrong, fontFamily: sans(600), fontSize: 15, lineHeight: 21, marginBottom: 6 },
+            heading2: { color: t.inkStrong, fontFamily: sans(700), fontSize: 19, lineHeight: 25.5, marginBottom: 7 },
+            heading3: { color: t.inkStrong, fontFamily: sans(600), fontSize: 16, lineHeight: 22.5, marginBottom: 6 },
             strong: { fontFamily: sans(700) },
             em: { fontFamily: sans(400), fontStyle: 'italic' },
             link: { color: t.inkBody, textDecorationLine: 'none' },
             blockquote: { borderLeftColor: t.brandGreen, borderLeftWidth: 2, paddingLeft: 10, marginVertical: 8 },
-            codeInline: { color: t.inkStrong, backgroundColor: t.surfaceSoft, fontFamily: mono(400), fontSize: 12 },
+            codeInline: { color: t.inkStrong, backgroundColor: t.surfaceSoft, fontFamily: mono(400), fontSize: 13 },
             codeBlock: { backgroundColor: t.surfaceSoft, padding: 10 },
-            thematicBreak: { backgroundColor: t.ruleHairline, height: 1, marginVertical: 10 },
+            thematicBreak: { backgroundColor: t.rule, height: 1, marginVertical: 10 },
             listItem: { marginBottom: 4 },
             listItemBullet: { color: t.brandGreen },
             listItemNumber: { color: t.brandGreen, fontFamily: mono(500) },
-            table: { borderColor: t.ruleHairline, borderWidth: 1 },
+            table: { borderColor: t.rule, borderWidth: 1 },
             tableHeader: { backgroundColor: t.surfaceSoft },
             tableHeaderCell: { padding: 7 },
             tableCell: { padding: 7 },
-            tableCellDivider: { backgroundColor: t.ruleHairline },
-            tableRowDivider: { backgroundColor: t.ruleHairline },
+            tableCellDivider: { backgroundColor: t.rule },
+            tableRowDivider: { backgroundColor: t.rule },
           },
         }}
       >
@@ -78,5 +78,5 @@ export default function AskMarkdownAnswer({
 
 const styles = StyleSheet.create({
   horizontalContent: { minWidth: '100%' },
-  caret: { fontFamily: mono(500), fontSize: 13, lineHeight: 18 },
+  caret: { fontFamily: mono(500), fontSize: 14.5, lineHeight: 20 },
 });

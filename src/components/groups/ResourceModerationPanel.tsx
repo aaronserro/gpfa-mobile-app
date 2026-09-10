@@ -88,7 +88,7 @@ export default function ResourceModerationPanel({
               style={[
                 styles.filter,
                 {
-                  borderColor: active ? t.surfaceAnchor : t.ruleHairline,
+                  borderColor: active ? t.surfaceAnchor : t.rule,
                   backgroundColor: active ? t.surfaceAnchor : t.surfacePaper,
                 },
               ]}
@@ -116,7 +116,7 @@ export default function ResourceModerationPanel({
               style={({ pressed }) => [
                 styles.card,
                 {
-                  borderColor: t.ruleHairline,
+                  borderColor: t.rule,
                   backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper,
                 },
               ]}
@@ -227,12 +227,12 @@ function ReviewSheet({
             styles.sheet,
             {
               backgroundColor: t.surfacePaper,
-              borderTopColor: t.ruleHairline,
+              borderTopColor: t.rule,
               paddingBottom: Math.max(insets.bottom, 18),
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
+          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
           <View style={styles.sheetHead}>
             <View style={styles.flex}>
               <Text style={[styles.sheetTitle, { color: t.inkStrong }]}>{submission.title}</Text>
@@ -263,7 +263,7 @@ function ReviewSheet({
               <Pressable
                 onPress={() => void Linking.openURL(submission.sourceUrl ?? '')}
                 accessibilityRole="link"
-                style={[styles.linkRow, { borderColor: t.ruleHairline }]}
+                style={[styles.linkRow, { borderColor: t.rule }]}
               >
                 <Link size={15} color={t.surfaceAnchor} />
                 <Text numberOfLines={2} style={[styles.linkText, { color: t.surfaceAnchor }]}>Open source link</Text>
@@ -277,7 +277,7 @@ function ReviewSheet({
                 disabled={!file.downloadUrl}
                 accessibilityRole="link"
                 accessibilityState={{ disabled: !file.downloadUrl }}
-                style={[styles.linkRow, { borderColor: t.ruleHairline }]}
+                style={[styles.linkRow, { borderColor: t.rule }]}
               >
                 <FileText size={15} color={file.downloadUrl ? t.surfaceAnchor : t.inkFaint} />
                 <View style={styles.flex}>
@@ -327,7 +327,7 @@ function ReviewSheet({
 function Detail({ label, value }: { label: string; value: string }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.detail, { borderColor: t.ruleHairline }]}>
+    <View style={[styles.detail, { borderColor: t.rule }]}>
       <Text style={[styles.detailLabel, { color: t.inkFaint }]}>{label}</Text>
       <Text style={[styles.detailValue, { color: t.inkStrong }]}>{value}</Text>
     </View>
@@ -337,7 +337,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 function StateCard({ title, body, actionLabel, onAction }: { title: string; body: string; actionLabel?: string; onAction?: () => void }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.state, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+    <View style={[styles.state, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
       <Text style={[styles.stateTitle, { color: t.inkStrong }]}>{title}</Text>
       <Text style={[styles.stateBody, { color: t.inkMuted }]}>{body}</Text>
       {!!actionLabel && !!onAction && (
@@ -354,7 +354,7 @@ function StatusPill({ submission }: { submission: WorkingGroupResourceModeration
   const label = statusLabel(submission);
   const positive = submission.status === 'approved' && !submission.isRemoved;
   return (
-    <View style={[styles.status, { borderColor: positive ? t.brandGreen : t.ruleHairline, backgroundColor: positive ? alpha(t.brandGreen, 0.08) : t.surfacePage }]}>
+    <View style={[styles.status, { borderColor: positive ? t.brandGreen : t.rule, backgroundColor: positive ? alpha(t.brandGreen, 0.08) : t.surfacePage }]}>
       {positive && <CheckCircle size={11} weight="fill" color={t.brandGreen} />}
       <Text style={[styles.statusText, { color: positive ? t.brandGreenStrong : t.inkMuted }]}>{label}</Text>
     </View>
@@ -371,7 +371,7 @@ function ActionButton({ label, onPress, disabled, secondary, destructive }: { la
       disabled={disabled}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
-      style={[styles.action, { backgroundColor, borderColor: destructive ? t.brandBrick : secondary ? t.ruleHairline : t.surfaceAnchor }]}
+      style={[styles.action, { backgroundColor, borderColor: destructive ? t.brandBrick : secondary ? t.rule : t.surfaceAnchor }]}
     >
       <Text style={[styles.actionText, { color }]}>{label}</Text>
     </Pressable>
@@ -404,45 +404,45 @@ const styles = StyleSheet.create({
   section: { gap: 12 },
   flex: { flex: 1, minWidth: 0 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  heading: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
   count: { minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  countText: { fontFamily: mono(600), fontSize: 11 },
+  countText: { fontFamily: mono(600), fontSize: 12 },
   filters: { gap: 8 },
   filter: { minHeight: 32, borderWidth: 1, borderRadius: 18, paddingHorizontal: 11, justifyContent: 'center' },
-  filterText: { fontFamily: sans(500), fontSize: 11.5 },
+  filterText: { fontFamily: sans(500), fontSize: 12.5 },
   cards: { gap: 9 },
-  card: { borderWidth: 1, borderRadius: 9, padding: 13 },
+  card: { borderWidth: 1, borderRadius: 12, padding: 13 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  cardTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 14.5, lineHeight: 19 },
-  cardMeta: { marginTop: 4, fontFamily: sans(400), fontSize: 12 },
+  cardTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 16, lineHeight: 21 },
+  cardMeta: { marginTop: 4, fontFamily: sans(400), fontSize: 13 },
   date: { fontFamily: mono(400), fontSize: 9.5 },
   status: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 13, paddingHorizontal: 8 },
-  statusText: { fontFamily: sans(600), fontSize: 10.5 },
+  statusText: { fontFamily: sans(600), fontSize: 11.5 },
   assetLine: { marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  assetText: { fontFamily: sans(400), fontSize: 11 },
-  state: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 9, padding: 16 },
-  stateTitle: { fontFamily: sans(600), fontSize: 14 },
-  stateBody: { marginTop: 4, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
-  retry: { marginTop: 10, fontFamily: sans(600), fontSize: 12.5 },
+  assetText: { fontFamily: sans(400), fontSize: 12 },
+  state: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, padding: 16 },
+  stateTitle: { fontFamily: sans(600), fontSize: 15 },
+  stateBody: { marginTop: 4, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
+  retry: { marginTop: 10, fontFamily: sans(600), fontSize: 13.5 },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(19,35,41,.42)' },
   sheet: { maxHeight: '92%', borderTopWidth: 1, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 12, paddingHorizontal: 20 },
   grabber: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
   sheetHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingBottom: 12 },
-  sheetTitle: { fontFamily: sans(600), fontSize: 17, lineHeight: 22, letterSpacing: trackDisplay(17) },
-  sheetMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 12 },
+  sheetTitle: { fontFamily: sans(600), fontSize: 19, lineHeight: 24.5, letterSpacing: trackDisplay(19) },
+  sheetMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 13 },
   sheetBody: { gap: 9, paddingBottom: 14 },
   detail: { borderWidth: 1, borderRadius: 8, padding: 11 },
   detailLabel: { fontFamily: mono(500), fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.8 },
-  detailValue: { marginTop: 5, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  detailValue: { marginTop: 5, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   linkRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 8, paddingHorizontal: 11 },
-  linkText: { flex: 1, fontFamily: sans(600), fontSize: 12.5 },
-  fileName: { fontFamily: sans(600), fontSize: 12.5 },
+  linkText: { flex: 1, fontFamily: sans(600), fontSize: 13.5 },
+  fileName: { fontFamily: sans(600), fontSize: 13.5 },
   fileSize: { marginTop: 2, fontFamily: mono(400), fontSize: 9.5 },
-  notesLabel: { marginTop: 5, fontFamily: sans(500), fontSize: 12.5 },
-  notesInput: { minHeight: 82, paddingVertical: 10, paddingHorizontal: 12, fontSize: 14 },
+  notesLabel: { marginTop: 5, fontFamily: sans(500), fontSize: 13.5 },
+  notesInput: { minHeight: 82, paddingVertical: 10, paddingHorizontal: 12, fontSize: 15 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10 },
   action: { minHeight: 44, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12 },
-  actionText: { fontFamily: sans(600), fontSize: 12.5 },
+  actionText: { fontFamily: sans(600), fontSize: 13.5 },
 });

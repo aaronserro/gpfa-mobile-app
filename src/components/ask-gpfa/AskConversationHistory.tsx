@@ -1,7 +1,8 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { AskConversationSummary } from '../../api/types';
-import { CaretRight, Plus } from '../../ds/icons';
-import { MastheadMeta, ScreenHeader } from '../../ds/primitives';
+import { CaretRight, Plus, X } from '../../ds/icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MastheadMeta } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { sans } from '../../ds/tokens';
 
@@ -31,25 +32,39 @@ export default function AskConversationHistory({
   onRetry: () => void;
 }) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader
-        title="Conversation history"
-        onBack={onBack}
-        backLabel="Back to Ask GPFA"
-        actions={(
-          <Pressable
-            onPress={onNewConversation}
-            accessibilityRole="button"
-            accessibilityLabel="Start a new Ask GPFA conversation"
-            hitSlop={8}
-            style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.7 }]}
-          >
-            <Plus size={20} color={t.brandGreenOnDark} />
-          </Pressable>
-        )}
-      />
+      {/* This renders inside `SidePanel`, so it gets a panel header — a title,
+          a new-conversation action and a close — rather than a screen's back
+          control. */}
+      <View
+        style={[
+          styles.panelHead,
+          { borderBottomColor: t.rule, paddingTop: Math.max(insets.top, 12) },
+        ]}
+      >
+        <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Conversation history</Text>
+        <Pressable
+          onPress={onNewConversation}
+          accessibilityRole="button"
+          accessibilityLabel="Start a new Ask GPFA conversation"
+          hitSlop={8}
+          style={({ pressed }) => (pressed ? { opacity: 0.7 } : null)}
+        >
+          <Plus size={20} color={t.inkMuted} />
+        </Pressable>
+        <Pressable
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Close conversation history"
+          hitSlop={8}
+          style={({ pressed }) => (pressed ? { opacity: 0.7 } : null)}
+        >
+          <X size={19} color={t.inkMuted} />
+        </Pressable>
+      </View>
 
       {loading && conversations.length === 0 ? (
         <View style={styles.center}>
@@ -93,7 +108,7 @@ export default function AskConversationHistory({
               style={({ pressed }) => [
                 styles.row,
                 {
-                  borderColor: conversation.id === activeConversationId ? t.ruleStrong : t.ruleHairline,
+                  borderColor: conversation.id === activeConversationId ? t.ruleStrong : t.rule,
                   backgroundColor: t.surfacePaper,
                 },
                 pressed && { borderColor: t.ruleStrong },
@@ -103,7 +118,7 @@ export default function AskConversationHistory({
                 <Text numberOfLines={2} style={[styles.title, { color: t.inkStrong }]}>
                   {conversation.title}
                 </Text>
-                <MastheadMeta size={10}>{conversationDate(conversation.updatedAt)}</MastheadMeta>
+                <MastheadMeta size={11}>{conversationDate(conversation.updatedAt)}</MastheadMeta>
               </View>
               <CaretRight size={17} color={t.inkFaint} />
             </Pressable>
@@ -116,7 +131,15 @@ export default function AskConversationHistory({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  headerAction: { padding: 2 },
+  panelHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  panelTitle: { flex: 1, fontFamily: sans(600), fontSize: 19 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -124,16 +147,16 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 28,
   },
-  emptyTitle: { fontFamily: sans(600), fontSize: 17, textAlign: 'center' },
-  supporting: { fontFamily: sans(400), fontSize: 13.5, textAlign: 'center' },
+  emptyTitle: { fontFamily: sans(600), fontSize: 19, textAlign: 'center' },
+  supporting: { fontFamily: sans(400), fontSize: 15, textAlign: 'center' },
   retry: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  retryText: { fontFamily: sans(600), fontSize: 13 },
+  retryText: { fontFamily: sans(600), fontSize: 14.5 },
   list: { paddingHorizontal: 20, paddingVertical: 20, gap: 10 },
   inlineError: { paddingVertical: 8 },
   row: {
     minHeight: 72,
     borderWidth: 1,
-    borderRadius: 9,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -141,5 +164,5 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowText: { flex: 1, gap: 5 },
-  title: { fontFamily: sans(600), fontSize: 14, lineHeight: 19 },
+  title: { fontFamily: sans(600), fontSize: 15, lineHeight: 20.5 },
 });

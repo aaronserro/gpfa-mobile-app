@@ -6,17 +6,7 @@
  * website discussion layout.
  */
 import { useRef, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -34,7 +24,7 @@ import {
   Trash,
   X,
 } from '../../ds/icons';
-import { Avatar, Input, MastheadMeta, ScreenHeader } from '../../ds/primitives';
+import { Avatar, Input, MastheadMeta, PageActions, PageHead, StickyTitle, useStickyScroll } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
@@ -141,7 +131,7 @@ export interface PostDetailProps {
   replyPending: boolean;
   deletingReplies: Record<string, boolean | undefined>;
   onDeleteReply: (replyId: string) => Promise<void>;
-  canReportPost: boolean;
+  canReportPost?: boolean;
   canModerate: boolean;
   reportingTarget: ForumContentReportTarget | null;
   reportPending: boolean;
@@ -227,6 +217,7 @@ export default function PostDetail({
   onBack,
 }: PostDetailProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const insets = useSafeAreaInsets();
   const replyInputRef = useRef<TextInput | null>(null);
   const [draft, setDraft] = useState('');
@@ -258,6 +249,7 @@ export default function PostDetail({
   const rsvpPending = !!deletingReplies[`rsvp:${post.id}`];
   const threadUpdatePending = !!deletingReplies[`thread:update:${post.id}`];
   const threadDeletePending = !!deletingReplies[`thread:delete:${post.id}`];
+  const reportPermissionPending = canReportPost === undefined;
 
   const send = async () => {
     const text = draft.trim();
@@ -295,19 +287,16 @@ export default function PostDetail({
       style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScreenHeader
-        title={groupName}
-        onBack={onBack}
-        backLabel={`Back to ${groupName}`}
-      />
+      <StickyTitle scrollY={scrollY} title={groupName} onBack={onBack} backLabel={`Back to ${groupName}`} actions={<PageActions />} />
 
-      <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView style={styles.fill} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title={groupName} onBack={onBack} backLabel={`Back to ${groupName}`} actions={<PageActions />} />
         <View
           style={[
             styles.post,
             {
               backgroundColor: t.surfacePaper,
-              borderBottomColor: t.ruleHairline,
+              borderBottomColor: t.rule,
             },
           ]}
         >
@@ -341,13 +330,13 @@ export default function PostDetail({
                     setEditing(false);
                   }}
                   disabled={threadUpdatePending}
-                  style={[styles.manageBtn, { backgroundColor: threadUpdatePending ? t.muted : t.surfaceAnchor, borderColor: threadUpdatePending ? t.ruleHairline : t.surfaceAnchor }]}
+                  style={[styles.manageBtn, { backgroundColor: threadUpdatePending ? t.muted : t.surfaceAnchor, borderColor: threadUpdatePending ? t.rule : t.surfaceAnchor }]}
                 >
                   <Text style={styles.manageBtnOnText}>{threadUpdatePending ? 'Saving…' : 'Save changes'}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setEditing(false)}
-                  style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                  style={[styles.manageBtn, { borderColor: t.rule }]}
                 >
                   <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Cancel</Text>
                 </Pressable>
@@ -376,7 +365,7 @@ export default function PostDetail({
               onPress={() => post.authorId && onOpenMemberProfile(post.authorId)}
               accessibilityRole={post.authorId ? 'button' : undefined}
               accessibilityLabel={post.authorId ? `Open ${post.author}'s profile` : undefined}
-              style={[styles.byline, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+              style={[styles.byline, { borderColor: t.rule, backgroundColor: t.surfacePage }]}
             >
               <AnchorAvatar initials={post.initials ?? initialsOf(post.author)} size={34} />
               <View style={styles.flex}>
@@ -384,7 +373,7 @@ export default function PostDetail({
                   <Text style={[styles.author, { color: t.inkStrong }]}>{post.author}</Text>
                   <RoleBadge>Author</RoleBadge>
                 </View>
-                <MastheadMeta size={10} style={styles.bylineMeta}>
+                <MastheadMeta size={11} style={styles.bylineMeta}>
                   {`${post.org} · ${post.time}`}
                 </MastheadMeta>
               </View>
@@ -394,11 +383,11 @@ export default function PostDetail({
           {!!post.attachments?.length ? (
             <AttachmentList attachments={post.attachments} onOpen={onOpenAttachment} />
           ) : !!post.file ? (
-            <View style={[styles.attachment, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+            <View style={[styles.attachment, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
               <FileXls size={22} color={t.brandGreen} />
               <View style={styles.flex}>
                 <Text style={[styles.attachmentName, { color: t.inkStrong }]}>{post.file}</Text>
-                <MastheadMeta size={9.5}>{post.fileMeta}</MastheadMeta>
+                <MastheadMeta size={10.5}>{post.fileMeta}</MastheadMeta>
               </View>
             </View>
           ) : null}
@@ -409,7 +398,7 @@ export default function PostDetail({
                 style={[
                   styles.eventRows,
                   {
-                    borderColor: t.ruleHairline,
+                    borderColor: t.rule,
                     backgroundColor: post.lifecycle === 'closed' ? 'transparent' : alpha(t.surfaceSoft, 0.45),
                   },
                 ]}
@@ -422,7 +411,7 @@ export default function PostDetail({
                       key={e.text}
                       style={[
                         styles.eventChip,
-                        { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper },
+                        { borderColor: t.rule, backgroundColor: t.surfacePaper },
                       ]}
                     >
                       <RIcon size={13} color={t.inkMuted} />
@@ -460,7 +449,7 @@ export default function PostDetail({
                   style={[
                     styles.rsvpBtn,
                     {
-                      borderColor: t.ruleHairline,
+                      borderColor: t.rule,
                       backgroundColor: rsvp === 'no' ? t.surfaceSoft : t.surfacePaper,
                     },
                   ]}
@@ -516,7 +505,7 @@ export default function PostDetail({
             contentContainerStyle={styles.actions}
           >
             <Pressable
-              style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
+              style={[styles.action, { borderColor: t.rule, backgroundColor: t.surfacePage, opacity: upvotePending ? 0.55 : 1 }]}
               onPress={onToggleUpvote}
               disabled={upvotePending}
               accessibilityState={{ disabled: upvotePending }}
@@ -531,12 +520,31 @@ export default function PostDetail({
                 {(post.upvotes ?? 0) + (upvoted ? 1 : 0)}
               </Text>
             </Pressable>
-            <View style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+            <View style={[styles.action, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
               <ChatCircle size={15} color={t.inkMuted} />
               <Text style={[styles.actionText, { color: t.inkMuted }]}>{replies.length}</Text>
             </View>
+            {type !== 'poll' && post.authorId !== memberId && canReportPost !== false && (
+              <Pressable
+                onPress={() => onOpenReport({ targetType: 'thread', targetId: post.id, threadId: post.id })}
+                disabled={reportPending || reportPermissionPending}
+                accessibilityRole="button"
+                accessibilityLabel="Report post"
+                accessibilityState={{ disabled: reportPending || reportPermissionPending }}
+                style={[
+                  styles.manageBtn,
+                  {
+                    borderColor: t.rule,
+                    opacity: reportPending || reportPermissionPending ? 0.55 : 1,
+                  },
+                ]}
+              >
+                <Flag size={13} color={t.inkMuted} />
+                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Report post</Text>
+              </Pressable>
+            )}
             <Pressable
-              style={[styles.action, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+              style={[styles.action, { borderColor: t.rule, backgroundColor: t.surfacePage }]}
               onPress={onToggleRepost}
               disabled={repostPending}
               accessibilityRole="button"
@@ -559,13 +567,13 @@ export default function PostDetail({
               <Pressable
                 onPress={onSummarize}
                 disabled={summarizing}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                style={[styles.manageBtn, { borderColor: t.rule }]}
               >
                 <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{summarizing ? 'Summarizing...' : 'Summarize'}</Text>
               </Pressable>
             )}
             {canEdit && (
-              <Pressable disabled={threadUpdatePending} onPress={() => setEditing(true)} style={[styles.manageBtn, { borderColor: t.ruleHairline }]}>
+              <Pressable disabled={threadUpdatePending} onPress={() => setEditing(true)} style={[styles.manageBtn, { borderColor: t.rule }]}>
                 <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Edit</Text>
               </Pressable>
             )}
@@ -576,22 +584,9 @@ export default function PostDetail({
                   { text: 'Cancel', style: 'cancel' },
                   { text: 'Delete', style: 'destructive', onPress: onDelete },
                 ])}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                style={[styles.manageBtn, { borderColor: t.rule }]}
               >
                 <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{threadDeletePending ? 'Deleting…' : 'Delete'}</Text>
-              </Pressable>
-            )}
-            {type !== 'poll' && canReportPost && post.authorId !== memberId && (
-              <Pressable
-                onPress={() => onOpenReport({ targetType: 'thread', targetId: post.id, threadId: post.id })}
-                disabled={reportPending}
-                accessibilityRole="button"
-                accessibilityLabel="Report post"
-                accessibilityState={{ disabled: reportPending }}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
-              >
-                <Flag size={13} color={t.inkMuted} />
-                <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>Report</Text>
               </Pressable>
             )}
             {type !== 'poll' && canModerate && post.authorId !== memberId && (
@@ -611,7 +606,7 @@ export default function PostDetail({
               <Pressable
                 onPress={() => void onOpenPollEditor()}
                 disabled={pollLoading || pollClosing || pollDeleting}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                style={[styles.manageBtn, { borderColor: t.rule }]}
               >
                 <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{pollLoading ? 'Loading…' : 'Edit poll'}</Text>
               </Pressable>
@@ -623,7 +618,7 @@ export default function PostDetail({
                   { text: 'Close poll', style: 'destructive', onPress: () => void onClosePoll() },
                 ])}
                 disabled={pollClosing || pollUpdating || pollDeleting}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                style={[styles.manageBtn, { borderColor: t.rule }]}
               >
                 <Text style={[styles.manageBtnText, { color: t.inkMuted }]}>{pollClosing ? 'Closing…' : 'Close poll'}</Text>
               </Pressable>
@@ -635,7 +630,7 @@ export default function PostDetail({
                   { text: 'Delete', style: 'destructive', onPress: () => void onDeletePoll() },
                 ])}
                 disabled={pollDeleting || pollUpdating || pollClosing}
-                style={[styles.manageBtn, { borderColor: t.ruleHairline }]}
+                style={[styles.manageBtn, { borderColor: t.rule }]}
               >
                 <Text style={[styles.manageBtnText, { color: t.brandRed }]}>{pollDeleting ? 'Deleting…' : 'Delete poll'}</Text>
               </Pressable>
@@ -643,7 +638,7 @@ export default function PostDetail({
           </ScrollView>
 
           {!!summary && (
-            <View style={[styles.summaryCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+            <View style={[styles.summaryCard, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
               <Text style={[styles.summaryTitle, { color: t.inkStrong }]}>Summary</Text>
               <Text style={[styles.summaryText, { color: t.inkMuted }]}>{summary}</Text>
             </View>
@@ -651,7 +646,7 @@ export default function PostDetail({
         </View>
 
         {!canReply ? (
-          <View style={[styles.readOnly, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+          <View style={[styles.readOnly, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
             <Text style={[styles.readOnlyText, { color: t.inkMuted }]}>
               Replies are closed for this post.
             </Text>
@@ -676,7 +671,7 @@ export default function PostDetail({
             {roots.map((node) => (
               <View
                 key={node.key}
-                style={[styles.reply, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}
+                style={[styles.reply, { backgroundColor: t.surfacePaper, borderTopColor: t.rule }]}
               >
                 <View style={styles.replyRow}>
                   <AnchorAvatar
@@ -695,9 +690,10 @@ export default function PostDetail({
                         requestAnimationFrame(() => replyInputRef.current?.focus());
                       } : undefined}
                       onDelete={!node.reply.deleted && canReply && node.reply.id && node.reply.authorId === memberId ? () => confirmReplyDelete(node.reply.id!) : undefined}
-                      onReport={!node.reply.deleted && canReportPost && node.reply.id && node.reply.authorId !== memberId
+                      onReport={!node.reply.deleted && node.reply.canReport === true && node.reply.id && node.reply.authorId !== memberId
                         ? () => onOpenReport({ targetType: 'reply', targetId: node.reply.id!, threadId: post.id })
                         : undefined}
+                      reportDisabled={reportPending}
                       onRemove={!node.reply.deleted && canModerate && node.reply.id && node.reply.authorId !== memberId
                         ? () => confirmContentRemoval({ targetType: 'reply', targetId: node.reply.id!, threadId: post.id }, 'reply')
                         : undefined}
@@ -709,7 +705,7 @@ export default function PostDetail({
 
                     {node.children.map((child) => (
                       <View key={child.key} style={styles.childWrap}>
-                        <View style={[styles.childRule, { backgroundColor: t.ruleHairline }]} />
+                        <View style={[styles.childRule, { backgroundColor: t.rule }]} />
                         <View style={styles.childRow}>
                           <Avatar
                             initials={child.reply.initials ?? initialsOf(child.reply.a)}
@@ -721,9 +717,10 @@ export default function PostDetail({
                               node={child}
                               nested
                               onDelete={!child.reply.deleted && canReply && child.reply.id && child.reply.authorId === memberId ? () => confirmReplyDelete(child.reply.id!) : undefined}
-                              onReport={!child.reply.deleted && canReportPost && child.reply.id && child.reply.authorId !== memberId
+                              onReport={!child.reply.deleted && child.reply.canReport === true && child.reply.id && child.reply.authorId !== memberId
                                 ? () => onOpenReport({ targetType: 'reply', targetId: child.reply.id!, threadId: post.id })
                                 : undefined}
+                              reportDisabled={reportPending}
                               onRemove={!child.reply.deleted && canModerate && child.reply.id && child.reply.authorId !== memberId
                                 ? () => confirmContentRemoval({ targetType: 'reply', targetId: child.reply.id!, threadId: post.id }, 'reply')
                                 : undefined}
@@ -744,14 +741,14 @@ export default function PostDetail({
             <View style={styles.tail} />
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {canReply && (
         <View
           style={[
             styles.composer,
             {
-              borderTopColor: t.ruleHairline,
+              borderTopColor: t.rule,
               backgroundColor: t.surfacePaper,
               paddingBottom: Math.max(insets.bottom, 10),
             },
@@ -819,6 +816,7 @@ function ReplyBody({
   onReport,
   onRemove,
   deleting = false,
+  reportDisabled = false,
   moderationPending = false,
   onOpenAttachment,
   onOpenAuthor,
@@ -831,6 +829,7 @@ function ReplyBody({
   onReport?: () => void;
   onRemove?: () => void;
   deleting?: boolean;
+  reportDisabled?: boolean;
   moderationPending?: boolean;
   onOpenAttachment: (attachment: ForumAttachment) => void;
   onOpenAuthor?: () => void;
@@ -864,7 +863,7 @@ function ReplyBody({
             {r.a}
           </Text>
         </Pressable>
-        <MastheadMeta size={9.5}>
+        <MastheadMeta size={10.5}>
           {`${r.org} · ${r.time}`}
         </MastheadMeta>
       </View>
@@ -887,9 +886,17 @@ function ReplyBody({
           </Pressable>
         )}
         {!!onReport && (
-          <Pressable style={styles.replyAction} onPress={onReport} hitSlop={6}>
+          <Pressable
+            style={[styles.replyAction, { opacity: reportDisabled ? 0.55 : 1 }]}
+            onPress={onReport}
+            disabled={reportDisabled}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="Report reply"
+            accessibilityState={{ disabled: reportDisabled }}
+          >
             <Flag size={12} color={t.inkFaint} />
-            <Text style={[styles.replyActionText, { color: t.inkFaint }]}>Report</Text>
+            <Text style={[styles.replyActionText, { color: t.inkFaint }]}>Report reply</Text>
           </Pressable>
         )}
         {!!onRemove && (
@@ -927,7 +934,7 @@ function AttachmentList({
             styles.attachment,
             compact && styles.replyAttachment,
             {
-              borderColor: pressed ? t.ruleStrong : t.ruleHairline,
+              borderColor: pressed ? t.ruleStrong : t.rule,
               backgroundColor: t.surfacePage,
             },
           ]}
@@ -935,7 +942,7 @@ function AttachmentList({
           <FileXls size={compact ? 17 : 22} color={t.brandGreen} />
           <View style={styles.flex}>
             <Text numberOfLines={1} style={[styles.attachmentName, { color: t.inkStrong }]}>{attachment.name}</Text>
-            <MastheadMeta size={9.5}>{attachmentMeta(attachment)}</MastheadMeta>
+            <MastheadMeta size={10.5}>{attachmentMeta(attachment)}</MastheadMeta>
           </View>
           {!!attachment.href && <DownloadSimple size={17} color={t.inkFaint} />}
         </Pressable>
@@ -972,8 +979,8 @@ function TypeDetailCard({
   const sectionLabel = type === 'announcement' ? 'Announcement' : 'About this event';
 
   return (
-    <View style={[styles.typeDetailCard, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-      <View style={[styles.typeDetailHeader, { borderBottomColor: t.ruleHairline }]}>
+    <View style={[styles.typeDetailCard, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
+      <View style={[styles.typeDetailHeader, { borderBottomColor: t.rule }]}>
         <View style={[styles.typeIconTile, { backgroundColor: kind.chipBg }]}>
           <TypeIcon size={20} color={kind.ink} />
         </View>
@@ -1031,8 +1038,8 @@ function PollFilePanel({
   ];
 
   return (
-    <View style={[styles.pollFile, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
-      <View style={[styles.pollFileHeader, { borderBottomColor: t.ruleHairline }]}>
+    <View style={[styles.pollFile, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
+      <View style={[styles.pollFileHeader, { borderBottomColor: t.rule }]}>
         <View style={[styles.typeIconTile, { backgroundColor: kind.chipBg }]}>
           <ChartBar size={20} color={kind.ink} />
         </View>
@@ -1051,7 +1058,7 @@ function PollFilePanel({
             key={`${fact.k}:${index}`}
             style={[
               styles.pollFileStat,
-              { borderColor: t.ruleHairline },
+              { borderColor: t.rule },
               index % 2 === 1 && styles.pollFileStatRight,
             ]}
           >
@@ -1088,13 +1095,13 @@ const styles = StyleSheet.create({
   },
   kindLabel: {
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   kindState: {
     fontFamily: mono(400),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.5,
   },
   postTitle: {
@@ -1107,8 +1114,8 @@ const styles = StyleSheet.create({
   byline: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, borderWidth: 1, borderRadius: 8, padding: 10 },
   bylineTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   bylineMeta: { marginTop: 1 },
-  author: { fontFamily: sans(600), fontSize: 13.5 },
-  postBody: { marginTop: 14, fontFamily: sans(400), fontSize: 14, lineHeight: 24 },
+  author: { fontFamily: sans(600), fontSize: 15 },
+  postBody: { marginTop: 14, fontFamily: sans(400), fontSize: 15, lineHeight: 25.5 },
   typeDetailCard: {
     marginTop: 16,
     borderWidth: 1,
@@ -1130,13 +1137,13 @@ const styles = StyleSheet.create({
   typeIconTile: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   typeDetailEyebrow: {
     fontFamily: mono(600),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
@@ -1147,18 +1154,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  typeDetailBylineText: { fontFamily: sans(500), fontSize: 12.5, lineHeight: 18 },
-  typeDetailDot: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  typeDetailBylineText: { fontFamily: sans(500), fontSize: 13.5, lineHeight: 19.5 },
+  typeDetailDot: { fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
   typeDetailBodyWrap: { marginTop: 16 },
   typeDetailSectionLabel: {
     fontFamily: mono(600),
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  typeDetailBody: { marginTop: 9, fontFamily: sans(400), fontSize: 13.5, lineHeight: 23 },
+  typeDetailBody: { marginTop: 9, fontFamily: sans(400), fontSize: 15, lineHeight: 25.5 },
   editPanel: { marginTop: 12, gap: 8 },
-  editInput: { minHeight: 44, paddingHorizontal: 12, fontSize: 14 },
+  editInput: { minHeight: 44, paddingHorizontal: 12, fontSize: 15 },
   editTextarea: { minHeight: 112, paddingVertical: 10 },
 
   attachment: {
@@ -1175,7 +1182,7 @@ const styles = StyleSheet.create({
   attachmentList: { marginTop: 0 },
   replyAttachmentList: { marginTop: 2 },
   replyAttachment: { minHeight: 42, marginTop: 7, paddingVertical: 7, paddingHorizontal: 9 },
-  attachmentName: { fontFamily: sans(600), fontSize: 12.5 },
+  attachmentName: { fontFamily: sans(600), fontSize: 13.5 },
 
   eventRows: {
     flexDirection: 'row',
@@ -1197,7 +1204,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  eventChipText: { fontFamily: sans(400), fontSize: 11.5 },
+  eventChipText: { fontFamily: sans(400), fontSize: 12.5 },
   rsvpRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
   rsvpBtn: {
     flex: 1,
@@ -1207,8 +1214,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rsvpYes: { fontFamily: sans(600), fontSize: 13 },
-  rsvpNo: { fontFamily: sans(500), fontSize: 13 },
+  rsvpYes: { fontFamily: sans(600), fontSize: 14.5 },
+  rsvpNo: { fontFamily: sans(500), fontSize: 14.5 },
 
   poll: { marginTop: 14, borderWidth: 1, borderRadius: 8, padding: 14 },
   pollFile: {
@@ -1230,7 +1237,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pollFileTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  pollFileGroup: { marginTop: 4, fontFamily: sans(600), fontSize: 15 },
+  pollFileGroup: { marginTop: 4, fontFamily: sans(600), fontSize: 16 },
   pollFileGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   pollFileStat: {
     width: '50%',
@@ -1246,9 +1253,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
-  pollFileStatValue: { marginTop: 5, fontFamily: sans(600), fontSize: 13.5, lineHeight: 18 },
+  pollFileStatValue: { marginTop: 5, fontFamily: sans(600), fontSize: 15, lineHeight: 20 },
   pollQRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  pollQ: { flex: 1, fontFamily: sans(600), fontSize: 13 },
+  pollQ: { flex: 1, fontFamily: sans(600), fontSize: 14.5 },
   pollOptions: { gap: 7, marginTop: 11 },
   pollOption: {
     position: 'relative',
@@ -1265,15 +1272,15 @@ const styles = StyleSheet.create({
   },
   pollFill: { position: 'absolute', top: 0, bottom: 0, left: 0 },
   pollLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
-  pollLabel: { fontSize: 13 },
-  pollPct: { fontFamily: sans(600), fontSize: 12 },
+  pollLabel: { fontSize: 14.5 },
+  pollPct: { fontFamily: sans(600), fontSize: 13 },
   pollMeta: { marginTop: 10 },
   tags: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   actionScroller: { marginTop: 12 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 2 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, paddingHorizontal: 8, borderWidth: 1, borderRadius: 6 },
-  actionText: { fontFamily: mono(400), fontSize: 10 },
+  actionText: { fontFamily: mono(400), fontSize: 11 },
   manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   manageBtn: {
     minHeight: 28,
@@ -1285,11 +1292,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
   },
-  manageBtnText: { fontFamily: sans(600), fontSize: 10.5 },
-  manageBtnOnText: { fontFamily: sans(600), fontSize: 12, color: '#fff' },
-  summaryCard: { marginTop: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
-  summaryTitle: { fontFamily: sans(600), fontSize: 12.5 },
-  summaryText: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5, lineHeight: 19.4 },
+  manageBtnText: { fontFamily: sans(600), fontSize: 11.5 },
+  manageBtnOnText: { fontFamily: sans(600), fontSize: 13, color: '#fff' },
+  summaryCard: { marginTop: 12, borderWidth: 1, borderRadius: 12, padding: 12 },
+  summaryTitle: { fontFamily: sans(600), fontSize: 13.5 },
+  summaryText: { marginTop: 5, fontFamily: sans(400), fontSize: 13.5, lineHeight: 21 },
 
   readOnly: {
     marginTop: 16,
@@ -1301,7 +1308,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  readOnlyText: { fontFamily: sans(400), fontSize: 12, lineHeight: 19.2 },
+  readOnlyText: { fontFamily: sans(400), fontSize: 13, lineHeight: 21 },
 
   discussionHead: {
     flexDirection: 'row',
@@ -1311,7 +1318,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 20,
   },
-  discussionLabel: { fontFamily: sans(600), fontSize: 10, letterSpacing: 1.8 },
+  discussionLabel: { fontFamily: sans(600), fontSize: 11, letterSpacing: 1.8 },
   discussionCount: {
     minWidth: 20,
     height: 18,
@@ -1320,32 +1327,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  discussionCountText: { fontFamily: mono(400), fontSize: 10 },
+  discussionCountText: { fontFamily: mono(400), fontSize: 11 },
   noReplies: {
     paddingTop: 6,
     paddingBottom: 20,
     paddingHorizontal: 20,
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 20.8,
+    fontSize: 14.5,
+    lineHeight: 23,
   },
 
   reply: { borderTopWidth: 1, paddingVertical: 13, paddingHorizontal: 20 },
   replyRow: { flexDirection: 'row', gap: 10 },
   replyByline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 7 },
-  replyAuthor: { fontFamily: sans(600), fontSize: 12.5 },
-  replyText: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 20.15 },
-  replyTombstone: { paddingVertical: 3, fontFamily: sans(500), fontSize: 12.5, fontStyle: 'italic' },
+  replyAuthor: { fontFamily: sans(600), fontSize: 13.5 },
+  replyText: { marginTop: 4, fontFamily: sans(400), fontSize: 14.5, lineHeight: 22.5 },
+  replyTombstone: { paddingVertical: 3, fontFamily: sans(500), fontSize: 13.5, fontStyle: 'italic' },
   replyActions: { marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 14 },
   replyAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  replyActionText: { fontFamily: mono(400), fontSize: 10 },
+  replyActionText: { fontFamily: mono(400), fontSize: 11 },
 
   childWrap: { marginTop: 12, flexDirection: 'row', gap: 12 },
   childRule: { width: 1 },
   childRow: { flex: 1, minWidth: 0, flexDirection: 'row', gap: 9 },
   childAvatar: { marginTop: 2 },
-  childAuthor: { fontFamily: sans(600), fontSize: 12 },
-  childText: { marginTop: 4, fontFamily: sans(400), fontSize: 12.5, lineHeight: 19.4 },
+  childAuthor: { fontFamily: sans(600), fontSize: 13 },
+  childText: { marginTop: 4, fontFamily: sans(400), fontSize: 13.5, lineHeight: 21 },
   childActions: { marginTop: 6 },
 
   tail: { height: 16 },
@@ -1353,7 +1360,7 @@ const styles = StyleSheet.create({
   composer: { borderTopWidth: 1, paddingTop: 10, paddingHorizontal: 16 },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   composerInputWrap: { flex: 1 },
-  composerInput: { height: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 13.5 },
+  composerInput: { height: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 15 },
   send: {
     width: 44,
     height: 44,
@@ -1371,5 +1378,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 8,
   },
-  targetText: { flex: 1, fontFamily: sans(400), fontSize: 11 },
+  targetText: { flex: 1, fontFamily: sans(400), fontSize: 12 },
 });

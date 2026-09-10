@@ -187,7 +187,7 @@ export default function PostComposer({
             styles.sheet,
             {
               backgroundColor: t.surfacePaper,
-              borderTopColor: t.ruleHairline,
+              borderTopColor: t.rule,
               paddingBottom: Math.max(insets.bottom, 18),
               opacity: sheetHeight ? 1 : 0,
               transform: [{
@@ -199,7 +199,7 @@ export default function PostComposer({
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
+          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
 
           <View style={styles.head}>
             <Text style={[styles.title, { color: t.inkStrong }]}>New post</Text>
@@ -238,7 +238,7 @@ export default function PostComposer({
                       styles.typeTile,
                       {
                         backgroundColor: on ? kind.chipBg : t.surfacePaper,
-                        borderColor: on ? kind.chipBd : t.ruleHairline,
+                        borderColor: on ? kind.chipBd : t.rule,
                       },
                     ]}
                   >
@@ -284,7 +284,7 @@ export default function PostComposer({
                         style={[
                           styles.suggestionChip,
                           {
-                            borderColor: on ? t.surfaceAnchor : t.ruleHairline,
+                            borderColor: on ? t.surfaceAnchor : t.rule,
                             backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
                           },
                         ]}
@@ -351,7 +351,7 @@ export default function PostComposer({
                 <Input value={location} onChangeText={setLocation} placeholder="Toronto or Zoom" style={styles.field} />
                 <Text style={[styles.fieldLabel, styles.label, { color: t.inkMuted }]}>Registration URL</Text>
                 <Input value={registrationUrl} onChangeText={setRegistrationUrl} placeholder="https://..." autoCapitalize="none" style={styles.field} />
-                <Pressable onPress={() => setIsVirtual((value) => !value)} style={[styles.virtualToggle, { borderColor: t.ruleHairline }]}>
+                <Pressable onPress={() => setIsVirtual((value) => !value)} style={[styles.virtualToggle, { borderColor: t.rule }]}>
                   <Text style={[styles.virtualText, { color: t.inkMuted }]}>{isVirtual ? 'Virtual event' : 'In-person or hybrid'}</Text>
                 </Pressable>
               </>
@@ -416,12 +416,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: sans(600),
-    fontSize: 16,
-    letterSpacing: trackDisplay(16),
+    fontSize: 18,
+    letterSpacing: trackDisplay(18),
   },
   body: { paddingBottom: 14 },
   label: { marginTop: 16 },
-  fieldLabel: { fontFamily: sans(500), fontSize: 12.5 },
+  fieldLabel: { fontFamily: sans(500), fontSize: 13.5 },
   typeRow: {
     gap: 8,
     paddingVertical: 10,
@@ -437,13 +437,13 @@ const styles = StyleSheet.create({
   },
   typeLabel: {
     fontFamily: sans(500),
-    fontSize: 13,
+    fontSize: 14.5,
   },
   hint: {
     marginTop: 8,
     fontFamily: sans(400),
-    fontSize: 11.5,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18.5,
   },
   suggestionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 },
   suggestionChip: {
@@ -456,15 +456,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 32,
   },
-  suggestionText: { fontFamily: sans(500), fontSize: 11.5 },
+  suggestionText: { fontFamily: sans(500), fontSize: 12.5 },
   suggestionCount: { fontFamily: sans(400), fontSize: 9.5 },
-  tagHelp: { marginTop: 6, fontFamily: sans(400), fontSize: 11, lineHeight: 16 },
+  tagHelp: { marginTop: 6, fontFamily: sans(400), fontSize: 12, lineHeight: 17.5 },
   field: {
     marginTop: 8,
     minHeight: 44,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    fontSize: 14,
+    fontSize: 15,
   },
   textarea: { minHeight: 88 },
   virtualToggle: {
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
   },
-  virtualText: { fontFamily: sans(500), fontSize: 12.5 },
+  virtualText: { fontFamily: sans(500), fontSize: 13.5 },
   post: {
     minHeight: 48,
     borderRadius: 8,
@@ -485,6 +485,6 @@ const styles = StyleSheet.create({
   },
   postText: {
     fontFamily: sans(600),
-    fontSize: 14,
+    fontSize: 15,
   },
 });

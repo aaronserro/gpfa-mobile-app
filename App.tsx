@@ -15,6 +15,10 @@ import Inter_700Bold from '@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf';
 import JetBrainsMono_400Regular from '@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf';
 import JetBrainsMono_500Medium from '@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf';
 import JetBrainsMono_600SemiBold from '@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf';
+// Lato is the splash screen's face only — the app itself is Inter throughout.
+import Lato_300Light from '@expo-google-fonts/lato/300Light/Lato_300Light.ttf';
+import Lato_400Regular from '@expo-google-fonts/lato/400Regular/Lato_400Regular.ttf';
+import Lato_700Bold from '@expo-google-fonts/lato/700Bold/Lato_700Bold.ttf';
 
 import MemberSheet from './src/components/MemberSheet';
 import NotificationArrivalBanner from './src/components/NotificationArrivalBanner';
@@ -47,6 +51,7 @@ import SecuritySettingsScreen from './src/screens/SecuritySettingsScreen';
 import UpvoteHistoryScreen from './src/screens/UpvoteHistoryScreen';
 import ResourcesScreen, { type ResourcesNavigationRequest } from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import SplashScreen, { SPLASH_BACKGROUND } from './src/screens/SplashScreen';
 import UpdatesScreen, {
   type UpdateSelection,
 } from './src/screens/UpdatesScreen';
@@ -219,7 +224,7 @@ import type {
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
 import { MemberProvider } from './src/auth/MemberProvider';
 import DataGate from './src/components/DataGate';
-import { ScreenEnter } from './src/ds/primitives';
+import { ScreenEnter, SidePanel } from './src/ds/primitives';
 import { openForumAttachment as openForumAttachmentFile } from './src/lib/forumAttachments';
 import { mergeAskMessages } from './src/lib/ask-gpfa-core';
 import {
@@ -257,6 +262,13 @@ import {
 
 // The design exposes these as editor props on the component.
 const DEFAULT_TAB: TabId = 'home';
+
+/**
+ * How long the splash stays up at minimum. Long enough for the copy to rise in
+ * and the progress bar to make a full pass; short enough not to be a toll gate
+ * on every launch.
+ */
+const SPLASH_MINIMUM_MS = 2200;
 const DARK_MODE = false;
 const SHOW_BADGES = true;
 
@@ -343,7 +355,7 @@ type MoreView =
   | 'resources';
 
 function Portal() {
-  const { t, preference: themePreference, setPreference: setThemePreference } = useTheme();
+  const { t, isDark, preference: themePreference, setPreference: setThemePreference } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const tabTranslateX = useRef(new Animated.Value(0)).current;
 
@@ -356,6 +368,19 @@ function Portal() {
     await Linking.openURL(destination.url);
   }, []);
   const [tab, setTab] = useState<TabId>(DEFAULT_TAB);
+  const [tabResetKeys, setTabResetKeys] = useState<Record<TabId, number>>({
+    home: 0,
+    groups: 0,
+    ask: 0,
+    directory: 0,
+    more: 0,
+  });
+  const [splashDone, setSplashDone] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSplashDone(true), SPLASH_MINIMUM_MS);
+    return () => clearTimeout(timer);
+  }, []);
   const [moreView, setMoreView] = useState<MoreView>('root');
   const [eventRequest, setEventRequest] = useState<{ id: string; n: number } | null>(null);
   const [updateRequest, setUpdateRequest] = useState<{
@@ -1798,7 +1823,7 @@ function Portal() {
     setPushNotificationsError(null);
     try {
       // Android requires a channel before permission or push-token operations.
-      await ensureMemberUpdatesChannel();
+      await ensureMemberUpdatesChannel(platform);
       let permission = await getNotificationPermissionState();
       if (!permission.allowed && permission.canAskAgain) {
         permission = await requestNotificationPermission();
@@ -3640,21 +3665,50 @@ function Portal() {
   }, [feedControls, groupId, loadGroupFeed, pendingMutations, setMutationPending, showMutationError]);
 
   const selectTab = useCallback((next: TabId) => {
+    // A tab-bar selection always means "take me to this tab's root". Direct
+    // deep links use setTab() instead, so their requested detail remains intact.
+    setTabResetKeys((current) => ({ ...current, [next]: current[next] + 1 }));
     setTab(next);
-    // The profile sits over a tab, so any tab press returns to that tab.
+    setProfileSheetOpen(false);
     setProfileOpen(false);
-    if (next === 'groups') setThreadId(null);
-    // Selecting a tab returns to its root, so Home lands on Home and not News.
-    if (next === 'home') setNewsOpen(false);
-    if (next === 'directory') setDirectoryRequest(null);
+    setNotificationsOpen(false);
+    setResourceViewer(null);
+    setComposerOpen(false);
+    setResourceComposerGroupId(null);
+    setReportingTarget(null);
+    setAskHistoryOpen(false);
+
+    if (next === 'home') {
+      setNewsOpen(false);
+      newsFeed.close();
+    }
+    if (next === 'groups') {
+      setGroupId(null);
+      setThreadId(null);
+    }
+    if (next === 'directory') {
+      setDirectoryRequest(null);
+    }
     if (next === 'more') {
       setMoreView('root');
+      setEventRequest(null);
+      setResourcesRequest(null);
       setResourcesNewsOpen(false);
       setUpdateRequest((current) => ({ selection: null, n: current.n + 1 }));
     }
-  }, []);
+  }, [newsFeed.close]);
 
   const tabOffset = -TAB_IDS.indexOf(tab) * screenWidth;
+
+  /**
+   * Where a tab's page sits on the swipe track. Derived from `TAB_IDS` rather
+   * than written out, so reordering the tab bar moves the pages with it — the
+   * v2 reorder silently swapped Ask and Directory when these were literals.
+   */
+  const tabLeft = useCallback(
+    (id: TabId) => TAB_IDS.indexOf(id) * screenWidth,
+    [screenWidth]
+  );
 
   useEffect(() => {
     Animated.spring(tabTranslateX, {
@@ -3759,12 +3813,13 @@ function Portal() {
       onOpenNotifications={isSignedIn ? openNotifications : undefined}
     >
     <View style={[styles.root, { backgroundColor: t.surfacePage }]}>
-      {/* Every header is the anchor surface, and sign-in is darker still, so
-          the glyphs are light on every screen in both themes. */}
+      {/* The baseline, which sign-in and every anchor-banded screen want. The
+          five tab roots mount their own `StatusBar` in `TabHeader`, and RN
+          merges these in mount order, so the innermost visible header wins. */}
       <StatusBar style="light" />
 
-      {status === 'restoring' ? (
-        <View style={styles.blank} />
+      {status === 'restoring' || !splashDone ? (
+        <SplashScreen />
       ) : !isSignedIn ? (
         <SignInScreen
           onSignedIn={() => setTab('home')}
@@ -3784,10 +3839,11 @@ function Portal() {
                 ]}
               >
             <View
+              key={`home-${tabResetKeys.home}`}
               pointerEvents={tab === 'home' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'home'}
               importantForAccessibility={tab === 'home' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: 0, width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('home'), width: screenWidth }]}
             >
               <DataGate
                 loading={meQuery.loading}
@@ -3893,10 +3949,11 @@ function Portal() {
               </DataGate>
             </View>
             <View
+              key={`more-${tabResetKeys.more}`}
               pointerEvents={tab === 'more' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'more'}
               importantForAccessibility={tab === 'more' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: screenWidth * 4, width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('more'), width: screenWidth }]}
             >
             <ScreenEnter key={moreView} style={styles.screen}>
             {moreView === 'events' && (
@@ -4187,7 +4244,7 @@ function Portal() {
                     resources={libraryQuery.data?.resources ?? []}
                     episodes={podcastQuery.data ?? []}
                     jobs={jobsQuery.data ?? []}
-                    news={libraryQuery.data?.newsRadar ?? []}
+                    newsCount={newsFeed.totalAvailable}
                     initialView={
                       resourcesRequest?.view === 'podcasts'
                         ? 'podcasts'
@@ -4218,10 +4275,11 @@ function Portal() {
             </ScreenEnter>
             </View>
             <View
+              key={`groups-${tabResetKeys.groups}`}
               pointerEvents={tab === 'groups' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'groups'}
               importantForAccessibility={tab === 'groups' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: screenWidth, width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('groups'), width: screenWidth }]}
             >
               <DataGate
                 loading={meQuery.loading || groupsQuery.loading}
@@ -4336,10 +4394,11 @@ function Portal() {
               </DataGate>
             </View>
             <View
+              key={`directory-${tabResetKeys.directory}`}
               pointerEvents={tab === 'directory' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'directory'}
               importantForAccessibility={tab === 'directory' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: screenWidth * 2, width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('directory'), width: screenWidth }]}
             >
               <DataGate
                 loading={orgsQuery.loading || directoryPeopleQuery.loading || jobsQuery.loading}
@@ -4410,23 +4469,16 @@ function Portal() {
               </DataGate>
             </View>
             <View
+              key={`ask-${tabResetKeys.ask}`}
               pointerEvents={tab === 'ask' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'ask'}
               importantForAccessibility={tab === 'ask' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: screenWidth * 3, width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('ask'), width: screenWidth }]}
             >
-              {askHistoryOpen ? (
-                <AskConversationHistory
-                  conversations={askConversations}
-                  activeConversationId={activeAskConversationId}
-                  loading={askConversationsQuery.loading}
-                  error={askConversationsQuery.error instanceof Error ? askConversationsQuery.error : null}
-                  onBack={() => setAskHistoryOpen(false)}
-                  onNewConversation={startNewAskConversation}
-                  onOpenConversation={(conversationId) => void openAskConversation(conversationId)}
-                  onRetry={askConversationsQuery.refetch}
-                />
-              ) : (
+              {/* History is a side panel over the conversation, not a screen
+                  in place of it, so the answer you were reading stays visible
+                  behind the drawer. */}
+              <>
                 <AskScreen
                   messages={askMessages}
                   suggestions={askSuggestionsQuery.data ?? []}
@@ -4447,7 +4499,21 @@ function Portal() {
                     ? () => void openAskConversation(activeAskConversationId)
                     : undefined}
                 />
-              )}
+                {askHistoryOpen && (
+                  <SidePanel onClose={() => setAskHistoryOpen(false)}>
+                    <AskConversationHistory
+                      conversations={askConversations}
+                      activeConversationId={activeAskConversationId}
+                      loading={askConversationsQuery.loading}
+                      error={askConversationsQuery.error instanceof Error ? askConversationsQuery.error : null}
+                      onBack={() => setAskHistoryOpen(false)}
+                      onNewConversation={startNewAskConversation}
+                      onOpenConversation={(conversationId) => void openAskConversation(conversationId)}
+                      onRetry={askConversationsQuery.refetch}
+                    />
+                  </SidePanel>
+                )}
+              </>
             </View>
               </Animated.View>
 
@@ -4863,10 +4929,16 @@ export default function App() {
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
     JetBrainsMono_600SemiBold,
+    Lato_300Light,
+    Lato_400Regular,
+    Lato_700Bold,
   });
 
-  // Every text style names a font face, so nothing should paint until they load.
-  if (!fontsLoaded) return <View style={[styles.root, styles.blank]} />;
+  // Every text style names a font face, so nothing should paint until they
+  // load. The holding colour is the splash's ground rather than the page
+  // surface, so the native splash, this gap and the splash proper are one
+  // continuous dark screen instead of a white flash between them.
+  if (!fontsLoaded) return <View style={[styles.root, styles.splashHold]} />;
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -4889,6 +4961,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   blank: { backgroundColor: '#f7fafb' },
+  splashHold: { backgroundColor: SPLASH_BACKGROUND },
   screen: { flex: 1, minHeight: 0 },
   tabViewport: { overflow: 'hidden' },
   tabTrack: { flex: 1, position: 'relative' },

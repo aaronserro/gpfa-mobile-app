@@ -7,7 +7,7 @@ import type { LibraryResource } from '../api/types';
 import { API_BASE_URL, GPFA_WEB_ORIGIN } from '../api/config';
 import { resourceDownloadHeaders, resourcePreviewKind } from '../api/resource-download-policy';
 import { DownloadSimple } from '../ds/icons';
-import { ScreenHeader } from '../ds/primitives';
+import { PageActions, PageHead } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans } from '../ds/tokens';
 import { ResourceHtmlRenderer } from './resource-viewer/ResourceHtmlRenderer';
@@ -98,7 +98,10 @@ export default function ResourceViewer({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title={resource.title} onBack={onClose} backLabel="Back to resources" />
+      {/* Pinned, unlike every other screen: the body here is a PDF or HTML
+          renderer that owns its own scrolling, so there is no offset of ours
+          for a sticky bar to follow. */}
+      <PageHead title={resource.title} onBack={onClose} backLabel="Back to resources" actions={<PageActions />} />
       <View style={[styles.viewer, { backgroundColor: t.surfacePaper }]}>
         {canRender && !error && previewKind === 'pdf' ? (
           <ResourcePdfRenderer
@@ -148,7 +151,7 @@ export default function ResourceViewer({
         )}
       </View>
       {file ? (
-        <View style={[styles.actionBar, { backgroundColor: t.surfacePaper, borderTopColor: t.ruleHairline }]}>
+        <View style={[styles.actionBar, { backgroundColor: t.surfacePaper, borderTopColor: t.rule }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Save resource to device"
@@ -214,13 +217,13 @@ const styles = StyleSheet.create({
   },
   errorTitle: {
     fontFamily: sans(600),
-    fontSize: 16,
+    fontSize: 18,
     textAlign: 'center',
   },
   errorBody: {
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14.5,
+    lineHeight: 21,
     textAlign: 'center',
   },
   actionBar: {
@@ -242,7 +245,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   actionButtonText: {
     fontFamily: sans(600),
-    fontSize: 13,
+    fontSize: 14.5,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -254,10 +257,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 18,
   },
-  secondaryButtonText: { fontFamily: sans(600), fontSize: 13 },
+  secondaryButtonText: { fontFamily: sans(600), fontSize: 14.5 },
   saveError: {
     fontFamily: sans(400),
-    fontSize: 12,
+    fontSize: 13,
     paddingBottom: 8,
     paddingHorizontal: 12,
     textAlign: 'center',

@@ -64,5 +64,5 @@ export function ResourceTextRenderer({
 const styles = StyleSheet.create({
   center: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   content: { padding: 20 },
-  text: { fontFamily: mono(400), fontSize: 13, lineHeight: 20 },
+  text: { fontFamily: mono(400), fontSize: 14.5, lineHeight: 22.5 },
 });

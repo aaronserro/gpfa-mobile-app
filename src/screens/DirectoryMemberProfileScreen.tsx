@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type {
   DirectoryMemberProfile,
@@ -8,8 +8,8 @@ import type {
   MemberProfileActivityPage,
 } from '../api/types';
 import BlockMemberAction from '../components/directory/BlockMemberAction';
-import { ChatCircle, CaretLeft, CaretRight, DotsThree } from '../ds/icons';
-import { Avatar, MastheadMeta, ScreenHeader } from '../ds/primitives';
+import { ChatCircle, CaretLeft, CaretRight } from '../ds/icons';
+import { Avatar, MastheadMeta, PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import { initials as initialsOf } from '../lib/format';
@@ -64,7 +64,7 @@ export default function DirectoryMemberProfileScreen({
   onEdit,
 }: DirectoryMemberProfileScreenProps) {
   const { t } = useTheme();
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const { scrollY, handlers } = useStickyScroll();
 
   if (loading && !profile) {
     return (
@@ -78,10 +78,10 @@ export default function DirectoryMemberProfileScreen({
   if (error || !profile) {
     return (
       <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-        <ScreenHeader title="Member profile" onBack={onBack} backLabel="Back" />
+        <PageHead title="Member profile" onBack={onBack} backLabel="Back" actions={<PageActions />} />
         <View style={[styles.center, styles.errorWrap]}>
           <Text style={[styles.error, { color: t.brandRed }]}>This member profile is unavailable.</Text>
-          <Pressable onPress={onRetry} style={[styles.outlineButton, { borderColor: t.ruleHairline }]}>
+          <Pressable onPress={onRetry} style={[styles.outlineButton, { borderColor: t.rule }]}>
             <Text style={[styles.buttonText, { color: t.brandGreen }]}>Try again</Text>
           </Pressable>
         </View>
@@ -96,9 +96,10 @@ export default function DirectoryMemberProfileScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title={profile.fullName} onBack={onBack} backLabel="Back" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.identityCard, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+      <StickyTitle scrollY={scrollY} title={profile.fullName} onBack={onBack} backLabel="Back" actions={<PageActions />} />
+      <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title={profile.fullName} onBack={onBack} backLabel="Back" actions={<PageActions />} />
+        <View style={[styles.identityCard, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           <Avatar
             initials={initialsOf(profile.fullName)}
             photoUrl={profile.avatarUrl ?? undefined}
@@ -106,7 +107,7 @@ export default function DirectoryMemberProfileScreen({
           />
           <Text style={[styles.name, { color: t.inkStrong }]}>{profile.fullName}</Text>
           <Text style={[styles.role, { color: t.inkBody }]}>{profile.roleTitle}</Text>
-          <MastheadMeta size={9.5} style={styles.meta}>
+          <MastheadMeta size={10.5} style={styles.meta}>
             {`${profile.organization.abbreviation} · ${profile.country} · MEMBER SINCE ${memberSince}`.toUpperCase()}
           </MastheadMeta>
           <View style={styles.actions}>
@@ -125,32 +126,19 @@ export default function DirectoryMemberProfileScreen({
                   <ChatCircle size={17} color={t.inkInverse} />
                   <Text style={[styles.primaryButtonText, { color: t.inkInverse }]}>Message</Text>
                 </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`More actions for ${profile.fullName}`}
-                  accessibilityState={{ expanded: actionsOpen }}
-                  onPress={() => setActionsOpen((current) => !current)}
-                  style={[styles.moreButton, { borderColor: t.ruleStrong, backgroundColor: t.surfacePaper }]}
-                >
-                  <DotsThree size={20} color={t.inkStrong} weight="bold" />
-                </Pressable>
+                <BlockMemberAction
+                  member={{ id: profile.id, name: profile.fullName }}
+                  mode="block"
+                  pending={blockPending}
+                  onBlock={async (memberId) => {
+                    await onBlockMember(memberId);
+                    onBack();
+                  }}
+                  onUnblock={async () => undefined}
+                />
               </>
             )}
           </View>
-          {!profile.isSelf && actionsOpen ? (
-            <View style={styles.actionMenu}>
-              <BlockMemberAction
-                member={{ id: profile.id, name: profile.fullName }}
-                mode="block"
-                pending={blockPending}
-                onBlock={async (memberId) => {
-                  await onBlockMember(memberId);
-                  onBack();
-                }}
-                onUnblock={async () => undefined}
-              />
-            </View>
-          ) : null}
         </View>
 
         {profile.bio ? (
@@ -163,7 +151,7 @@ export default function DirectoryMemberProfileScreen({
           <Section title="Expertise">
             <View style={styles.tags}>
               {profile.skills.map((skill) => (
-                <View key={skill} style={[styles.tag, { backgroundColor: t.surfaceSoft, borderColor: t.ruleHairline }]}>
+                <View key={skill} style={[styles.tag, { backgroundColor: t.surfaceSoft, borderColor: t.rule }]}>
                   <Text style={[styles.tagText, { color: t.inkBody }]}>{skill}</Text>
                 </View>
               ))}
@@ -172,7 +160,7 @@ export default function DirectoryMemberProfileScreen({
         ) : null}
 
         <Section title="Activity">
-          <View style={[styles.tabs, { borderColor: t.ruleHairline }]}>
+          <View style={[styles.tabs, { borderColor: t.rule }]}>
             {ACTIVITY_TABS.map((tab) => {
               const selected = tab.id === activityKind;
               return (
@@ -202,11 +190,11 @@ export default function DirectoryMemberProfileScreen({
                   styles.activityCard,
                   {
                     backgroundColor: pressed ? alpha(t.surfaceSoft, 0.5) : t.surfacePaper,
-                    borderColor: t.ruleHairline,
+                    borderColor: t.rule,
                   },
                 ]}
               >
-                <MastheadMeta size={9}>{`${item.groupName} · ${item.kind}`.toUpperCase()}</MastheadMeta>
+                <MastheadMeta size={10}>{`${item.groupName} · ${item.kind}`.toUpperCase()}</MastheadMeta>
                 <Text style={[styles.activityTitle, { color: t.inkStrong }]}>{item.title || item.parentTitle || 'Reply'}</Text>
                 {item.excerpt ? <Text numberOfLines={3} style={[styles.body, { color: t.inkMuted }]}>{item.excerpt}</Text> : null}
               </Pressable>
@@ -217,7 +205,7 @@ export default function DirectoryMemberProfileScreen({
               <Pressable
                 disabled={activity.page === 1}
                 onPress={() => onActivityPage(activity.page - 1)}
-                style={[styles.pageButton, { borderColor: t.ruleHairline, opacity: activity.page === 1 ? 0.4 : 1 }]}
+                style={[styles.pageButton, { borderColor: t.rule, opacity: activity.page === 1 ? 0.4 : 1 }]}
               >
                 <CaretLeft size={14} color={t.inkBody} />
                 <Text style={[styles.pageText, { color: t.inkBody }]}>Previous</Text>
@@ -226,7 +214,7 @@ export default function DirectoryMemberProfileScreen({
               <Pressable
                 disabled={!activity.hasMore}
                 onPress={() => onActivityPage(activity.page + 1)}
-                style={[styles.pageButton, { borderColor: t.ruleHairline, opacity: activity.hasMore ? 1 : 0.4 }]}
+                style={[styles.pageButton, { borderColor: t.rule, opacity: activity.hasMore ? 1 : 0.4 }]}
               >
                 <Text style={[styles.pageText, { color: t.inkBody }]}>Next</Text>
                 <CaretRight size={14} color={t.inkBody} />
@@ -244,11 +232,11 @@ export default function DirectoryMemberProfileScreen({
                 <Pressable
                   key={group.slug}
                   onPress={() => onOpenWorkingGroup(group.slug)}
-                  style={({ pressed }) => [styles.groupCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.ruleHairline }]}
+                  style={({ pressed }) => [styles.groupCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.rule }]}
                 >
                   <Text style={[styles.groupName, { color: t.inkStrong }]}>{group.name}</Text>
                   <Text style={[styles.body, { color: t.inkMuted }]}>{group.description}</Text>
-                  <MastheadMeta size={9} style={styles.meta}>{`${group.role} · ${group.postCount} POSTS`}</MastheadMeta>
+                  <MastheadMeta size={10} style={styles.meta}>{`${group.role} · ${group.postCount} POSTS`}</MastheadMeta>
                 </Pressable>
               ))}
             </View>
@@ -265,9 +253,9 @@ export default function DirectoryMemberProfileScreen({
                   <Pressable
                     key={event.id}
                     onPress={() => onOpenEvent(event)}
-                    style={({ pressed }) => [styles.groupCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.ruleHairline }]}
+                    style={({ pressed }) => [styles.groupCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.rule }]}
                   >
-                    <MastheadMeta size={9}>{`${event.timing} · ${event.sourceLabel}`.toUpperCase()}</MastheadMeta>
+                    <MastheadMeta size={10}>{`${event.timing} · ${event.sourceLabel}`.toUpperCase()}</MastheadMeta>
                     <Text style={[styles.groupName, { color: t.inkStrong }]}>{event.title}</Text>
                     <Text style={[styles.body, { color: t.inkMuted }]}>{new Date(event.startsAt).toLocaleString()}</Text>
                   </Pressable>
@@ -280,16 +268,16 @@ export default function DirectoryMemberProfileScreen({
         <Section title="Organization">
           <Pressable
             onPress={() => onOpenOrganization(profile.organization.id)}
-            style={({ pressed }) => [styles.orgCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.ruleHairline }]}
+            style={({ pressed }) => [styles.orgCard, { backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper, borderColor: t.rule }]}
           >
             <View style={styles.flex}>
               <Text style={[styles.groupName, { color: t.inkStrong }]}>{profile.organization.name}</Text>
-              <MastheadMeta size={9} style={styles.meta}>{`${profile.organization.organizationType} · ${profile.organization.country}`.toUpperCase()}</MastheadMeta>
+              <MastheadMeta size={10} style={styles.meta}>{`${profile.organization.organizationType} · ${profile.organization.country}`.toUpperCase()}</MastheadMeta>
             </View>
             <CaretRight size={15} color={t.inkFaint} />
           </Pressable>
         </Section>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -313,39 +301,37 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', gap: 12 },
   errorWrap: { flex: 1, padding: 24 },
   scroll: { padding: 20, paddingBottom: 36, gap: 20 },
-  identityCard: { alignItems: 'center', borderWidth: 1, borderRadius: 8, padding: 20 },
+  identityCard: { alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 20 },
   name: { marginTop: 12, fontFamily: sans(600), fontSize: 21, letterSpacing: trackDisplay(21) },
-  role: { marginTop: 5, textAlign: 'center', fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  role: { marginTop: 5, textAlign: 'center', fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   meta: { marginTop: 6 },
-  actions: { marginTop: 16, flexDirection: 'row', gap: 8 },
-  actionMenu: { alignSelf: 'stretch', marginTop: 10 },
-  primaryButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 7, paddingHorizontal: 17 },
-  moreButton: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 7 },
-  primaryButtonText: { fontFamily: sans(600), fontSize: 13 },
+  actions: { marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
+  primaryButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 8, paddingHorizontal: 17 },
+  primaryButtonText: { fontFamily: sans(600), fontSize: 14.5 },
   outlineButton: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderRadius: 6, paddingHorizontal: 15 },
-  buttonText: { fontFamily: sans(600), fontSize: 12 },
-  statusText: { fontFamily: sans(400), fontSize: 13 },
-  error: { textAlign: 'center', fontFamily: sans(400), fontSize: 13 },
+  buttonText: { fontFamily: sans(600), fontSize: 13 },
+  statusText: { fontFamily: sans(400), fontSize: 14.5 },
+  error: { textAlign: 'center', fontFamily: sans(400), fontSize: 14.5 },
   section: { gap: 10 },
   sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  sectionTitle: { fontFamily: sans(600), fontSize: 14, letterSpacing: trackDisplay(14) },
-  sectionCount: { fontFamily: mono(400), fontSize: 11 },
-  body: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 19 },
+  sectionTitle: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
+  sectionCount: { fontFamily: mono(400), fontSize: 12 },
+  body: { fontFamily: sans(400), fontSize: 13.5, lineHeight: 20.5 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   tag: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
-  tagText: { fontFamily: sans(500), fontSize: 11 },
-  tabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 7, padding: 3 },
+  tagText: { fontFamily: sans(500), fontSize: 12 },
+  tabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 8, padding: 3 },
   tab: { flex: 1, alignItems: 'center', borderRadius: 5, paddingVertical: 8 },
-  tabText: { fontFamily: sans(600), fontSize: 11.5 },
+  tabText: { fontFamily: sans(600), fontSize: 12.5 },
   activityStatus: { marginVertical: 16 },
   activityList: { gap: 9 },
-  activityCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 6 },
-  activityTitle: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 19 },
-  empty: { borderWidth: 1, borderColor: 'transparent', paddingVertical: 14, textAlign: 'center', fontFamily: sans(400), fontSize: 12.5 },
+  activityCard: { borderWidth: 1, borderRadius: 12, padding: 13, gap: 6 },
+  activityTitle: { fontFamily: sans(600), fontSize: 15, lineHeight: 21 },
+  empty: { borderWidth: 1, borderColor: 'transparent', paddingVertical: 14, textAlign: 'center', fontFamily: sans(400), fontSize: 13.5 },
   pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pageButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 10 },
-  pageText: { fontFamily: sans(500), fontSize: 11.5 },
-  groupCard: { borderWidth: 1, borderRadius: 8, padding: 13, gap: 4 },
-  groupName: { fontFamily: sans(600), fontSize: 13.5, lineHeight: 19 },
-  orgCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 8, padding: 14 },
+  pageText: { fontFamily: sans(500), fontSize: 12.5 },
+  groupCard: { borderWidth: 1, borderRadius: 12, padding: 13, gap: 4 },
+  groupName: { fontFamily: sans(600), fontSize: 15, lineHeight: 21 },
+  orgCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 14 },
 });

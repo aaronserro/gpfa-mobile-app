@@ -161,10 +161,12 @@ export function useNewsFeed(enabled: boolean) {
     }
   }, [items, loadingMore, nextCursor, selected, snapshotAt, source, topic]);
 
+  const close = useCallback(() => setSelected(null), []);
+
   return {
     items, relatedThreads, topic, source, facets, totalMatching, totalAvailable,
     nextCursor, selected, loading, refreshing, loadingMore, error,
-    applyFilters, open, openById, close: () => setSelected(null),
+    applyFilters, open, openById, close,
     refresh: () => void load('refresh'), loadMore: () => void load('more'), move,
   };
 }

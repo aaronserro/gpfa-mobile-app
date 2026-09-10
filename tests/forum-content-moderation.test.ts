@@ -69,8 +69,17 @@ test('member, author, moderator, and tombstone actions are distinct', async () =
   assert.match(screen, /selectedGroupMembershipRole === 'co_lead'/);
   assert.match(screen, /member\.appRole === 'admin'/);
   assert.doesNotMatch(screen, /member\.role\?\.toLowerCase\(\) === 'admin'/);
+  assert.match(screen, /canReportPost=\{thread\.canReport\}/);
+  assert.doesNotMatch(screen, /canReportPost=\{isSubscribed\(group\)/);
   assert.match(detail, /post\.authorId !== memberId/);
+  assert.match(detail, /node\.reply\.canReport === true/);
+  assert.match(detail, /child\.reply\.canReport === true/);
   assert.match(detail, /node\.reply\.authorId !== memberId/);
+  assert.match(detail, /canReportPost !== false/);
+  assert.match(detail, /accessibilityLabel="Report post"/);
+  assert.match(detail, /accessibilityLabel="Report reply"/);
+  assert.match(detail, /disabled=\{reportPending \|\| reportPermissionPending\}/);
+  assert.match(detail, /reportDisabled=\{reportPending\}/);
   assert.match(detail, /Reply removed by a co-lead/);
   assert.match(detail, /if \(r\.deleted\)/);
   assert.match(detail, /<ForumReportSheet/);

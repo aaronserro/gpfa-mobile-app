@@ -5,7 +5,7 @@
  * Presentational: the listings, the search text and the active filter all come
  * in as props so the state survives a trip into a posting and back.
  */
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
   ArrowRight,
@@ -15,7 +15,7 @@ import {
   MagnifyingGlass,
   MapPin,
 } from '../../ds/icons';
-import { MastheadMeta, OrgMark, ScreenHeader } from '../../ds/primitives';
+import { MastheadMeta, OrgMark, PageActions, PageHead, StickyTitle, useStickyScroll } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { jobFunctionRule, mono, sans, trackDisplay } from '../../ds/tokens';
 import type { JobFunctionKey } from '../../ds/tokens';
@@ -75,61 +75,59 @@ export default function JobBoard({
   onOpen,
 }: JobBoardProps) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const q = query.trim();
 
   return (
     <View style={styles.fill}>
       {/* The design has no back control — it previews the board as a tab of its
           own. Here it opens from the Resources hub, so it needs one. */}
-      <ScreenHeader
-        title="Job board"
-        onBack={onBack}
-        backLabel="Back to resources"
-      >
-        <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
-          <MagnifyingGlass size={15} color={t.inkMuted} />
-          <TextInput
-            value={query}
-            onChangeText={onQuery}
-            placeholder="Search roles, orgs, locations"
-            placeholderTextColor={t.inkFaint}
-            style={[styles.searchInput, { color: t.inkStrong }]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-        </View>
+      <StickyTitle scrollY={scrollY} title="Job board" onBack={onBack} backLabel="Back to resources" actions={<PageActions />} />
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-        >
-          {JOB_FILTERS.map(({ id, label }) => {
-            const on = id === filter;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => onFilter(id)}
-                style={[
-                  styles.filterChip,
-                  {
-                    borderColor: on ? t.surfaceAnchor : t.ruleHairline,
-                    backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
-                  },
-                ]}
-              >
-                <Text style={[styles.filterChipText, { color: on ? t.inkInverse : t.inkMuted }]}>
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </ScreenHeader>
+      <Animated.ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title="Job board" onBack={onBack} backLabel="Back to resources" actions={<PageActions />}>
+          <View style={[styles.search, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
+            <MagnifyingGlass size={15} color={t.inkMuted} />
+            <TextInput
+              value={query}
+              onChangeText={onQuery}
+              placeholder="Search roles, orgs, locations"
+              placeholderTextColor={t.inkFaint}
+              style={[styles.searchInput, { color: t.inkStrong }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
 
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            {JOB_FILTERS.map(({ id, label }) => {
+              const on = id === filter;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => onFilter(id)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor: on ? t.surfaceAnchor : t.rule,
+                      backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.filterChipText, { color: on ? t.inkInverse : t.inkMuted }]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </PageHead>
         <View style={styles.countRow}>
           <Text style={[styles.count, { color: t.inkMuted }]}>
             {jobs.length} open role{jobs.length === 1 ? '' : 's'}
@@ -144,8 +142,8 @@ export default function JobBoard({
               styles.card,
               {
                 backgroundColor: t.surfacePaper,
-                borderTopColor: t.ruleHairline,
-                borderBottomColor: t.ruleHairline,
+                borderTopColor: t.rule,
+                borderBottomColor: t.rule,
                 borderLeftColor: jobFunctionRule(t, j.fnKey),
                 opacity: pressed ? 0.9 : 1,
               },
@@ -153,7 +151,7 @@ export default function JobBoard({
           >
             <View style={styles.cardTop}>
               <SourceChip source={j.source} />
-              <MastheadMeta size={9.5} color={t.inkFaint} style={styles.flex}>
+              <MastheadMeta size={10.5} color={t.inkFaint} style={styles.flex}>
                 Posted {j.posted}
               </MastheadMeta>
             </View>
@@ -162,7 +160,7 @@ export default function JobBoard({
               <OrgMark initials={j.initials ?? orgInitials(j.org)} />
               <View style={styles.flex}>
                 <Text style={[styles.org, { color: t.inkStrong }]}>{j.org}</Text>
-                <MastheadMeta size={10}>{j.orgMeta}</MastheadMeta>
+                <MastheadMeta size={11}>{j.orgMeta}</MastheadMeta>
               </View>
             </View>
 
@@ -176,9 +174,9 @@ export default function JobBoard({
               </FactChip>
             </View>
 
-            <View style={[styles.closesRow, { borderBottomColor: t.ruleHairline }]}>
+            <View style={[styles.closesRow, { borderBottomColor: t.rule }]}>
               <CalendarDots size={12} color={t.brandAmber} />
-              <MastheadMeta size={10}>{j.closes}</MastheadMeta>
+              <MastheadMeta size={11}>{j.closes}</MastheadMeta>
             </View>
 
             <View style={styles.cardFoot}>
@@ -204,7 +202,7 @@ export default function JobBoard({
           Listings are provided by member organizations. GPFA is not the employer and does not
           endorse any listing.
         </Text>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -228,7 +226,7 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 0,
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 14.5,
   },
   chipRow: {
     flexDirection: 'row',
@@ -259,7 +257,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 16,
   },
-  count: { fontFamily: sans(400), fontSize: 12 },
+  count: { fontFamily: sans(400), fontSize: 13 },
 
   card: {
     borderTopWidth: 1,
@@ -282,7 +280,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 11,
   },
-  org: { fontFamily: sans(600), fontSize: 13.5 },
+  org: { fontFamily: sans(600), fontSize: 15 },
   title: {
     marginTop: 11,
     fontFamily: sans(700),
@@ -293,8 +291,8 @@ const styles = StyleSheet.create({
   blurb: {
     marginTop: 7,
     fontFamily: sans(400),
-    fontSize: 13.5,
-    lineHeight: 21.6,
+    fontSize: 15,
+    lineHeight: 24,
   },
   facts: {
     flexDirection: 'row',
@@ -321,20 +319,20 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 44,
   },
-  footText: { fontFamily: sans(500), fontSize: 12 },
+  footText: { fontFamily: sans(500), fontSize: 13 },
 
   empty: {
     paddingVertical: 40,
     paddingHorizontal: 24,
     textAlign: 'center',
     fontFamily: sans(400),
-    fontSize: 13,
+    fontSize: 14.5,
   },
   disclaimer: {
     paddingTop: 8,
     paddingHorizontal: 16,
     fontFamily: sans(400),
-    fontSize: 10.5,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 18.5,
   },
 });

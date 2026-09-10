@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -151,14 +150,14 @@ export default function ResourceSubmissionComposer({
           accessibilityState={{ disabled: dismissDisabled }}
         />
       </Animated.View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoider}>
         <Animated.View
           onLayout={(event) => setSheetHeight((height) => height || event.nativeEvent.layout.height)}
           style={[
             styles.sheet,
             {
               backgroundColor: t.surfacePaper,
-              borderTopColor: t.ruleHairline,
+              borderTopColor: t.rule,
               paddingBottom: Math.max(insets.bottom, 18),
               opacity: sheetHeight ? 1 : 0,
               transform: [{
@@ -170,7 +169,7 @@ export default function ResourceSubmissionComposer({
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
+          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
 
           <View style={styles.head}>
             <View style={styles.flex}>
@@ -189,13 +188,17 @@ export default function ResourceSubmissionComposer({
             </Pressable>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
+          <ScrollView
+            style={styles.formScroll}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.body}
+          >
             {message && (
               <View
                 style={[
                   styles.message,
                   {
-                    borderColor: message.kind === 'error' ? t.brandBrick : t.ruleHairline,
+                    borderColor: message.kind === 'error' ? t.brandBrick : t.rule,
                     backgroundColor: message.kind === 'error' ? alpha(t.brandBrick, 0.08) : alpha(t.brandGreen, 0.08),
                   },
                 ]}
@@ -223,7 +226,7 @@ export default function ResourceSubmissionComposer({
                     style={[
                       styles.chip,
                       {
-                        borderColor: on ? t.surfaceAnchor : t.ruleHairline,
+                        borderColor: on ? t.surfaceAnchor : t.rule,
                         backgroundColor: on ? t.surfaceAnchor : t.surfacePaper,
                       },
                     ]}
@@ -287,7 +290,7 @@ export default function ResourceSubmissionComposer({
               <Pressable
                 onPress={pickFiles}
                 accessibilityRole="button"
-                style={[styles.attachButton, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}
+                style={[styles.attachButton, { borderColor: t.rule, backgroundColor: t.surfacePage }]}
               >
                 <Paperclip size={14} color={t.inkMuted} />
                 <Text style={[styles.attachText, { color: t.inkMuted }]}>Attach</Text>
@@ -297,7 +300,7 @@ export default function ResourceSubmissionComposer({
             {files.length > 0 ? (
               <View style={styles.fileList}>
                 {files.map((file) => (
-                  <View key={file.uri ?? file.name} style={[styles.fileRow, { borderColor: t.ruleHairline }]}>
+                  <View key={file.uri ?? file.name} style={[styles.fileRow, { borderColor: t.rule }]}>
                     <FileText size={15} color={t.inkMuted} />
                     <View style={styles.flex}>
                       <Text numberOfLines={1} style={[styles.fileName, { color: t.inkStrong }]}>
@@ -314,25 +317,30 @@ export default function ResourceSubmissionComposer({
                 ))}
               </View>
             ) : (
-              <View style={[styles.emptyFiles, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.25) }]}>
+              <View style={[styles.emptyFiles, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.25) }]}>
                 <Link size={15} color={t.inkMuted} />
                 <Text style={[styles.emptyText, { color: t.inkMuted }]}>Attach a file, or submit with a source URL.</Text>
               </View>
             )}
           </ScrollView>
 
-          <Pressable
-            onPress={submit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [
-              styles.submit,
-              {
-                backgroundColor: canSubmit ? (pressed ? t.brandGreenStrong : t.surfaceAnchor) : t.muted,
-              },
-            ]}
-          >
-            <Text style={[styles.submitText, { color: canSubmit ? '#fff' : t.inkFaint }]}>Submit Resource</Text>
-          </Pressable>
+          <View style={[styles.actions, { borderTopColor: t.rule }]}>
+            <Pressable
+              onPress={submit}
+              disabled={!canSubmit}
+              accessibilityRole="button"
+              accessibilityLabel="Submit resource"
+              accessibilityState={{ disabled: !canSubmit, busy: submitting }}
+              style={({ pressed }) => [
+                styles.submit,
+                {
+                  backgroundColor: canSubmit ? (pressed ? t.brandGreenStrong : t.surfaceAnchor) : t.muted,
+                },
+              ]}
+            >
+              <Text style={[styles.submitText, { color: canSubmit ? t.inkInverse : t.inkFaint }]}>Submit Resource</Text>
+            </Pressable>
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </View>
@@ -355,8 +363,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(19,35,41,.42)',
   },
+  keyboardAvoider: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    width: '100%',
+  },
   sheet: {
-    maxHeight: '92%',
+    maxHeight: '94%',
+    width: '100%',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderTopWidth: 1,
@@ -382,15 +396,16 @@ const styles = StyleSheet.create({
   title: {
     marginTop: 3,
     fontFamily: sans(600),
-    fontSize: 16,
-    lineHeight: 21,
-    letterSpacing: trackDisplay(16),
+    fontSize: 18,
+    lineHeight: 23.5,
+    letterSpacing: trackDisplay(18),
   },
-  body: { paddingBottom: 14 },
+  body: { paddingBottom: 24 },
+  formScroll: { flexShrink: 1, minHeight: 0 },
   message: { marginTop: 12, borderWidth: 1, borderRadius: 8, padding: 11 },
-  messageText: { fontFamily: sans(500), fontSize: 12.5, lineHeight: 18 },
+  messageText: { fontFamily: sans(500), fontSize: 13.5, lineHeight: 19.5 },
   label: { marginTop: 16 },
-  fieldLabel: { fontFamily: sans(500), fontSize: 12.5 },
+  fieldLabel: { fontFamily: sans(500), fontSize: 13.5 },
   chips: { gap: 8, paddingVertical: 10 },
   chip: {
     minHeight: 34,
@@ -399,13 +414,13 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     borderWidth: 1,
   },
-  chipText: { fontFamily: mono(400), fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7 },
+  chipText: { fontFamily: mono(400), fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.7 },
   field: {
     marginTop: 8,
     minHeight: 44,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    fontSize: 14,
+    fontSize: 15,
   },
   textarea: { minHeight: 82 },
   uploadHead: {
@@ -424,7 +439,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 11,
   },
-  attachText: { fontFamily: sans(600), fontSize: 12 },
+  attachText: { fontFamily: sans(600), fontSize: 13 },
   fileList: { marginTop: 9, gap: 8 },
   fileRow: {
     minHeight: 48,
@@ -436,8 +451,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
-  fileName: { fontFamily: sans(500), fontSize: 12.5 },
-  fileMeta: { marginTop: 2, fontFamily: mono(400), fontSize: 10 },
+  fileName: { fontFamily: sans(500), fontSize: 13.5 },
+  fileMeta: { marginTop: 2, fontFamily: mono(400), fontSize: 11 },
   emptyFiles: {
     marginTop: 9,
     minHeight: 46,
@@ -449,13 +464,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 11,
   },
-  emptyText: { flex: 1, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  emptyText: { flex: 1, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
+  actions: {
+    marginHorizontal: -20,
+    borderTopWidth: 1,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+  },
   submit: {
     minHeight: 48,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
   },
-  submitText: { fontFamily: sans(600), fontSize: 14 },
+  submitText: { fontFamily: sans(600), fontSize: 15 },
 });

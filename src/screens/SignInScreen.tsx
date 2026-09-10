@@ -201,8 +201,8 @@ const styles = StyleSheet.create({
   lede: {
     marginTop: 8,
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14.5,
+    lineHeight: 22.5,
   },
   form: {
     gap: 10,
@@ -217,13 +217,13 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     fontFamily: sans(600),
-    fontSize: 15,
+    fontSize: 16,
     color: '#07171b',
   },
   pressed: { transform: [{ translateY: 1 }], opacity: 0.9 },
   error: {
     fontFamily: sans(500),
-    fontSize: 12.5,
+    fontSize: 13.5,
     textAlign: 'center',
   },
   forgotButton: {
@@ -235,13 +235,13 @@ const styles = StyleSheet.create({
   },
   forgot: {
     fontFamily: sans(400),
-    fontSize: 12.5,
+    fontSize: 13.5,
   },
   recoveryError: {
     marginTop: 2,
     fontFamily: sans(500),
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 13.5,
+    lineHeight: 19.5,
     textAlign: 'center',
   },
   disclaimer: {

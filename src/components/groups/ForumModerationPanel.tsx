@@ -51,7 +51,7 @@ export default function ForumModerationPanel({
             return (
               <View
                 key={report.id}
-                style={[styles.card, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}
+                style={[styles.card, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}
               >
                 <View style={styles.cardTop}>
                   <View style={[styles.category, { borderColor: alpha(t.brandAmber, 0.4), backgroundColor: alpha(t.brandAmber, 0.1) }]}>
@@ -72,13 +72,13 @@ export default function ForumModerationPanel({
                 </Text>
                 <Text style={[styles.meta, { color: t.inkMuted }]}>Reported by {report.reporter.name}</Text>
                 {!!report.details && (
-                  <View style={[styles.details, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+                  <View style={[styles.details, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
                     <Text style={[styles.detailsLabel, { color: t.inkFaint }]}>Member details</Text>
                     <Text style={[styles.detailsText, { color: t.inkBody }]}>{report.details}</Text>
                   </View>
                 )}
 
-                <View style={[styles.actions, { borderTopColor: t.ruleHairline }]}>
+                <View style={[styles.actions, { borderTopColor: t.rule }]}>
                   <ActionButton
                     label="Open"
                     disabled={pending}
@@ -134,7 +134,7 @@ function StateCard({
 }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.state, { borderColor: t.ruleHairline, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
+    <View style={[styles.state, { borderColor: t.rule, backgroundColor: alpha(t.surfaceSoft, 0.3) }]}>
       <ShieldWarning size={20} color={t.inkMuted} />
       <View style={styles.flex}>
         <Text style={[styles.stateTitle, { color: t.inkStrong }]}>{title}</Text>
@@ -170,7 +170,7 @@ function ActionButton({
       style={[
         styles.action,
         {
-          borderColor: destructive ? t.brandBrick : t.ruleHairline,
+          borderColor: destructive ? t.brandBrick : t.rule,
           backgroundColor: destructive ? alpha(t.brandBrick, 0.08) : t.surfacePaper,
           opacity: disabled ? 0.55 : 1,
         },
@@ -197,27 +197,27 @@ const styles = StyleSheet.create({
   section: { gap: 12 },
   flex: { flex: 1, minWidth: 0 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  heading: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
   count: { minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  countText: { fontFamily: sans(600), fontSize: 11 },
+  countText: { fontFamily: sans(600), fontSize: 12 },
   cards: { gap: 10 },
-  card: { overflow: 'hidden', borderWidth: 1, borderRadius: 9, paddingTop: 13, paddingHorizontal: 13 },
+  card: { overflow: 'hidden', borderWidth: 1, borderRadius: 12, paddingTop: 13, paddingHorizontal: 13 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   category: { minHeight: 25, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 13, paddingHorizontal: 8 },
-  categoryText: { fontFamily: sans(600), fontSize: 10.5 },
-  date: { fontFamily: sans(400), fontSize: 10 },
-  title: { marginTop: 10, fontFamily: sans(600), fontSize: 14.5, lineHeight: 20 },
-  snapshot: { marginTop: 8, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
-  meta: { marginTop: 5, fontFamily: sans(400), fontSize: 11.5 },
-  details: { marginTop: 10, borderWidth: 1, borderRadius: 7, padding: 10 },
-  detailsLabel: { fontFamily: sans(600), fontSize: 10.5 },
-  detailsText: { marginTop: 4, fontFamily: sans(400), fontSize: 12, lineHeight: 18 },
+  categoryText: { fontFamily: sans(600), fontSize: 11.5 },
+  date: { fontFamily: sans(400), fontSize: 11 },
+  title: { marginTop: 10, fontFamily: sans(600), fontSize: 16, lineHeight: 22 },
+  snapshot: { marginTop: 8, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
+  meta: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5 },
+  details: { marginTop: 10, borderWidth: 1, borderRadius: 8, padding: 10 },
+  detailsLabel: { fontFamily: sans(600), fontSize: 11.5 },
+  detailsText: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 19.5 },
   actions: { marginTop: 13, marginHorizontal: -13, flexDirection: 'row', gap: 7, borderTopWidth: 1, padding: 10 },
-  action: { minHeight: 38, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 7, paddingHorizontal: 8 },
-  actionText: { fontFamily: sans(600), fontSize: 11.5 },
-  state: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderStyle: 'dashed', borderRadius: 9, padding: 15 },
-  stateTitle: { fontFamily: sans(600), fontSize: 14 },
-  stateBody: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
-  retry: { marginTop: 8, fontFamily: sans(600), fontSize: 12.5 },
+  action: { minHeight: 38, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8 },
+  actionText: { fontFamily: sans(600), fontSize: 12.5 },
+  state: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, padding: 15 },
+  stateTitle: { fontFamily: sans(600), fontSize: 15 },
+  stateBody: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
+  retry: { marginTop: 8, fontFamily: sans(600), fontSize: 13.5 },
 });

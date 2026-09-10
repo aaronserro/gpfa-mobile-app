@@ -84,7 +84,7 @@ export function PostDateTimeField({
         style={({ pressed }) => [
           styles.summary,
           {
-            borderColor: expanded ? t.surfaceAnchor : t.ruleHairline,
+            borderColor: expanded ? t.surfaceAnchor : t.rule,
             backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
           },
         ]}
@@ -95,7 +95,7 @@ export function PostDateTimeField({
       </Pressable>
 
       {expanded && (
-        <View style={[styles.pickerPanel, { borderColor: t.ruleHairline, backgroundColor: t.surfacePage }]}>
+        <View style={[styles.pickerPanel, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
           <View style={styles.modeRow}>
             {(['date', 'time'] as const).map((mode) => {
               const selected = pickerMode === mode;
@@ -108,7 +108,7 @@ export function PostDateTimeField({
                   style={[
                     styles.modeButton,
                     {
-                      borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                      borderColor: selected ? t.surfaceAnchor : t.rule,
                       backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
                     },
                   ]}
@@ -168,7 +168,7 @@ export function PostTimezoneField({
         style={({ pressed }) => [
           styles.summary,
           {
-            borderColor: expanded ? t.surfaceAnchor : t.ruleHairline,
+            borderColor: expanded ? t.surfaceAnchor : t.rule,
             backgroundColor: pressed ? t.surfaceSoft : t.surfacePaper,
           },
         ]}
@@ -177,7 +177,7 @@ export function PostTimezoneField({
         <CaretDown size={15} color={t.inkFaint} />
       </Pressable>
       {expanded && (
-        <View style={[styles.zoneList, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+        <View style={[styles.zoneList, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
           {options.map((zone) => {
             const selected = zone === value;
             return (
@@ -191,7 +191,7 @@ export function PostTimezoneField({
                 accessibilityState={{ selected }}
                 style={[
                   styles.zoneOption,
-                  { borderTopColor: t.ruleHairline, backgroundColor: selected ? t.surfaceSoft : t.surfacePaper },
+                  { borderTopColor: t.rule, backgroundColor: selected ? t.surfaceSoft : t.surfacePaper },
                 ]}
               >
                 <Text style={[styles.zoneOptionText, { color: selected ? t.surfaceAnchor : t.inkMuted }]}>{zone}</Text>
@@ -206,7 +206,7 @@ export function PostTimezoneField({
 
 const styles = StyleSheet.create({
   fieldWrap: { marginTop: 16 },
-  label: { marginBottom: 8, fontFamily: sans(500), fontSize: 12.5 },
+  label: { marginBottom: 8, fontFamily: sans(500), fontSize: 13.5 },
   summary: {
     minHeight: 48,
     flexDirection: 'row',
@@ -216,14 +216,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
   },
-  summaryText: { flex: 1, fontFamily: sans(500), fontSize: 13, lineHeight: 18 },
-  pickerPanel: { marginTop: 8, borderWidth: 1, borderRadius: 10, padding: 10 },
+  summaryText: { flex: 1, fontFamily: sans(500), fontSize: 14.5, lineHeight: 20 },
+  pickerPanel: { marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 10 },
   modeRow: { flexDirection: 'row', gap: 8 },
   modeButton: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8 },
-  modeText: { fontFamily: sans(600), fontSize: 12 },
+  modeText: { fontFamily: sans(600), fontSize: 13 },
   picker: { alignSelf: 'stretch' },
-  zoneText: { flex: 1, fontFamily: mono(400), fontSize: 11.5 },
+  zoneText: { flex: 1, fontFamily: mono(400), fontSize: 12.5 },
   zoneList: { marginTop: 8, borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
   zoneOption: { minHeight: 42, justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
-  zoneOptionText: { fontFamily: mono(400), fontSize: 11.5 },
+  zoneOptionText: { fontFamily: mono(400), fontSize: 12.5 },
 });

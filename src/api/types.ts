@@ -215,6 +215,8 @@ export interface Reply {
   parentPostId?: string | null;
   /** Canonical member id used only to expose author-owned reply actions. */
   authorId?: string;
+  /** Server-authorized reporting capability for this specific reply. */
+  canReport?: boolean;
   a: string;
   org: string;
   time: string;
@@ -553,6 +555,7 @@ export interface WorkingGroupDetailReply {
   attachments: WorkingGroupDetailAttachment[];
   deleted: boolean;
   removed: boolean;
+  canReport: boolean;
 }
 
 export interface WorkingGroupDetailPermissions {

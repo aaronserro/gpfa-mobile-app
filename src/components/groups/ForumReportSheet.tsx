@@ -96,12 +96,12 @@ export default function ForumReportSheet({
             styles.sheet,
             {
               backgroundColor: t.surfacePaper,
-              borderTopColor: t.ruleHairline,
+              borderTopColor: t.rule,
               paddingBottom: Math.max(insets.bottom, 18),
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.ruleHairline }]} />
+          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
           <View style={styles.header}>
             <View style={[styles.iconWrap, { backgroundColor: alpha(t.brandAmber, 0.12) }]}>
               <Flag size={18} color={t.brandAmber} />
@@ -144,7 +144,7 @@ export default function ForumReportSheet({
                     style={[
                       styles.category,
                       {
-                        borderColor: selected ? t.surfaceAnchor : t.ruleHairline,
+                        borderColor: selected ? t.surfaceAnchor : t.rule,
                         backgroundColor: selected ? alpha(t.surfaceAnchor, 0.1) : t.surfacePage,
                       },
                     ]}
@@ -191,7 +191,7 @@ export default function ForumReportSheet({
               disabled={pending}
               accessibilityRole="button"
               accessibilityState={{ disabled: pending }}
-              style={[styles.button, { borderColor: t.ruleHairline, opacity: pending ? 0.55 : 1 }]}
+              style={[styles.button, { borderColor: t.rule, opacity: pending ? 0.55 : 1 }]}
             >
               <Text style={[styles.buttonText, { color: t.inkMuted }]}>Cancel</Text>
             </Pressable>
@@ -233,19 +233,19 @@ const styles = StyleSheet.create({
   iconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1, minWidth: 0 },
   title: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
-  subtitle: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  subtitle: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
   body: { gap: 10, paddingBottom: 14 },
-  label: { fontFamily: sans(600), fontSize: 13 },
+  label: { fontFamily: sans(600), fontSize: 14.5 },
   categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   category: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderRadius: 20, paddingHorizontal: 12 },
-  categoryText: { fontFamily: sans(500), fontSize: 12 },
+  categoryText: { fontFamily: sans(500), fontSize: 13 },
   detailsHeader: { marginTop: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  counter: { fontFamily: sans(400), fontSize: 11 },
-  detailsInput: { minHeight: 112, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  error: { fontFamily: sans(500), fontSize: 12, lineHeight: 17 },
-  privacy: { fontFamily: sans(400), fontSize: 11.5, lineHeight: 17 },
+  counter: { fontFamily: sans(400), fontSize: 12 },
+  detailsInput: { minHeight: 112, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
+  error: { fontFamily: sans(500), fontSize: 13, lineHeight: 18.5 },
+  privacy: { fontFamily: sans(400), fontSize: 12.5, lineHeight: 18.5 },
   actions: { flexDirection: 'row', gap: 9, paddingTop: 10 },
   button: { minHeight: 44, flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12 },
   submitButton: { flex: 1.35 },
-  buttonText: { fontFamily: sans(600), fontSize: 12.5 },
+  buttonText: { fontFamily: sans(600), fontSize: 13.5 },
 });

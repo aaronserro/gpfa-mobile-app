@@ -68,13 +68,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: sans(600),
-    fontSize: 15,
+    fontSize: 16,
     textAlign: 'center',
   },
   message: {
     fontFamily: sans(400),
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14.5,
+    lineHeight: 21,
     textAlign: 'center',
   },
   retry: {
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     fontFamily: sans(600),
-    fontSize: 14,
+    fontSize: 15,
     color: '#fff',
   },
 });

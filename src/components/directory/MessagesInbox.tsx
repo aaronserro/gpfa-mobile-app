@@ -166,7 +166,7 @@ export default function MessagesInbox({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
-      <View style={[styles.inboxHeader, { borderBottomColor: t.ruleHairline }]}>
+      <View style={[styles.inboxHeader, { borderBottomColor: t.rule }]}>
         <View>
           <Text style={[styles.heading, { color: t.inkStrong }]}>Inbox</Text>
           <Text style={[styles.subheading, { color: t.inkMuted }]}>Private conversations with GPFA members</Text>
@@ -184,7 +184,7 @@ export default function MessagesInbox({
 
       {composing ? (
         <View style={styles.fill}>
-          <View style={[styles.composeModes, { borderBottomColor: t.ruleHairline }]}>
+          <View style={[styles.composeModes, { borderBottomColor: t.rule }]}>
             {(['Direct', 'Group'] as const).map((label) => {
               const selected = groupMode === (label === 'Group');
               return (
@@ -204,7 +204,7 @@ export default function MessagesInbox({
               );
             })}
           </View>
-          <View style={[styles.searchBar, { backgroundColor: t.surfacePage, borderColor: t.ruleHairline }]}>
+          <View style={[styles.searchBar, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
             <MagnifyingGlass size={15} color={t.inkMuted} />
             <TextInput
               value={query}
@@ -251,7 +251,7 @@ export default function MessagesInbox({
                 style={({ pressed }) => [
                   styles.row,
                   {
-                    borderBottomColor: t.ruleHairline,
+                    borderBottomColor: t.rule,
                     backgroundColor: pressed ? alpha(t.surfaceSoft, 0.55) : 'transparent',
                   },
                 ]}
@@ -298,7 +298,7 @@ export default function MessagesInbox({
             )}
           />
           {groupMode && (
-            <View style={[styles.groupFooter, { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            <View style={[styles.groupFooter, { borderTopColor: t.rule, backgroundColor: t.surfacePaper }]}>
               <View style={styles.groupFooterText}>
                 <Text style={[styles.groupCount, { color: t.inkStrong }]}>{selectedMemberIds.length} selected</Text>
                 <Text style={[styles.groupHint, { color: composeError ? t.brandRed : t.inkMuted }]}>
@@ -324,7 +324,7 @@ export default function MessagesInbox({
         </View>
       ) : error && conversations.length > 0 ? (
         <View style={styles.fill}>
-          <View style={[styles.errorBanner, { backgroundColor: t.surfaceSoft, borderBottomColor: t.ruleHairline }]}>
+          <View style={[styles.errorBanner, { backgroundColor: t.surfaceSoft, borderBottomColor: t.rule }]}>
             <Text style={[styles.errorBannerText, { color: t.brandRed }]}>{error.message}</Text>
             <Pressable onPress={onRetryConversation} hitSlop={6}>
               <Text style={[styles.retryText, { color: t.brandGreen }]}>Retry</Text>
@@ -391,7 +391,7 @@ function ConversationRows({
             style={({ pressed }) => [
               styles.row,
               {
-                borderBottomColor: t.ruleHairline,
+                borderBottomColor: t.rule,
                 borderLeftColor: conversation.unreadCount ? t.brandGreen : 'transparent',
                 backgroundColor: pressed ? alpha(t.surfaceSoft, 0.55) : 'transparent',
               },
@@ -457,39 +457,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: 1,
   },
-  heading: { fontFamily: sans(600), fontSize: 17, letterSpacing: trackDisplay(17) },
-  subheading: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
+  heading: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
+  subheading: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
   composeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 8 },
-  composeLabel: { fontFamily: sans(600), fontSize: 12 },
+  composeLabel: { fontFamily: sans(600), fontSize: 13 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, borderRadius: 19, borderWidth: 1, margin: 14, paddingHorizontal: 12 },
   composeModes: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingTop: 10, borderBottomWidth: 1 },
   modeButton: { flex: 1, alignItems: 'center', borderRadius: 6, paddingVertical: 8, marginBottom: 10 },
-  modeLabel: { fontFamily: sans(600), fontSize: 12 },
-  searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 13 },
-  sectionLabel: { paddingHorizontal: 20, paddingBottom: 7, fontFamily: sans(600), fontSize: 11.5 },
+  modeLabel: { fontFamily: sans(600), fontSize: 13 },
+  searchInput: { flex: 1, height: '100%', padding: 0, fontFamily: sans(400), fontSize: 14.5 },
+  sectionLabel: { paddingHorizontal: 20, paddingBottom: 7, fontFamily: sans(600), fontSize: 12.5 },
   row: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, paddingRight: 18, paddingLeft: 17, borderBottomWidth: 1, borderLeftWidth: 3 },
   rowMain: { flex: 1, minWidth: 0 },
   identityAvatar: { flexShrink: 0 },
-  rowTitle: { fontFamily: sans(600), fontSize: 13.5, letterSpacing: trackDisplay(13.5) },
-  rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 11.5 },
+  rowTitle: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
+  rowMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 12.5 },
   selection: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  selectionMark: { fontFamily: sans(700), fontSize: 12 },
+  selectionMark: { fontFamily: sans(700), fontSize: 13 },
   groupFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, padding: 12 },
   groupFooterText: { flex: 1 },
-  groupCount: { fontFamily: sans(600), fontSize: 12 },
-  groupHint: { marginTop: 2, fontFamily: sans(400), fontSize: 10.5 },
+  groupCount: { fontFamily: sans(600), fontSize: 13 },
+  groupHint: { marginTop: 2, fontFamily: sans(400), fontSize: 11.5 },
   groupStart: { minWidth: 92, height: 36, borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-  groupStartLabel: { fontFamily: sans(600), fontSize: 12 },
-  preview: { marginTop: 3, fontFamily: sans(400), fontSize: 12 },
+  groupStartLabel: { fontFamily: sans(600), fontSize: 13 },
+  preview: { marginTop: 3, fontFamily: sans(400), fontSize: 13 },
   rowRail: { alignSelf: 'stretch', alignItems: 'flex-end', justifyContent: 'space-between', paddingVertical: 2 },
-  time: { fontFamily: sans(400), fontSize: 10.5 },
+  time: { fontFamily: sans(400), fontSize: 11.5 },
   unread: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  unreadText: { fontFamily: sans(600), fontSize: 10 },
+  unreadText: { fontFamily: sans(600), fontSize: 11 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 28 },
-  emptyTitle: { fontFamily: sans(600), fontSize: 15 },
-  empty: { textAlign: 'center', fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  emptyTitle: { fontFamily: sans(600), fontSize: 16 },
+  empty: { textAlign: 'center', fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   retry: { marginTop: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8 },
-  retryText: { fontFamily: sans(600), fontSize: 12 },
+  retryText: { fontFamily: sans(600), fontSize: 13 },
   errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1 },
-  errorBannerText: { flex: 1, fontFamily: sans(400), fontSize: 12 },
+  errorBannerText: { flex: 1, fontFamily: sans(400), fontSize: 13 },
 });

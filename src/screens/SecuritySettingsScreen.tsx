@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ScreenHeader } from '../ds/primitives';
+import { PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { sans, trackDisplay } from '../ds/tokens';
 
@@ -17,6 +17,7 @@ export default function SecuritySettingsScreen({
   onRequestPasswordChange: () => Promise<void>;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const [handle, setHandle] = useState(mentionHandle);
   const [pending, setPending] = useState<'handle' | 'password' | null>(null);
 
@@ -48,14 +49,16 @@ export default function SecuritySettingsScreen({
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Security & identity" onBack={onBack} backLabel="Back to account" />
+      <StickyTitle scrollY={scrollY} title="Security & identity" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
+      <Animated.ScrollView
         style={styles.fill}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        {...handlers}
       >
+        <PageHead title="Security & identity" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
         <Text style={[styles.heading, { color: t.inkStrong }]}>Mention handle</Text>
         <Text style={[styles.description, { color: t.inkMuted }]}>Members use this public handle to mention you in discussions.</Text>
         <View style={styles.handleRow}>
@@ -65,7 +68,7 @@ export default function SecuritySettingsScreen({
             autoCorrect={false}
             value={handle}
             onChangeText={setHandle}
-            style={[styles.input, styles.flex, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}
+            style={[styles.input, styles.flex, { color: t.inkStrong, backgroundColor: t.surfacePaper, borderColor: t.rule }]}
           />
         </View>
         <ActionButton
@@ -75,7 +78,7 @@ export default function SecuritySettingsScreen({
           onPress={() => void saveHandle()}
         />
 
-        <View style={[styles.divider, { backgroundColor: t.ruleHairline }]} />
+        <View style={[styles.divider, { backgroundColor: t.rule }]} />
         <Text style={[styles.heading, { color: t.inkStrong }]}>Password</Text>
         <Text style={[styles.description, { color: t.inkMuted }]}>For security, password changes are completed through a verified email link.</Text>
         <ActionButton
@@ -84,7 +87,7 @@ export default function SecuritySettingsScreen({
           disabled={pending !== null}
           onPress={() => void requestPassword()}
         />
-      </ScrollView>
+      </Animated.ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -109,12 +112,12 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1 },
   scroll: { padding: 20, paddingBottom: 40 },
-  heading: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
-  description: { marginTop: 5, marginBottom: 14, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
+  heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
+  description: { marginTop: 5, marginBottom: 14, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   at: { fontFamily: sans(600), fontSize: 18 },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 15 },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: sans(400), fontSize: 16 },
   button: { minHeight: 48, borderRadius: 8, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  buttonText: { color: '#fff', fontFamily: sans(600), fontSize: 14.5 },
+  buttonText: { color: '#fff', fontFamily: sans(600), fontSize: 16 },
   divider: { height: 1, marginVertical: 28 },
 });

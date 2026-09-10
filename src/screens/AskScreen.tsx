@@ -4,10 +4,11 @@ import type { AskDisplayMessage, AskSource } from '../api/types';
 import AskMarkdownAnswer from '../components/ask-gpfa/AskMarkdownAnswer';
 import AskResearchStatus from '../components/ask-gpfa/AskResearchStatus';
 import AskSources from '../components/ask-gpfa/AskSources';
-import { ArrowRight, ArrowUp, ChatCircleDots } from '../ds/icons';
-import { Input, ScreenHeader } from '../ds/primitives';
+import { ArrowRight, ArrowUp, ClockCounterClockwise } from '../ds/icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Input, PageActions } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
-import { sans } from '../ds/tokens';
+import { headerTop, sans } from '../ds/tokens';
 
 import markLogo from '../../assets/logo-no-txt.png';
 
@@ -41,6 +42,7 @@ export default function AskScreen({
   onRetry?: () => void;
 }) {
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const scroller = useRef<ScrollView>(null);
   const lastTailId = useRef<string | null>(null);
@@ -66,22 +68,9 @@ export default function AskScreen({
 
   return (
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScreenHeader
-        title="Ask "
-        accent="GPFA."
-        actions={(
-          <Pressable
-            onPress={onOpenHistory}
-            disabled={sending}
-            accessibilityRole="button"
-            accessibilityLabel="Open Ask GPFA conversation history"
-            hitSlop={8}
-            style={({ pressed }) => [styles.headerAction, (pressed || sending) && { opacity: 0.7 }]}
-          >
-            <ChatCircleDots size={20} color={t.brandGreenOnDark} />
-          </Pressable>
-        )}
-      />
+      <View style={[styles.chrome, { paddingTop: headerTop(insets.top) }]}>
+        <PageActions />
+      </View>
 
       <ScrollView
         ref={scroller}
@@ -120,7 +109,15 @@ export default function AskScreen({
 
         {empty && (
           <View>
-            <Image source={markLogo} style={styles.mark} resizeMode="contain" />
+            <View style={styles.hero}>
+              <Image source={markLogo} style={styles.mark} resizeMode="contain" />
+              <Text style={[styles.heroTitle, { color: t.inkStrong }]}>
+                Ask <Text style={{ color: t.brandGreen }}>GPFA.</Text>
+              </Text>
+              <Text style={[styles.heroLede, { color: t.inkMuted }]}>
+                Answers from the GPFA Knowledge Base
+              </Text>
+            </View>
             <View style={styles.suggestions}>
               {suggestions.map((q) => (
                 <Pressable
@@ -128,7 +125,7 @@ export default function AskScreen({
                   onPress={() => send(q)}
                   style={({ pressed }) => [
                     styles.suggestion,
-                    { borderColor: pressed ? t.ruleStrong : t.ruleHairline, backgroundColor: t.surfacePaper },
+                    { borderColor: pressed ? t.ruleStrong : t.rule, backgroundColor: t.surfacePaper },
                   ]}
                 >
                   <Text style={[styles.suggestionText, { color: t.inkBody }]}>{q}</Text>
@@ -141,7 +138,7 @@ export default function AskScreen({
 
         <View style={styles.messages}>
           {error && messages.length > 0 && !loading && (
-            <View style={[styles.inlineError, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+            <View style={[styles.inlineError, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
               <Text style={[styles.stateText, { color: t.inkBody }]}>Ask GPFA could not complete that request.</Text>
               {onRetry && (
                 <Pressable onPress={onRetry} accessibilityRole="button" style={styles.retryButton}>
@@ -178,7 +175,7 @@ export default function AskScreen({
                       : { paddingLeft: 10 },
                   ]}
                 >
-                  <View style={[styles.aiMark, { borderColor: t.ruleHairline, backgroundColor: t.surfacePaper }]}>
+                  <View style={[styles.aiMark, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
                     <Image source={markLogo} style={styles.aiMarkImage} resizeMode="contain" />
                   </View>
                   <View style={styles.aiContent}>
@@ -196,7 +193,7 @@ export default function AskScreen({
                         onPress={onStop}
                         accessibilityRole="button"
                         accessibilityLabel="Stop generating answer"
-                        style={[styles.stopButton, { borderColor: t.ruleHairline }]}
+                        style={[styles.stopButton, { borderColor: t.rule }]}
                       >
                         <View style={[styles.stopIcon, { backgroundColor: t.inkMuted }]} />
                         <Text style={[styles.stopText, { color: t.inkMuted }]}>Stop</Text>
@@ -213,10 +210,28 @@ export default function AskScreen({
       <View
         style={[
           styles.composer,
-          { borderTopColor: t.ruleHairline, backgroundColor: t.surfacePaper, paddingBottom: 6 },
+          {
+            borderTopColor: t.rule,
+            backgroundColor: t.surfacePaper,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
         ]}
       >
         <View style={styles.composerRow}>
+          <Pressable
+            onPress={onOpenHistory}
+            disabled={sending}
+            accessibilityRole="button"
+            accessibilityLabel="Open Ask GPFA conversation history"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.historyButton,
+              { borderColor: t.rule, backgroundColor: t.surfaceSubtle },
+              (pressed || sending) && { opacity: 0.6 },
+            ]}
+          >
+            <ClockCounterClockwise size={18} color={t.inkMuted} />
+          </Pressable>
           <Input
             value={draft}
             onChangeText={setDraft}
@@ -249,20 +264,38 @@ export default function AskScreen({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  headerAction: { padding: 2 },
+  chrome: { paddingHorizontal: 16, paddingBottom: 4, alignItems: 'flex-end' },
+  hero: { alignItems: 'center', paddingBottom: 30 },
+  heroTitle: {
+    marginTop: 22,
+    fontFamily: sans(600),
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -0.714,
+    textAlign: 'center',
+  },
+  heroLede: {
+    marginTop: 14,
+    maxWidth: 300,
+    fontFamily: sans(400),
+    fontSize: 15,
+    lineHeight: 23,
+    textAlign: 'center',
+  },
+  historyButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chat: {
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 24,
   },
-  mark: {
-    width: 56,
-    height: 56,
-    alignSelf: 'center',
-    marginTop: 20,
-    marginBottom: 30,
-    opacity: 0.85,
-  },
+  mark: { width: 64, height: 56 },
   suggestions: { gap: 8 },
   suggestion: {
     flexDirection: 'row',
@@ -278,7 +311,7 @@ const styles = StyleSheet.create({
   suggestionText: {
     flex: 1,
     fontFamily: sans(400),
-    fontSize: 13.5,
+    fontSize: 15,
   },
   messages: { gap: 12 },
   loadingState: {
@@ -287,10 +320,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
-  stateText: { fontFamily: sans(400), fontSize: 13.5, textAlign: 'center' },
+  stateText: { fontFamily: sans(400), fontSize: 15, textAlign: 'center' },
   inlineError: { borderWidth: 1, borderRadius: 8, padding: 12, alignItems: 'center' },
   retryButton: { paddingHorizontal: 12, paddingVertical: 8 },
-  retryText: { fontFamily: sans(600), fontSize: 13 },
+  retryText: { fontFamily: sans(600), fontSize: 14.5 },
   loadEarlier: {
     minHeight: 38,
     flexDirection: 'row',
@@ -299,7 +332,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
-  loadEarlierText: { fontFamily: sans(600), fontSize: 12.5 },
+  loadEarlierText: { fontFamily: sans(600), fontSize: 13.5 },
   userBubble: {
     maxWidth: '82%',
     paddingVertical: 10,
@@ -316,16 +349,16 @@ const styles = StyleSheet.create({
   aiMark: { width: 30, height: 30, borderWidth: 1, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   aiMarkImage: { width: 20, height: 20 },
   aiContent: { minWidth: 0, flex: 1 },
-  aiName: { marginBottom: 2, fontFamily: sans(600), fontSize: 12.5 },
+  aiName: { marginBottom: 2, fontFamily: sans(600), fontSize: 13.5 },
   bubbleText: {
     fontFamily: sans(400),
-    fontSize: 13.5,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 23.5,
   },
-  stoppedCopy: { marginTop: 7, fontFamily: sans(400), fontSize: 11, lineHeight: 16 },
+  stoppedCopy: { marginTop: 7, fontFamily: sans(400), fontSize: 12, lineHeight: 17.5 },
   stopButton: { marginTop: 9, minHeight: 32, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, borderWidth: 1, borderRadius: 16 },
   stopIcon: { width: 8, height: 8, borderRadius: 1 },
-  stopText: { fontFamily: sans(600), fontSize: 11.5 },
+  stopText: { fontFamily: sans(600), fontSize: 12.5 },
   composer: {
     borderTopWidth: 1,
     paddingHorizontal: 16,

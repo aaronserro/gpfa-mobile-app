@@ -1,7 +1,7 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { PushNotificationsState } from '../api/types';
-import { ScreenHeader } from '../ds/primitives';
+import { PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, sans, trackDisplay } from '../ds/tokens';
 
@@ -33,15 +33,17 @@ export default function PushNotificationsScreen({
   onRetry: () => void;
 }) {
   const { t } = useTheme();
+  const { scrollY, handlers } = useStickyScroll();
   const unavailable = state === 'unavailable';
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
-      <ScreenHeader title="Push notifications" onBack={onBack} backLabel="Back to account" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <StickyTitle scrollY={scrollY} title="Push notifications" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
+      <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
+        <PageHead title="Push notifications" onBack={onBack} backLabel="Back to account" actions={<PageActions />} />
         <Text style={[styles.intro, { color: t.inkMuted }]}>Receive the same durable member updates shown in the notification centre. This setting applies only to this device.</Text>
 
-        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.ruleHairline }]}>
+        <View style={[styles.group, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
           <View style={styles.row}>
             <View style={styles.flex}>
               <Text style={[styles.label, { color: t.inkStrong }]}>Notifications on this device</Text>
@@ -85,7 +87,7 @@ export default function PushNotificationsScreen({
             </Pressable>
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -110,16 +112,16 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
   scroll: { padding: 20, paddingBottom: 40 },
-  intro: { marginBottom: 16, fontFamily: sans(400), fontSize: 13, lineHeight: 19 },
-  group: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  intro: { marginBottom: 16, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
+  group: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   row: { minHeight: 84, paddingHorizontal: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  label: { fontFamily: sans(600), fontSize: 14.5, letterSpacing: trackDisplay(14.5) },
-  description: { marginTop: 3, fontFamily: sans(400), fontSize: 12, lineHeight: 17 },
+  label: { fontFamily: sans(600), fontSize: 16, letterSpacing: trackDisplay(16) },
+  description: { marginTop: 3, fontFamily: sans(400), fontSize: 13, lineHeight: 18.5 },
   button: { minHeight: 48, marginTop: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontFamily: sans(600), fontSize: 14.5 },
-  notice: { marginTop: 16, borderWidth: 1, borderRadius: 10, padding: 14 },
-  noticeTitle: { fontFamily: sans(600), fontSize: 14 },
-  noticeBody: { marginTop: 4, fontFamily: sans(400), fontSize: 12.5, lineHeight: 18 },
+  buttonText: { fontFamily: sans(600), fontSize: 16 },
+  notice: { marginTop: 16, borderWidth: 1, borderRadius: 12, padding: 14 },
+  noticeTitle: { fontFamily: sans(600), fontSize: 15 },
+  noticeBody: { marginTop: 4, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
   retry: { alignSelf: 'flex-start', minHeight: 40, marginTop: 12, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
-  retryText: { fontFamily: sans(600), fontSize: 13 },
+  retryText: { fontFamily: sans(600), fontSize: 14.5 },
 });

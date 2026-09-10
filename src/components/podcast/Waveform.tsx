@@ -35,7 +35,7 @@ function Waveform({
             width: bar,
             height: Math.max(2, Math.round(peak * height)),
             borderRadius: 1,
-            backgroundColor: i / visiblePeaks.length < progress ? t.brandGreen : t.ruleHairline,
+            backgroundColor: i / visiblePeaks.length < progress ? t.brandGreen : t.rule,
           }}
         />
       ))}
