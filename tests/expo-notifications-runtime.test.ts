@@ -169,9 +169,34 @@ test('the app requests permission only from the explicit enable flow', () => {
 
 test('foreground presentation is suppressed while canonical refresh remains wired', () => {
   const appSource = readFileSync(join(ROOT, 'App.tsx'), 'utf8');
+  const querySource = readFileSync(join(ROOT, 'src/api/useQuery.ts'), 'utf8');
   assert.match(appSource, /Notifications\.setNotificationHandler\([\s\S]*shouldShowBanner: false[\s\S]*shouldShowList: false/);
   assert.match(appSource, /onCanonicalNotification: refreshCanonicalNotificationsFromPush/);
-  assert.match(appSource, /await notificationsQuery\.refetch\(\)/);
+  assert.match(
+    appSource,
+    /const data = await notificationsQuery\.refetch\(\);[\s\S]*setLocalNotifications\(data\.notifications\);[\s\S]*setNotificationMemberCreatedAt\(data\.memberCreatedAt\)/
+  );
+  assert.match(querySource, /refetch: \(\) => Promise<T \| undefined>/);
+});
+
+test('app resume and realtime recovery refresh the canonical bell count', () => {
+  const appSource = readFileSync(join(ROOT, 'App.tsx'), 'utf8');
+  assert.match(
+    appSource,
+    /const refreshAfterResume = \(\) => \{[\s\S]*void refreshCanonicalNotificationsFromPush\(\);[\s\S]*setTimeout\([\s\S]*AppState\.currentState === 'active'[\s\S]*void refreshCanonicalNotificationsFromPush\(\)/
+  );
+  assert.match(
+    appSource,
+    /if \(nextState === 'active'\) \{\s*refreshAfterResume\(\);\s*start\(\);/
+  );
+  assert.match(
+    appSource,
+    /onRecoveryNeeded: \(\) => void refreshCanonicalNotificationsFromPush\(\)/
+  );
+  assert.match(
+    appSource,
+    /if \(AppState\.currentState === 'active'\) void refreshCanonicalNotificationsFromPush\(\)/
+  );
 });
 
 test('push taps resolve canonical detail and sign-out unregisters before clearing auth', () => {

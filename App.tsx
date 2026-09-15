@@ -3189,7 +3189,10 @@ function Portal() {
   }, [openNotification]);
 
   const refreshCanonicalNotificationsFromPush = useCallback(async () => {
-    await notificationsQuery.refetch();
+    const data = await notificationsQuery.refetch();
+    if (!data) return;
+    setLocalNotifications(data.notifications);
+    setNotificationMemberCreatedAt(data.memberCreatedAt);
   }, [notificationsQuery.refetch]);
 
   const queueNotificationResponse = useCallback((notificationId: string) => {
@@ -3245,8 +3248,25 @@ function Portal() {
   useEffect(() => {
     if (!isSignedIn) return;
     let subscription: ReturnType<typeof subscribeToNotificationInserts> = null;
+    let resumeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
 
+    const clearResumeRefresh = () => {
+      if (!resumeRefreshTimer) return;
+      clearTimeout(resumeRefreshTimer);
+      resumeRefreshTimer = null;
+    };
+    const refreshAfterResume = () => {
+      clearResumeRefresh();
+      void refreshCanonicalNotificationsFromPush();
+      // A visible push can beat the notification transaction becoming readable.
+      resumeRefreshTimer = setTimeout(() => {
+        resumeRefreshTimer = null;
+        if (!disposed && AppState.currentState === 'active') {
+          void refreshCanonicalNotificationsFromPush();
+        }
+      }, 1_000);
+    };
     const close = () => {
       const current = subscription;
       subscription = null;
@@ -3258,7 +3278,7 @@ function Portal() {
         onInsert: (row) => {
           const notification = normalizeNotification(row, 0, 'realtime');
           if (!notification) {
-            notificationsQuery.refetch();
+            void refreshCanonicalNotificationsFromPush();
             return;
           }
           if (notificationIsBeforeMemberJoin(notification, notificationMemberCreatedAt)) return;
@@ -3270,34 +3290,36 @@ function Portal() {
             current.some(({ id }) => id === notification.id) ? current : [...current, notification]
           );
         },
-        onRecoveryNeeded: notificationsQuery.refetch,
+        onRecoveryNeeded: () => void refreshCanonicalNotificationsFromPush(),
       });
     };
 
     if (AppState.currentState === 'active') start();
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        notificationsQuery.refetch();
+        refreshAfterResume();
         start();
       } else {
+        clearResumeRefresh();
         close();
       }
     });
 
     return () => {
       disposed = true;
+      clearResumeRefresh();
       appStateSubscription.remove();
       close();
     };
-  }, [isSignedIn, notificationMemberCreatedAt, notificationsQuery.refetch]);
+  }, [isSignedIn, notificationMemberCreatedAt, refreshCanonicalNotificationsFromPush]);
 
   useEffect(() => {
     if (!isSignedIn) return;
     const timer = setInterval(() => {
-      if (AppState.currentState === 'active') notificationsQuery.refetch();
+      if (AppState.currentState === 'active') void refreshCanonicalNotificationsFromPush();
     }, 60_000);
     return () => clearInterval(timer);
-  }, [isSignedIn, notificationsQuery.refetch]);
+  }, [isSignedIn, refreshCanonicalNotificationsFromPush]);
 
   const openGroup = useCallback((id: string) => {
     setGroupId(id);

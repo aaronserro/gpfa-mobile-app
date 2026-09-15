@@ -7,7 +7,8 @@ export interface QueryState<T> {
   loading: boolean;
   refreshing: boolean;
   error: ApiError | Error | undefined;
-  refetch: () => void;
+  /** Resolves with the value committed by the latest request, or undefined if it failed or was superseded. */
+  refetch: () => Promise<T | undefined>;
 }
 
 /**
@@ -38,7 +39,7 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
     };
   }, []);
 
-  const load = useCallback(async (isRefresh: boolean) => {
+  const load = useCallback(async (isRefresh: boolean): Promise<T | undefined> => {
     const id = ++runId.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -46,7 +47,10 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
 
     try {
       const result = await run.current();
-      if (alive.current && id === runId.current) setData(result);
+      if (alive.current && id === runId.current) {
+        setData(result);
+        return result;
+      }
     } catch (cause) {
       if (alive.current && id === runId.current) {
         setError(cause instanceof Error ? cause : new Error(String(cause)));
@@ -57,6 +61,7 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
         setRefreshing(false);
       }
     }
+    return undefined;
   }, []);
 
   useEffect(() => {
@@ -64,7 +69,7 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const refetch = useCallback(() => void load(true), [load]);
+  const refetch = useCallback(() => load(true), [load]);
 
   return { data, loading, refreshing, error, refetch };
 }
