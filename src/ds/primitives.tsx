@@ -23,7 +23,7 @@ import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useMember } from '../auth/MemberProvider';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Bell, CaretRight, Moon, Sun } from './icons';
+import { Bell, CaretRight, MagnifyingGlass, Moon, Sun } from './icons';
 import type { Icon } from './icons';
 import { useTheme } from './ThemeProvider';
 import { alpha, headerTop, mono, sans, trackDisplay } from './tokens';
@@ -464,7 +464,7 @@ export function SectionCard({
 
 const sectionStyles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
+  title: { flex: 1, minWidth: 0, fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
   footer: { marginTop: 16, borderTopWidth: 1, paddingTop: 14, alignItems: 'flex-start' },
 });
 
@@ -551,9 +551,11 @@ export function PageHead({
 const pageHeadStyles = StyleSheet.create({
   wrap: { paddingHorizontal: 16, paddingBottom: 18, borderBottomWidth: 1 },
   back: { alignSelf: 'flex-start', marginBottom: 4, marginLeft: -6 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 },
   title: {
     flex: 1,
+    flexBasis: 200,
+    minWidth: 0,
     fontFamily: sans(600),
     fontSize: 27,
     lineHeight: 31,
@@ -687,31 +689,43 @@ const stickyStyles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    minWidth: 0,
     fontFamily: sans(600),
     fontSize: 19,
     letterSpacing: trackDisplay(19),
   },
 });
 
-/**
- * The theme toggle and the notification bell, for a tab root's title row.
- * These were the whole content of the old header band; with it gone they ride
- * along with the page head instead.
- */
+/** Global search, theme, and notification actions for authenticated headers. */
 export function PageActions({ children }: { children?: ReactNode }) {
   const { t, isDark, toggle } = useTheme();
-  const { notificationUnreadCount, openNotifications } = useMember();
+  const { notificationUnreadCount, openNotifications, openSearch } = useMember();
   const badgeLabel = notificationUnreadCount > 9 ? '9+' : String(notificationUnreadCount);
 
   return (
     <View style={pageActionStyles.row}>
       {children}
       <Pressable
+        onPress={openSearch}
+        disabled={!openSearch}
+        accessibilityRole="button"
+        accessibilityLabel="Search the member portal"
+        accessibilityHint="Opens the global search screen"
+        style={({ pressed }) => [
+          pageActionStyles.iconButton,
+          pressed && openSearch ? pageActionStyles.pressed : null,
+        ]}
+      >
+        <MagnifyingGlass size={19} color={t.inkMuted} />
+      </Pressable>
+      <Pressable
         onPress={toggle}
         accessibilityRole="button"
         accessibilityLabel="Appearance"
-        hitSlop={8}
-        style={({ pressed }) => (pressed ? pageActionStyles.pressed : null)}
+        style={({ pressed }) => [
+          pageActionStyles.iconButton,
+          pressed ? pageActionStyles.pressed : null,
+        ]}
       >
         {isDark ? <Sun size={19} color={t.inkMuted} /> : <Moon size={19} color={t.inkMuted} />}
       </Pressable>
@@ -739,7 +753,14 @@ export function PageActions({ children }: { children?: ReactNode }) {
 
 const pageActionStyles = StyleSheet.create({
   // Nudged down so the glyphs optically centre on the display head's cap height.
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 6 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 2, paddingTop: 6 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    marginVertical: -10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bell: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',
@@ -837,14 +858,16 @@ const chipStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 30,
+    minHeight: 30,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 32,
     borderWidth: 1,
   },
   label: { fontFamily: sans(400), fontSize: 13 },
   hash: {
-    height: 30,
+    minHeight: 30,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 32,
     justifyContent: 'center',
@@ -854,7 +877,8 @@ const chipStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 34,
+    minHeight: 34,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
@@ -891,7 +915,7 @@ export function ActionButton({
       style={({ pressed }) => [
         buttonStyles.button,
         {
-          height: size,
+          minHeight: size,
           backgroundColor: primary ? t.surfaceAnchor : 'transparent',
           borderWidth: primary ? 0 : 1,
           borderColor: t.rule,
@@ -1036,8 +1060,8 @@ export function MenuRow({
 
 const menuRowStyles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  label: { flex: 1, fontFamily: sans(500), fontSize: 16 },
-  value: { fontFamily: sans(400), fontSize: 14 },
+  label: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 16 },
+  value: { flexShrink: 1, textAlign: 'right', fontFamily: sans(400), fontSize: 14 },
 });
 
 /** The uppercase group label above a Menu section. */

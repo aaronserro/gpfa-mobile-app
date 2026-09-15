@@ -4,7 +4,9 @@
  * Bookmark and share are present in the design but inert here — there is no
  * saved-roles endpoint yet, the same as the resource sheet's bookmark.
  */
+import { useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import {
   ArrowSquareOut,
@@ -32,9 +34,50 @@ export interface JobPostingProps {
 export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
   const { t } = useTheme();
   const { scrollY, handlers } = useStickyScroll();
+  const dragOffset = useRef(new Animated.Value(0)).current;
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(8)
+        .failOffsetX([-28, 28])
+        .runOnJS(true)
+        .onUpdate((event) => {
+          dragOffset.setValue(Math.max(0, event.translationY));
+        })
+        .onEnd((event) => {
+          if (event.translationY >= 72 || event.velocityY >= 900) {
+            onBack();
+            return;
+          }
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        })
+        .onFinalize((_event, success) => {
+          if (success) return;
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        }),
+    [dragOffset, onBack]
+  );
 
   return (
-    <SwipeBack onBack={onBack} style={styles.fill}>
+    <Animated.View style={[styles.fill, { transform: [{ translateY: dragOffset }] }]}>
+      <GestureDetector gesture={dismissGesture}>
+        <View style={styles.dismissHandle} accessible={false}>
+          <View style={[styles.grabber, { backgroundColor: t.ruleStrong }]} />
+        </View>
+      </GestureDetector>
+      <SwipeBack onBack={onBack} style={styles.fill}>
       <StickyTitle scrollY={scrollY} title="Role" onBack={onBack} backLabel="Back to the job board" actions={<PageActions />} />
 
       <Animated.ScrollView
@@ -154,13 +197,16 @@ export default function JobPosting({ job, onBack, onApply }: JobPostingProps) {
           <ArrowSquareOut size={16} color="#fff" />
         </Pressable>
       </View>
-    </SwipeBack>
+      </SwipeBack>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1 },
+  dismissHandle: { alignItems: 'center', height: 18, justifyContent: 'center' },
+  grabber: { borderRadius: 2, height: 4, width: 36 },
 
   topActions: {
     flexDirection: 'row',

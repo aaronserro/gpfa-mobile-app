@@ -15,6 +15,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -31,7 +32,7 @@ import {
   Trash,
   type Icon,
 } from '../../ds/icons';
-import { Avatar, MastheadMeta, PageActions, PageHead, StickyTitle, SwipeBack, useStickyScroll } from '../../ds/primitives';
+import { Avatar, MastheadMeta, PageActions, PageHead, SwipeBack } from '../../ds/primitives';
 import MutationNotice, { type MutationNoticeValue } from '../MutationNotice';
 import FeedFilterDropdown from './FeedFilterDropdown';
 import ForumModerationPanel from './ForumModerationPanel';
@@ -39,6 +40,7 @@ import ResourceModerationPanel from './ResourceModerationPanel';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
+import { displayedWorkingGroupUpvote } from '../../lib/working-group-upvotes';
 import {
   DEFAULT_WORKING_GROUP_FEED_CONTROLS,
   hasActiveWorkingGroupFeedControls,
@@ -207,10 +209,10 @@ export default function GroupView({
   onOpenResource,
 }: GroupViewProps) {
   const { t } = useTheme();
-  const { scrollY, handlers } = useStickyScroll();
   const [memberQuery, setMemberQuery] = useState('');
   const [feedQuery, setFeedQuery] = useState(feedControls.query);
   const [openFeedFilter, setOpenFeedFilter] = useState<FeedFilterAxis | null>(null);
+  const feedScrollY = useRef(new Animated.Value(0)).current;
   const feedScrollRef = useRef<ScrollView>(null);
   const feedScrollOffset = useRef(0);
   const feedPostLayouts = useRef(new Map<string, { y: number; height: number }>());
@@ -266,10 +268,14 @@ export default function GroupView({
     });
   };
 
-  // The subscribe control rides in the head's action slot beside the chrome
-  // buttons; the tab strip sits under the title, as it did in the old band.
-  const subscribeAction = (
-    <>
+  const head = (
+    <PageHead
+      title={group.n}
+      onBack={onBack}
+      backLabel="Back to working groups"
+      actions={<PageActions />}
+    >
+      <View style={styles.groupNavigation}>
         <Pressable
           onPress={onToggleSubscribe}
           disabled={!!pendingMutations[`subscription:${group.id}`]}
@@ -280,8 +286,6 @@ export default function GroupView({
           }}
           style={[
             subscribed ? styles.subBtnOn : styles.subBtnOff,
-            // The head is the page surface, so subscribed is an outline chip
-            // and the call to action takes the anchor fill.
             subscribed ? { borderColor: t.rule } : { backgroundColor: t.surfaceAnchor },
           ]}
         >
@@ -295,18 +299,12 @@ export default function GroupView({
             {subscribed ? 'Subscribed' : 'Subscribe'}
           </Text>
         </Pressable>
-      <PageActions />
-    </>
-  );
-
-  const head = (
-    <PageHead
-      title={group.n}
-      onBack={onBack}
-      backLabel="Back to working groups"
-      actions={subscribeAction}
-    >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        <ScrollView
+          horizontal
+          style={styles.tabScroller}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabs}
+        >
           {groupTabs.map(([id, label]) => {
             const on = id === tab;
             return (
@@ -322,19 +320,13 @@ export default function GroupView({
             );
           })}
         </ScrollView>
+      </View>
     </PageHead>
   );
 
   return (
     <SwipeBack onBack={onBack} style={styles.fill}>
-      <StickyTitle
-        scrollY={scrollY}
-        title={group.n}
-        onBack={onBack}
-        backLabel="Back to working groups"
-        actions={subscribeAction}
-      />
-
+      {head}
       <View style={styles.fill}>
         {tab === 'posts' && (
           <>
@@ -358,8 +350,7 @@ export default function GroupView({
               ref={feedScrollRef}
               contentContainerStyle={styles.list}
               showsVerticalScrollIndicator={false}
-              // 16 rather than 400: the sticky bar needs every frame. The feed's
-              // own bookkeeping rides along as the event's listener.
+              // The feed's anchor bookkeeping rides along as the event's listener.
               scrollEventThrottle={16}
               onContentSizeChange={() => {
                 if (pendingFeedAnchor.current && !refreshingNewPosts) {
@@ -367,7 +358,7 @@ export default function GroupView({
                 }
               }}
               onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
                 {
                   useNativeDriver: true,
                   listener: ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -380,7 +371,6 @@ export default function GroupView({
                 }
               )}
             >
-              {head}
               <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
               <View style={styles.feedControls}>
                 <View style={[styles.feedSearch, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
@@ -492,7 +482,7 @@ export default function GroupView({
                       <PostCard
                         post={p}
                         replyCount={replyCounts[p.id] ?? p.replies.length}
-                        upvoted={!!upvoted[p.id]}
+                        upvoted={upvoted[p.id] ?? p.hasUpvoted ?? false}
                         upvotePending={!!pendingMutations[`upvote:${p.id}`]}
                         onToggleUpvote={() => onToggleUpvote(p.id)}
                         reposted={reposted[p.id] ?? p.hasReposted ?? false}
@@ -533,9 +523,7 @@ export default function GroupView({
           <Animated.ScrollView
             contentContainerStyle={styles.about}
             showsVerticalScrollIndicator={false}
-            {...handlers}
           >
-            {head}
             {!!group.meta && (
               <View style={[styles.infoPanel, { borderColor: t.rule, backgroundColor: t.surfacePaper }]}>
                 <Text style={[styles.panelTitle, { color: t.inkStrong }]}>About</Text>
@@ -613,49 +601,51 @@ export default function GroupView({
         )}
 
         {tab === 'resources' && (
-          <GroupResourcesPanel
-            resources={groupResources}
-            subscribed={subscribed}
-            onSubmit={onOpenResourceSubmission}
-            onOpenResource={onOpenResource}
-          />
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <GroupResourcesPanel
+              resources={groupResources}
+              subscribed={subscribed}
+              onSubmit={onOpenResourceSubmission}
+              onOpenResource={onOpenResource}
+            />
+          </ScrollView>
         )}
 
         {tab === 'moderation' && canModerate && (
-          <ModerationPanel
-            key={group.id}
-            posts={moderationPosts}
-            openThreadCount={openModerationThreadCount}
-            onOpenPost={onOpenPost}
-            onChangePostStatus={onChangePostStatus}
-            pendingMutations={pendingMutations}
-            mutationNotice={mutationNotice}
-            onDismissMutationNotice={onDismissMutationNotice}
-            submissions={moderationSubmissions}
-            forumReports={forumReports}
-            forumReportsLoading={forumReportsLoading}
-            forumReportsError={forumReportsError}
-            pendingReportId={pendingReportId}
-            moderationPendingTarget={moderationPendingTarget}
-            onRefreshReports={onRefreshReports ?? (() => {})}
-            onResolveReport={onResolveReport ?? (async () => false)}
-            onRemoveContent={onRemoveContent ?? (async () => false)}
-            resourceLoading={moderationLoading}
-            resourceError={moderationError}
-            pendingSubmissionId={moderationPendingSubmissionId}
-            onRefreshResources={onRefreshModeration ?? (() => {})}
-            onReviewResource={onReviewResource ?? (async () => false)}
-            onRemoveResource={onRemoveResource ?? (async () => false)}
-          />
+          <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+            <ModerationPanel
+              key={group.id}
+              posts={moderationPosts}
+              openThreadCount={openModerationThreadCount}
+              onOpenPost={onOpenPost}
+              onChangePostStatus={onChangePostStatus}
+              pendingMutations={pendingMutations}
+              mutationNotice={mutationNotice}
+              onDismissMutationNotice={onDismissMutationNotice}
+              submissions={moderationSubmissions}
+              forumReports={forumReports}
+              forumReportsLoading={forumReportsLoading}
+              forumReportsError={forumReportsError}
+              pendingReportId={pendingReportId}
+              moderationPendingTarget={moderationPendingTarget}
+              onRefreshReports={onRefreshReports ?? (() => {})}
+              onResolveReport={onResolveReport ?? (async () => false)}
+              onRemoveContent={onRemoveContent ?? (async () => false)}
+              resourceLoading={moderationLoading}
+              resourceError={moderationError}
+              pendingSubmissionId={moderationPendingSubmissionId}
+              onRefreshResources={onRefreshModeration ?? (() => {})}
+              onReviewResource={onReviewResource ?? (async () => false)}
+              onRemoveResource={onRemoveResource ?? (async () => false)}
+            />
+          </ScrollView>
         )}
 
         {tab === 'members' && (
           <Animated.ScrollView
             contentContainerStyle={styles.members}
             showsVerticalScrollIndicator={false}
-            {...handlers}
           >
-            {head}
             <View style={[styles.memberSearch, { backgroundColor: t.surfacePage, borderColor: t.rule }]}>
               <MagnifyingGlass size={15} color={t.inkMuted} />
               <TextInput
@@ -686,16 +676,16 @@ export default function GroupView({
                 ]}
               >
                 <Avatar initials={m.initials ?? initialsOf(m.name)} size={36} />
-                <View style={styles.flex}>
+                <View style={styles.memberDetails}>
                   <View style={styles.memberNameRow}>
                     <Text style={[styles.personName, { color: t.inkStrong }]}>{m.name}</Text>
                     {m.isLead && <RoleBadge>Co-lead</RoleBadge>}
                   </View>
                   <Text style={[styles.personRole, { color: t.inkMuted }]}>{m.role}</Text>
+                  <MastheadMeta size={10.5} color={t.inkFaint} style={styles.memberOrganization}>
+                    {m.org}
+                  </MastheadMeta>
                 </View>
-                <MastheadMeta size={10.5} color={t.inkFaint}>
-                  {m.org}
-                </MastheadMeta>
               </Pressable>
             ))}
             {visibleMembers.length === 0 && (
@@ -768,7 +758,10 @@ function GroupResourcesPanel({
   onOpenResource?: (resource: LibraryResource) => void;
 }) {
   const { t } = useTheme();
+  const { fontScale } = useWindowDimensions();
   const [query, setQuery] = useState('');
+  const [resourceListWidth, setResourceListWidth] = useState(0);
+  const wideCards = resourceListWidth >= 620 && fontScale < 1.35;
   const q = query.trim().toLowerCase();
   const filtered = resources.filter((resource) => {
     if (!q) return true;
@@ -780,7 +773,7 @@ function GroupResourcesPanel({
   const tags = uniqueTags(resources);
 
   return (
-    <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
+    <View style={styles.resources}>
       <View style={styles.resourceHeaderRow}>
         <Text style={[styles.panelTitle, { color: t.inkStrong }]}>Group Resources</Text>
         <View style={[styles.countPill, { backgroundColor: t.surfaceSoft }]}>
@@ -823,9 +816,17 @@ function GroupResourcesPanel({
           <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Adjust the search to show all group resources.</Text>
         </View>
       ) : (
-        <View style={styles.resourceList}>
+        <View
+          style={styles.resourceList}
+          onLayout={(event) => setResourceListWidth(event.nativeEvent.layout.width)}
+        >
           {filtered.map((resource) => (
-            <ResourceCard key={resource.id} resource={resource} onOpen={() => onOpenResource?.(resource)} />
+            <ResourceCard
+              key={resource.id}
+              resource={resource}
+              wide={wideCards}
+              onOpen={() => onOpenResource?.(resource)}
+            />
           ))}
         </View>
       )}
@@ -846,22 +847,26 @@ function GroupResourcesPanel({
         <Plus size={16} weight="bold" color={subscribed ? '#fff' : t.inkFaint} />
         <Text style={[styles.submitResourceText, { color: subscribed ? '#fff' : t.inkFaint }]}>Submit a resource</Text>
       </Pressable>
-    </ScrollView>
+    </View>
   );
 }
 
-function ResourceCard({ resource, onOpen }: { resource: LibraryResource; onOpen: () => void }) {
+function ResourceCard({ resource, wide, onOpen }: { resource: LibraryResource; wide: boolean; onOpen: () => void }) {
   const { t } = useTheme();
   const skin = resourceTypeStyle(t, resource.type);
+  const canOpen = resource.artifact.kind !== 'none';
   return (
     <Pressable
       onPress={onOpen}
-      disabled={!resource.href}
+      disabled={!canOpen}
       accessibilityRole="button"
-      accessibilityState={{ disabled: !resource.href }}
+      accessibilityHint={canOpen ? 'Opens this resource' : 'No document is attached'}
+      accessibilityState={{ disabled: !canOpen }}
       style={({ pressed }) => [
         styles.resourceCard,
-        { borderColor: t.rule, backgroundColor: pressed ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
+        wide && styles.resourceCardWide,
+        !canOpen && styles.resourceCardDisabled,
+        { borderColor: t.rule, backgroundColor: pressed && canOpen ? alpha(t.surfaceSoft, 0.45) : t.surfacePaper },
       ]}
     >
       <View style={styles.resourceCardHead}>
@@ -873,10 +878,10 @@ function ResourceCard({ resource, onOpen }: { resource: LibraryResource; onOpen:
             </View>
           </View>
         </View>
-        {!!resource.href && <FileText size={16} color={t.inkMuted} />}
+        {canOpen && <FileText size={16} color={t.inkMuted} />}
       </View>
-      <Text numberOfLines={2} style={[styles.resourceSummary, { color: t.inkMuted }]}>{resource.summary}</Text>
-      <Text numberOfLines={1} style={[styles.resourceMeta, { color: t.inkFaint }]}>
+      <Text style={[styles.resourceSummary, { color: t.inkMuted }]}>{resource.summary}</Text>
+      <Text style={[styles.resourceMeta, { color: t.inkFaint }]}>
         {resource.authors} · {resource.updatedAt}{resource.pages ? ` · ${resource.pages} pages` : ''}
       </Text>
     </Pressable>
@@ -949,9 +954,8 @@ function ModerationPanel({
   const emptyStatusLabel = threadStatusFilter === 'answered' ? 'answered' : threadStatusFilter;
 
   return (
-    <View style={styles.fill}>
+    <View style={styles.moderationPanel}>
       <MutationNotice notice={mutationNotice} onDismiss={onDismissMutationNotice} />
-      <ScrollView contentContainerStyle={styles.resources} showsVerticalScrollIndicator={false}>
         <ForumModerationPanel
           reports={forumReports}
           loading={forumReportsLoading}
@@ -1018,7 +1022,7 @@ function ModerationPanel({
             <Text style={[styles.emptyBody, { color: t.inkMuted }]}>Threads with this status will appear here.</Text>
           </View>
         ) : (
-          <View style={styles.resourceList}>
+          <View style={styles.moderationList}>
             {filteredPosts.map((post) => {
               const type = post.type ?? 'discussion';
               const TypeIcon = TYPE_ICON[type];
@@ -1155,7 +1159,6 @@ function ModerationPanel({
             })}
           </View>
         )}
-      </ScrollView>
     </View>
   );
 }
@@ -1190,6 +1193,7 @@ function PostCard({
   onOpenAuthor?: () => void;
 }) {
   const { t } = useTheme();
+  const displayedUpvote = displayedWorkingGroupUpvote(post, upvoted);
   const type = post.type ?? 'discussion';
   const TypeIcon = TYPE_ICON[type];
   const kindLabel = type === 'announcement' ? 'Announcement' : type[0].toUpperCase() + type.slice(1);
@@ -1270,7 +1274,7 @@ function PostCard({
             color={upvoted ? t.brandLeaf : t.inkMuted}
           />
           <Text style={[styles.cardActionText, { color: upvoted ? t.brandLeaf : t.inkMuted }]}>
-            {(post.upvotes ?? 0) + (upvoted ? 1 : 0)}
+            {displayedUpvote.count}
           </Text>
         </Pressable>
 
@@ -1326,7 +1330,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    height: 28,
+    minHeight: 40,
     paddingHorizontal: 11,
     borderWidth: 1,
     borderRadius: 8,
@@ -1334,14 +1338,16 @@ const styles = StyleSheet.create({
   subBtnOff: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 28,
+    minHeight: 40,
     paddingHorizontal: 12,
     borderRadius: 8,
   },
   subTextOn: { fontFamily: sans(500), fontSize: 12.5 },
   subTextOff: { fontFamily: sans(600), fontSize: 12.5 },
-  tabs: { flexDirection: 'row' },
-  tab: { paddingTop: 9, paddingBottom: 10, paddingHorizontal: 14, borderBottomWidth: 2 },
+  groupNavigation: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tabScroller: { flex: 1, minWidth: 0 },
+  tabs: { flexDirection: 'row', flexGrow: 1 },
+  tab: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderBottomWidth: 2 },
   tabLabel: { fontFamily: sans(600), fontSize: 13.5 },
 
   newPostsBar: {
@@ -1354,7 +1360,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingVertical: 8,
   },
-  newPostsButton: { minHeight: 34, justifyContent: 'center', borderRadius: 17, paddingHorizontal: 18 },
+  newPostsButton: { minHeight: 44, justifyContent: 'center', borderRadius: 22, paddingHorizontal: 18 },
   newPostsText: { fontFamily: sans(600), fontSize: 13 },
   list: { paddingBottom: 96 },
   feedControls: { paddingTop: 12, gap: 8 },
@@ -1370,20 +1376,21 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   feedSearchInput: { flex: 1, minWidth: 0, fontFamily: sans(400), fontSize: 15, paddingVertical: 8 },
-  applySearch: { minHeight: 34, justifyContent: 'center', borderRadius: 6, paddingHorizontal: 11 },
+  applySearch: { minHeight: 44, justifyContent: 'center', borderRadius: 6, paddingHorizontal: 11 },
   applySearchText: { color: '#fff', fontFamily: sans(600), fontSize: 12.5 },
   filterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     paddingHorizontal: 16,
   },
-  resultsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+  resultsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16 },
   resultsText: { fontFamily: sans(500), fontSize: 12.5 },
   clearText: { fontFamily: sans(600), fontSize: 12.5 },
 
   cards: { gap: 12, paddingTop: 12, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 12, paddingTop: 14, paddingHorizontal: 15, paddingBottom: 12 },
-  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cardMetaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
   cardAuthorIdentity: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
   cardAuthor: { flexShrink: 1, fontFamily: mono(400), fontSize: 12 },
   cardDot: { fontFamily: mono(400), fontSize: 12 },
@@ -1410,7 +1417,7 @@ const styles = StyleSheet.create({
   },
   stripText: { flex: 1, fontFamily: mono(400), fontSize: 11 },
   cardTags: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  cardActions: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardActions: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   moreRow: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
   moreText: { fontFamily: sans(400), fontSize: 13 },
   cardAction: {
@@ -1443,7 +1450,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 48,
+    minHeight: 48,
     paddingHorizontal: 18,
     borderRadius: 24,
     shadowColor: '#132329',
@@ -1459,14 +1466,14 @@ const styles = StyleSheet.create({
   infoPanel: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 8 },
   dashedPanel: { borderStyle: 'dashed' },
   panelTitle: { fontFamily: sans(600), fontSize: 15, letterSpacing: trackDisplay(15) },
-  infoRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
-  infoActionRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, paddingHorizontal: 2 },
+  infoRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
+  infoActionRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, paddingHorizontal: 2 },
   infoIcon: { width: 30, height: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   infoLabel: { flex: 1, minWidth: 0, fontFamily: sans(500), fontSize: 14.5 },
   infoValue: { fontFamily: mono(600), fontSize: 13, fontVariant: ['tabular-nums'] },
   leadRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 4 },
   aboutHead: { fontFamily: mono(600), fontSize: 9.5, letterSpacing: 1.7 },
-  personName: { fontFamily: sans(600), fontSize: 14.5 },
+  personName: { minWidth: 0, flexShrink: 1, fontFamily: sans(600), fontSize: 14.5 },
   personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
   personEmpty: { padding: 14, fontFamily: sans(400), fontSize: 13.5 },
   topics: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
@@ -1475,7 +1482,7 @@ const styles = StyleSheet.create({
   notifBody: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 20 },
   notifBtn: {
     marginTop: 12,
-    minHeight: 40,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 8,
     alignItems: 'center',
@@ -1485,17 +1492,20 @@ const styles = StyleSheet.create({
 
   resources: { padding: 16, paddingBottom: 40, gap: 12 },
   resourceHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  countPill: { minWidth: 28, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  countPill: { minWidth: 28, minHeight: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 2 },
   countPillText: { fontFamily: mono(600), fontSize: 12, fontVariant: ['tabular-nums'] },
-  resourceList: { gap: 10 },
-  resourceCard: { borderWidth: 1, borderRadius: 12, padding: 13, gap: 8 },
+  resourceList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  moderationList: { gap: 10 },
+  resourceCard: { width: '100%', minWidth: 0, borderWidth: 1, borderRadius: 12, padding: 13, gap: 8 },
+  resourceCardWide: { width: '48.5%' },
+  resourceCardDisabled: { opacity: 0.62 },
   resourceCardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  resourceTitle: { fontFamily: sans(600), fontSize: 15, lineHeight: 21, letterSpacing: trackDisplay(15) },
+  resourceTitle: { minWidth: 0, flexShrink: 1, fontFamily: sans(600), fontSize: 15, lineHeight: 21, letterSpacing: trackDisplay(15) },
   resourceChips: { marginTop: 7, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   resourceTypeChip: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 32, paddingVertical: 3, paddingHorizontal: 8 },
   resourceTypeText: { fontFamily: mono(400), fontSize: 9.5, letterSpacing: 0.55, textTransform: 'uppercase' },
-  resourceSummary: { fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
-  resourceMeta: { fontFamily: mono(400), fontSize: 11.5 },
+  resourceSummary: { minWidth: 0, flexShrink: 1, fontFamily: sans(400), fontSize: 13.5, lineHeight: 20 },
+  resourceMeta: { minWidth: 0, flexShrink: 1, fontFamily: mono(400), fontSize: 11.5 },
   submitResourceButton: {
     minHeight: 44,
     borderWidth: 1,
@@ -1509,7 +1519,7 @@ const styles = StyleSheet.create({
   moderationCard: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   threadStatusFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   threadStatusFilter: {
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 18,
@@ -1532,7 +1542,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   moderationAction: {
-    minHeight: 40,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -1543,6 +1553,7 @@ const styles = StyleSheet.create({
   },
   moderationActionText: { fontFamily: sans(600), fontSize: 13 },
 
+  moderationPanel: { gap: 12 },
   members: { paddingTop: 14, paddingBottom: 40 },
   memberSearch: {
     marginHorizontal: 16,
@@ -1559,13 +1570,15 @@ const styles = StyleSheet.create({
   membersMeta: { paddingHorizontal: 16, paddingBottom: 10 },
   memberRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 11,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderTopWidth: 1,
   },
-  memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  memberDetails: { flex: 1, minWidth: 0 },
+  memberNameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
+  memberOrganization: { marginTop: 5, flexShrink: 1 },
 });
 
 function mergeGroupMembers(groupMembers: Group['members'], coLeads: Group['members']): Group['members'] {

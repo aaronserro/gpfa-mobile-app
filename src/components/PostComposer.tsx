@@ -9,8 +9,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CalendarDots, ChartBar, ChatCircle, Megaphone, X, type Icon } from '../ds/icons';
+import { CalendarDots, ChartBar, ChatCircle, Megaphone, type Icon } from '../ds/icons';
 import { Input } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { postTypeStyle, sans, trackDisplay } from '../ds/tokens';
@@ -98,7 +99,45 @@ export default function PostComposer({
   const [registrationUrl, setRegistrationUrl] = useState('');
   const [isVirtual, setIsVirtual] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const dragOffset = useRef(new Animated.Value(0)).current;
   const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
+  const dismissDistance = Math.min(Math.max(sheetHeight * 0.16, 64), 128);
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!closing)
+        .activeOffsetY(8)
+        .failOffsetX([-28, 28])
+        .runOnJS(true)
+        .onUpdate((event) => {
+          dragOffset.setValue(Math.max(0, event.translationY));
+        })
+        .onEnd((event) => {
+          if (event.translationY >= dismissDistance || event.velocityY >= 900) {
+            requestClose();
+            return;
+          }
+
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        })
+        .onFinalize((_event, success) => {
+          if (success || closing) return;
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        }),
+    [closing, dismissDistance, dragOffset, requestClose]
+  );
 
   const selectedGroup = groups.find((g) => g.id === groupId);
   const normalizedPollQuestions = pollQuestionDraftsToInput(pollQuestions);
@@ -180,7 +219,10 @@ export default function PostComposer({
           accessibilityState={{ disabled: closing }}
         />
       </Animated.View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardAvoider}
+      >
         <Animated.View
           onLayout={(event) => setSheetHeight((height) => height || event.nativeEvent.layout.height)}
           style={[
@@ -191,31 +233,31 @@ export default function PostComposer({
               paddingBottom: Math.max(insets.bottom, 18),
               opacity: sheetHeight ? 1 : 0,
               transform: [{
-                translateY: progress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [sheetHeight * 1.02, 0],
-                }),
+                translateY: Animated.add(
+                  progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [sheetHeight * 1.02, 0],
+                  }),
+                  dragOffset
+                ),
               }],
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
+          <GestureDetector gesture={dismissGesture}>
+            <View>
+              <View style={[styles.grabber, { backgroundColor: t.rule }]} />
+              <View style={styles.head}>
+                <Text style={[styles.title, { color: t.inkStrong }]}>New post</Text>
+              </View>
+            </View>
+          </GestureDetector>
 
-          <View style={styles.head}>
-            <Text style={[styles.title, { color: t.inkStrong }]}>New post</Text>
-            <Pressable
-              onPress={() => requestClose()}
-              disabled={closing}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Close new post"
-              accessibilityState={{ disabled: closing }}
-            >
-              <X size={18} color={t.inkMuted} />
-            </Pressable>
-          </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
+          <ScrollView
+            style={styles.formScroll}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.body}
+          >
             <Text style={[styles.fieldLabel, { color: t.inkMuted }]}>Post type</Text>
             <ScrollView
               horizontal
@@ -393,8 +435,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(19,35,41,.42)',
   },
+  keyboardAvoider: { flex: 1, justifyContent: 'flex-end', width: '100%' },
   sheet: {
-    maxHeight: '90%',
+    height: '90%',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderTopWidth: 1,
@@ -419,6 +462,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: trackDisplay(18),
   },
+  formScroll: { flex: 1, minHeight: 0 },
   body: { paddingBottom: 14 },
   label: { marginTop: 16 },
   fieldLabel: { fontFamily: sans(500), fontSize: 13.5 },

@@ -7,7 +7,7 @@
  * something is typed, so the resting state is the institutional index.
  */
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
 import {
   Buildings,
@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { Avatar, Chip, OrgMark, PageActions, PageHead } from '../ds/primitives';
+import { FilterChip, FilterChipRow } from '../ds/controls';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, headerTop, orgSectorRule, sans, trackDisplay } from '../ds/tokens';
 import type { OrgSector } from '../ds/tokens';
@@ -41,6 +42,7 @@ import type {
 } from '../api/types';
 
 type DirectoryTab = 'directory' | 'messages';
+type OrgSectorFilter = 'all' | OrgSector;
 
 /**
  * A listing belongs to an organization when its `org` matches any of the names
@@ -124,6 +126,14 @@ const SECTOR_LABEL: Record<OrgSector, string> = {
   'Asset Manager': 'Asset manager',
 };
 
+const SECTOR_FILTERS: ReadonlyArray<{ id: OrgSectorFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'Pension Fund', label: 'Pension funds' },
+  { id: 'Sovereign Wealth Fund', label: 'Sovereign wealth' },
+  { id: 'Insurance Asset Manager', label: 'Insurance' },
+  { id: 'Asset Manager', label: 'Asset managers' },
+];
+
 export default function DirectoryScreen({
   member,
   orgs,
@@ -167,13 +177,16 @@ export default function DirectoryScreen({
   onReachLatestMessage,
 }: DirectoryScreenProps) {
   const { t } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const wideCards = windowWidth >= 700;
 
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
+  const [sector, setSector] = useState<OrgSectorFilter>('all');
   const [orgId, setOrgId] = useState<string | null>(initialOrgId);
   const [section, setSection] = useState<DirectoryTab>(initialTab);
 
-  // Members / Messages also swaps on a horizontal swipe, so the switch above
+  // Directory / Messages also swaps on a horizontal swipe, so the switch above
   // is a signpost rather than the only way across.
   const sectionSwipe = useMemo(
     () =>
@@ -194,33 +207,39 @@ export default function DirectoryScreen({
   // A–Z runs, but the letter headings went with the rest of the eyebrows.
   const matchedOrgs = useMemo(
     () =>
-      q
-        ? orgs.filter(
-            (o) =>
+      orgs.filter(
+        (o) =>
+          (sector === 'all' || o.sector === sector) &&
+          (!q ||
               o.name.toLowerCase().includes(q) ||
               o.country.toLowerCase().includes(q) ||
-              (o.fullName ?? '').toLowerCase().includes(q)
-          )
-        : orgs,
-    [orgs, q]
+              (o.fullName ?? '').toLowerCase().includes(q))
+      ),
+    [orgs, q, sector]
   );
 
   // People only enter the index once there is a query — otherwise the resting
   // view is organizations. Sorted by name; the flat list is in profile order.
   const matchedPeople = useMemo(() => {
     if (!q) return [];
-    const orgName = new Map(orgs.map((o) => [o.id, o.short]));
+    const orgById = new Map(orgs.map((o) => [o.id, o]));
     return people
       .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (orgName.get(p.orgId) ?? '').toLowerCase().includes(q)
+        (p) => {
+          const organization = orgById.get(p.orgId);
+          return (
+            (sector === 'all' || organization?.sector === sector) &&
+            (p.name.toLowerCase().includes(q) ||
+              (organization?.short ?? '').toLowerCase().includes(q))
+          );
+        }
       )
-      .map((p) => ({ ...p, meta: `${p.role} · ${orgName.get(p.orgId) ?? ''}` }))
+      .map((p) => ({ ...p, meta: `${p.role} · ${orgById.get(p.orgId)?.short ?? ''}` }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [orgs, people, q]);
+  }, [orgs, people, q, sector]);
 
   const orgCount = matchedOrgs.length;
+  const searchPlaceholder = `Search ${orgs.length} ${orgs.length === 1 ? 'organization' : 'organizations'} and ${people.length} ${people.length === 1 ? 'member' : 'members'}`;
 
   const openMessagesFor = (memberId: string) => {
     setOrgId(null);
@@ -248,7 +267,7 @@ export default function DirectoryScreen({
         <View style={styles.tabs}>
           {(
             [
-              ['directory', 'Members'],
+              ['directory', 'Directory'],
               ['messages', 'Messages'],
             ] as [DirectoryTab, string][]
           ).map(([id, label]) => {
@@ -330,7 +349,8 @@ export default function DirectoryScreen({
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search organizations or people"
+              placeholder={searchPlaceholder}
+              accessibilityLabel={searchPlaceholder}
               placeholderTextColor={t.inkMuted}
               style={[styles.searchInput, { color: t.inkStrong }]}
               autoCapitalize="none"
@@ -339,6 +359,21 @@ export default function DirectoryScreen({
               clearButtonMode="while-editing"
             />
           </View>
+        </View>
+        <View style={styles.sectorFilters}>
+          <FilterChipRow>
+            {SECTOR_FILTERS.map((filter) => (
+              <FilterChip
+                key={filter.id}
+                label={filter.label}
+                selected={sector === filter.id}
+                count={filter.id === 'all'
+                  ? orgs.length
+                  : orgs.filter((organization) => organization.sector === filter.id).length}
+                onPress={() => setSector(filter.id)}
+              />
+            ))}
+          </FilterChipRow>
         </View>
         <Text style={[styles.count, { color: t.inkMuted }]}>
           {matchedOrgs.length} {matchedOrgs.length === 1 ? 'organization' : 'organizations'}
@@ -349,7 +384,11 @@ export default function DirectoryScreen({
             return (
               <View
                 key={o.id}
-                style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}
+                style={[
+                  styles.card,
+                  wideCards && styles.cardWide,
+                  { backgroundColor: t.surfacePaper, borderColor: t.rule },
+                ]}
               >
                 <Pressable
                   onPress={() => setOrgId(o.id)}
@@ -407,7 +446,11 @@ export default function DirectoryScreen({
           {matchedPeople.map((p) => (
             <View
               key={p.id}
-              style={[styles.card, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}
+              style={[
+                styles.card,
+                wideCards && styles.cardWide,
+                { backgroundColor: t.surfacePaper, borderColor: t.rule },
+              ]}
             >
               <Pressable
                 onPress={() => onOpenMemberProfile(p.id)}
@@ -450,7 +493,9 @@ export default function DirectoryScreen({
 
         {orgCount === 0 && matchedPeople.length === 0 && (
           <Text style={[styles.empty, { color: t.inkMuted }]}>
-            {q ? `Nothing in the directory matches “${query.trim()}”.` : 'The directory is empty.'}
+            {q || sector !== 'all'
+              ? 'No directory entries match these filters.'
+              : 'The directory is empty.'}
           </Text>
         )}
       </ScrollView>
@@ -489,14 +534,16 @@ const styles = StyleSheet.create({
     fontFamily: sans(400),
     fontSize: 15,
   },
+  sectorFilters: { paddingHorizontal: 16, paddingTop: 12 },
 
   list: { paddingBottom: 24 },
   count: { paddingTop: 16, paddingHorizontal: 16, fontFamily: sans(400), fontSize: 14 },
 
   flex: { flex: 1, minWidth: 0 },
   pressed: { opacity: 0.7 },
-  cards: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
-  card: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 12, gap: 12 },
+  card: { width: '100%', minWidth: 0, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  cardWide: { width: '48.5%' },
   cardBody: { padding: 16 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   orgName: {
@@ -520,8 +567,8 @@ const styles = StyleSheet.create({
   avatarStacked: { marginLeft: -8 },
   memberCount: { fontFamily: sans(400), fontSize: 14 },
   personRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  personName: { fontFamily: sans(600), fontSize: 16 },
-  personMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 14 },
+  personName: { flexShrink: 1, fontFamily: sans(600), fontSize: 16 },
+  personMeta: { flexShrink: 1, marginTop: 3, fontFamily: sans(400), fontSize: 14 },
   messageActionText: { fontFamily: sans(600), fontSize: 14 },
 
   empty: {

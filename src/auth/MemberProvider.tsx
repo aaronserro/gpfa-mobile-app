@@ -22,6 +22,8 @@ interface MemberValue {
   notificationUnreadCount: number;
   /** Opens the notifications sheet from the header bell. */
   openNotifications?: () => void;
+  /** Opens global member-portal search from every authenticated page header. */
+  openSearch?: () => void;
   /**
    * Opens the profile sheet. The header avatar is the only way into the
    * profile, and it draws on every screen, so this is ambient for the same
@@ -41,6 +43,7 @@ export function MemberProvider({
   onOpenProfile,
   notificationUnreadCount = 0,
   onOpenNotifications,
+  onOpenSearch,
   children,
 }: {
   member: Member | null;
@@ -48,6 +51,7 @@ export function MemberProvider({
   onOpenProfile?: () => void;
   notificationUnreadCount?: number;
   onOpenNotifications?: () => void;
+  onOpenSearch?: () => void;
   children: ReactNode;
 }) {
   const value = useMemo<MemberValue>(
@@ -59,9 +63,10 @@ export function MemberProvider({
       photoUrl: member?.avatarUrl ?? undefined,
       notificationUnreadCount,
       openNotifications: onOpenNotifications,
+      openSearch: onOpenSearch,
       openProfile: onOpenProfile,
     }),
-    [member, notificationUnreadCount, onOpenNotifications, onOpenProfile]
+    [member, notificationUnreadCount, onOpenNotifications, onOpenProfile, onOpenSearch]
   );
   return <MemberContext.Provider value={value}>{children}</MemberContext.Provider>;
 }

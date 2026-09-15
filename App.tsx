@@ -48,6 +48,7 @@ import NewsStoryScreen from './src/screens/NewsStoryScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
 import PushNotificationsScreen from './src/screens/PushNotificationsScreen';
 import SecuritySettingsScreen from './src/screens/SecuritySettingsScreen';
+import SearchScreen, { type SearchErrorKind } from './src/screens/SearchScreen';
 import UpvoteHistoryScreen from './src/screens/UpvoteHistoryScreen';
 import ResourcesScreen, { type ResourcesNavigationRequest } from './src/screens/ResourcesScreen';
 import SignInScreen from './src/screens/SignInScreen';
@@ -78,6 +79,8 @@ import {
   getHomeImmediateActions,
   getJobs,
   getMemberOrgs,
+  getMemberSearch,
+  getMemberSearchSuggestions,
   getMemberEmailPreferences,
   getBlockedMembers,
   getMemberMentions,
@@ -155,6 +158,10 @@ import { addEventToDeviceCalendar, shareEventIcs } from './src/lib/event-device-
 import { memberDirectoryDestination } from './src/lib/member-directory-route';
 import { notificationDestination } from './src/lib/notification-navigation';
 import {
+  searchResultDestination,
+  trustedMemberWebUrl,
+} from './src/lib/search-result-navigation';
+import {
   dismissNotificationItems,
   markNotificationItemsRead,
   notificationIsBeforeMemberJoin,
@@ -198,6 +205,7 @@ import type {
   MemberNotification,
   MemberOrg,
   MemberRepost,
+  MemberSearchResult,
   MobileEventPreview,
   MessageItem,
   MessageReaction,
@@ -264,13 +272,11 @@ import {
 const DEFAULT_TAB: TabId = 'home';
 
 /**
- * How long the splash stays up at minimum. Long enough for the copy to rise in
- * and the progress bar to make a full pass; short enough not to be a toll gate
- * on every launch.
+ * Keep the branded landing moment visible long enough for the full staggered
+ * tagline to resolve before the authenticated or sign-in surface replaces it.
  */
-const SPLASH_MINIMUM_MS = 2200;
+const SPLASH_MINIMUM_MS = 4000;
 const DARK_MODE = false;
-const SHOW_BADGES = true;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -357,6 +363,7 @@ type MoreView =
 function Portal() {
   const { t, isDark, preference: themePreference, setPreference: setThemePreference } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
+  const pageHorizontalInset = Math.max((screenWidth - 960) / 2, 0);
   const tabTranslateX = useRef(new Animated.Value(0)).current;
 
   const { isSignedIn, status, signOut, signingOut } = useAuth();
@@ -445,6 +452,14 @@ function Portal() {
   // quick sheet first, then the full profile over whichever tab is underneath.
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MemberSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchRefreshing, setSearchRefreshing] = useState(false);
+  const [searchError, setSearchError] = useState<Error | null>(null);
+  const [searchErrorKind, setSearchErrorKind] = useState<SearchErrorKind | null>(null);
+  const searchRequestGeneration = useRef(0);
   const [profileTargetId, setProfileTargetId] = useState<string | null>(null);
   const [profileActivityKind, setProfileActivityKind] = useState<MemberProfileActivityKind>('posts');
   const [profileActivityPage, setProfileActivityPage] = useState(1);
@@ -913,6 +928,73 @@ function Portal() {
 
   // Handed to MemberProvider, so the header avatar on every screen opens it.
   const openProfileSheet = useCallback(() => setProfileSheetOpen(true), []);
+
+  const loadSearch = useCallback(async (
+    query: string,
+    generation: number,
+    refreshing = false
+  ) => {
+    setSearchError(null);
+    setSearchErrorKind(null);
+    setSearchRefreshing(refreshing);
+    setSearchLoading(!refreshing);
+    try {
+      const normalized = query.trim().replace(/\s+/g, ' ');
+      const response = normalized.length < 2
+        ? await getMemberSearchSuggestions({ limit: 12 })
+        : await getMemberSearch({ query: normalized, limit: 40 });
+      if (searchRequestGeneration.current !== generation) return;
+      setSearchResults(response.results);
+    } catch (cause) {
+      if (searchRequestGeneration.current !== generation) return;
+      const error = cause instanceof Error ? cause : new Error('Search is unavailable.');
+      setSearchResults([]);
+      setSearchError(error);
+      setSearchErrorKind(memberSearchErrorKind(error));
+    } finally {
+      if (searchRequestGeneration.current === generation) {
+        setSearchLoading(false);
+        setSearchRefreshing(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    // Invalidate the prior request immediately, including during the debounce window.
+    const generation = ++searchRequestGeneration.current;
+    const delay = searchQuery.trim().replace(/\s+/g, ' ').length >= 2 ? 300 : 0;
+    const timer = setTimeout(() => {
+      void loadSearch(searchQuery, generation);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [loadSearch, searchOpen, searchQuery]);
+
+  const openSearch = useCallback(() => {
+    searchRequestGeneration.current += 1;
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchError(null);
+    setSearchErrorKind(null);
+    setSearchLoading(true);
+    setSearchRefreshing(false);
+    setProfileSheetOpen(false);
+    setNotificationsOpen(false);
+    setSearchOpen(true);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    searchRequestGeneration.current += 1;
+    Keyboard.dismiss();
+    setSearchOpen(false);
+    setSearchLoading(false);
+    setSearchRefreshing(false);
+  }, []);
+
+  const retrySearch = useCallback((refreshing = false) => {
+    const generation = ++searchRequestGeneration.current;
+    void loadSearch(searchQuery, generation, refreshing);
+  }, [loadSearch, searchQuery]);
 
   const openNotifications = useCallback(() => {
     notificationsQuery.refetch();
@@ -2779,6 +2861,161 @@ function Portal() {
       });
   }, [groups, loadGroupDetail, refreshGroupMembership, showMutationError]);
 
+  const openSearchWebFallback = useCallback((result: MemberSearchResult) => {
+    const url = trustedMemberWebUrl(result.href, GPFA_WEB_ORIGIN);
+    if (!url) {
+      Alert.alert('Result unavailable', 'This search result is not available in the app.');
+      return;
+    }
+    void Linking.openURL(url).catch(() => {
+      Alert.alert('Result unavailable', 'This search result could not be opened.');
+    });
+  }, []);
+
+  const openSearchResult = useCallback((result: MemberSearchResult) => {
+    const destination = searchResultDestination(result.href, GPFA_WEB_ORIGIN);
+    if (!destination) {
+      Alert.alert('Result unavailable', 'This search result does not have a valid destination.');
+      return;
+    }
+
+    closeSearch();
+
+    if (destination.kind === 'member-profile') {
+      const person = (directoryPeopleQuery.data ?? []).find(
+        (candidate) =>
+          candidate.orgId === destination.organizationSlug &&
+          candidate.mentionHandle === destination.mentionHandle
+      );
+      if (person) openDirectoryProfile(person.id);
+      else openSearchWebFallback(result);
+      return;
+    }
+    if (destination.kind === 'organization') {
+      const organization = (orgsQuery.data ?? []).find(
+        (candidate) => candidate.id === destination.slug
+      );
+      if (!organization) {
+        openSearchWebFallback(result);
+        return;
+      }
+      setDirectoryRequest((current) => ({
+        orgId: organization.id,
+        n: (current?.n ?? 0) + 1,
+      }));
+      setTab('directory');
+      return;
+    }
+    if (destination.kind === 'group') {
+      const group = groups.find(
+        (candidate) => (candidate.slug ?? candidate.id) === destination.slug
+      );
+      if (group) pickGroup(group.id);
+      else openSearchWebFallback(result);
+      return;
+    }
+    if (destination.kind === 'group-item') {
+      openHomeThread({
+        id: destination.id,
+        href: result.href,
+        title: result.title,
+        groupName: '',
+        authorName: '',
+        replies: 0,
+        age: '',
+        unread: false,
+        participants: [],
+      });
+      return;
+    }
+    if (destination.kind === 'event') {
+      const event = previewEvents.find((candidate) => candidate.id === destination.id);
+      if (!event) {
+        openSearchWebFallback(result);
+        return;
+      }
+      setEventRequest((current) => ({ id: event.id, n: (current?.n ?? 0) + 1 }));
+      setMoreView('events');
+      setTab('more');
+      return;
+    }
+    if (destination.kind === 'resource') {
+      const resource = (libraryQuery.data?.resources ?? []).find(
+        (candidate) =>
+          candidate.id === destination.slug || candidate.id === `resource:${destination.slug}`
+      );
+      if (resource) openResource(resource);
+      else openSearchWebFallback(result);
+      return;
+    }
+    if (destination.kind === 'podcast') {
+      const episode = podcastQuery.data?.find((candidate) => candidate.slug === destination.slug);
+      if (episode) openInResources('episode', episode.slug);
+      else openSearchWebFallback(result);
+      return;
+    }
+    if (destination.kind === 'job') {
+      const job = jobsQuery.data?.find((candidate) => candidate.id === destination.id);
+      if (job) openInResources('job', job.id);
+      else openSearchWebFallback(result);
+      return;
+    }
+    if (destination.kind === 'annual-meeting') {
+      setMoreView('annual-meeting');
+      setTab('more');
+      return;
+    }
+    if (destination.kind === 'announcement') {
+      const announcement = announcements.find((candidate) => candidate.id === destination.id);
+      if (!announcement) {
+        openSearchWebFallback(result);
+        return;
+      }
+      setUpdateRequest((current) => ({
+        selection: { kind: 'announcement', id: announcement.id },
+        n: current.n + 1,
+      }));
+      setMoreView('updates');
+      setTab('more');
+      return;
+    }
+    if (destination.kind === 'survey') {
+      const survey = surveys.find((candidate) => candidate.id === destination.id);
+      if (!survey) {
+        openSearchWebFallback(result);
+        return;
+      }
+      setUpdateRequest((current) => ({
+        selection: { kind: 'survey', id: survey.id },
+        n: current.n + 1,
+      }));
+      setMoreView('updates');
+      setTab('more');
+      return;
+    }
+
+    void Linking.openURL(destination.url).catch(() => {
+      Alert.alert('Result unavailable', 'This search result could not be opened.');
+    });
+  }, [
+    announcements,
+    closeSearch,
+    directoryPeopleQuery.data,
+    groups,
+    jobsQuery.data,
+    libraryQuery.data?.resources,
+    openDirectoryProfile,
+    openHomeThread,
+    openInResources,
+    openResource,
+    openSearchWebFallback,
+    orgsQuery.data,
+    pickGroup,
+    podcastQuery.data,
+    previewEvents,
+    surveys,
+  ]);
+
   const openNewsThread = useCallback((thread: RelatedNewsThread) => {
     const group = groups.find((candidate) => (candidate.slug ?? candidate.id) === thread.groupSlug);
     if (!group) {
@@ -3171,19 +3408,19 @@ function Portal() {
     if (pendingMutations[pendingKey]) return;
     const entry = entryForThread(id);
     const targetType = targetTypeForThread(entry?.post);
-    setUpvoted((prev) => {
-      const next = !prev[id];
-      setMutationPending(pendingKey, true);
-      void setUpvote(id, next, targetType)
-        .then(() => setMutationNotice({ type: 'success', message: next ? 'Post upvoted.' : 'Upvote removed.' }))
-        .catch((cause) => {
-          setUpvoted((current) => ({ ...current, [id]: !next }));
-          showMutationError(cause, 'The upvote could not be updated.');
-        })
-        .finally(() => setMutationPending(pendingKey, false));
-      return { ...prev, [id]: next };
-    });
-  }, [entryForThread, pendingMutations, setMutationPending, showMutationError, targetTypeForThread]);
+    const previous = upvoted[id] ?? entry?.post.hasUpvoted ?? false;
+    const next = !previous;
+
+    setUpvoted((current) => ({ ...current, [id]: next }));
+    setMutationPending(pendingKey, true);
+    void setUpvote(id, next, targetType)
+      .then(() => setMutationNotice({ type: 'success', message: next ? 'Post upvoted.' : 'Upvote removed.' }))
+      .catch((cause) => {
+        setUpvoted((current) => ({ ...current, [id]: previous }));
+        showMutationError(cause, 'The upvote could not be updated.');
+      })
+      .finally(() => setMutationPending(pendingKey, false));
+  }, [entryForThread, pendingMutations, setMutationPending, showMutationError, targetTypeForThread, upvoted]);
 
   const toggleRepost = useCallback((id: string) => {
     const pendingKey = `repost:${id}`;
@@ -3711,14 +3948,10 @@ function Portal() {
   );
 
   useEffect(() => {
-    Animated.spring(tabTranslateX, {
-      toValue: tabOffset,
-      damping: 20,
-      stiffness: 220,
-      mass: 0.85,
-      useNativeDriver: true,
-    }).start();
-  }, [screenWidth, tabOffset, tabTranslateX]);
+    // Tab-bar and deep-link navigation should land directly on the requested
+    // page. Only an intentional swipe animates between adjacent pages.
+    tabTranslateX.setValue(tabOffset);
+  }, [tabOffset, tabTranslateX]);
 
   const tabSwipe = useMemo(
     () =>
@@ -3809,6 +4042,7 @@ function Portal() {
     <MemberProvider
       member={meQuery.data ?? null}
       onOpenProfile={openProfileSheet}
+      onOpenSearch={isSignedIn ? openSearch : undefined}
       notificationUnreadCount={isSignedIn ? unreadNotifications : 0}
       onOpenNotifications={isSignedIn ? openNotifications : undefined}
     >
@@ -3828,7 +4062,11 @@ function Portal() {
       ) : (
         <>
           <GestureDetector gesture={tabSwipe}>
-            <View style={[styles.screen, styles.tabViewport]}>
+            <View
+              accessibilityElementsHidden={searchOpen}
+              importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
+              style={[styles.screen, styles.tabViewport]}
+            >
               <Animated.View
                 style={[
                   styles.tabTrack,
@@ -3843,7 +4081,7 @@ function Portal() {
               pointerEvents={tab === 'home' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'home'}
               importantForAccessibility={tab === 'home' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: tabLeft('home'), width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('home'), width: screenWidth, paddingHorizontal: pageHorizontalInset }]}
             >
               <DataGate
                 loading={meQuery.loading}
@@ -3953,7 +4191,7 @@ function Portal() {
               pointerEvents={tab === 'more' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'more'}
               importantForAccessibility={tab === 'more' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: tabLeft('more'), width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('more'), width: screenWidth, paddingHorizontal: pageHorizontalInset }]}
             >
             <ScreenEnter key={moreView} style={styles.screen}>
             {moreView === 'events' && (
@@ -3995,8 +4233,6 @@ function Portal() {
                 annualMeetingEnabled={!!annualMeeting}
                 annualMeetingStatus={annualMeeting ? `${annualMeeting.dateLabel} · ${annualMeeting.registrationStatus}` : 'Currently unavailable'}
                 updateCount={announcements.filter((item) => item.unread).length + surveys.filter((item) => item.status !== 'submitted' && item.status !== 'closed').length}
-                eventCount={previewEvents.filter((event) => event.status === 'upcoming').length}
-                resourceCount={libraryQuery.data?.resources.length ?? 0}
                 onOpenAnnualMeeting={() => setMoreView('annual-meeting')}
                 onOpenUpdates={() => {
                   setUpdateRequest((current) => ({ selection: null, n: current.n + 1 }));
@@ -4279,7 +4515,7 @@ function Portal() {
               pointerEvents={tab === 'groups' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'groups'}
               importantForAccessibility={tab === 'groups' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: tabLeft('groups'), width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('groups'), width: screenWidth, paddingHorizontal: pageHorizontalInset }]}
             >
               <DataGate
                 loading={meQuery.loading || groupsQuery.loading}
@@ -4398,7 +4634,7 @@ function Portal() {
               pointerEvents={tab === 'directory' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'directory'}
               importantForAccessibility={tab === 'directory' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: tabLeft('directory'), width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('directory'), width: screenWidth, paddingHorizontal: pageHorizontalInset }]}
             >
               <DataGate
                 loading={orgsQuery.loading || directoryPeopleQuery.loading || jobsQuery.loading}
@@ -4473,7 +4709,7 @@ function Portal() {
               pointerEvents={tab === 'ask' ? 'auto' : 'none'}
               accessibilityElementsHidden={tab !== 'ask'}
               importantForAccessibility={tab === 'ask' ? 'auto' : 'no-hide-descendants'}
-              style={[styles.tabPage, { left: tabLeft('ask'), width: screenWidth }]}
+              style={[styles.tabPage, { left: tabLeft('ask'), width: screenWidth, paddingHorizontal: pageHorizontalInset }]}
             >
               {/* History is a side panel over the conversation, not a screen
                   in place of it, so the answer you were reading stays visible
@@ -4520,7 +4756,16 @@ function Portal() {
             {/* Over the tab rather than in place of it, so the tab underneath
                 keeps its scroll position while the profile is open. */}
             {profileOpen && (
-              <ScreenEnter style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+              <ScreenEnter
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    left: pageHorizontalInset,
+                    right: pageHorizontalInset,
+                    backgroundColor: t.surfacePage,
+                  },
+                ]}
+              >
                 <DirectoryMemberProfileScreen
                   profile={
                     directoryProfileQuery.data?.id === profileTargetId
@@ -4620,7 +4865,9 @@ function Portal() {
             )}
             </View>
           </GestureDetector>
-          <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
+          {!searchOpen ? (
+            <PodcastNowPlayingBar onOpenEpisode={(slug) => openInResources('episode', slug)} />
+          ) : null}
           {blockMutationNotice ? (
             <View style={styles.blockMutationNotice}>
               <MutationNotice
@@ -4629,17 +4876,32 @@ function Portal() {
               />
             </View>
           ) : null}
-          <PortalTabBar
-            tab={tab}
-            onSelect={selectTab}
-            showBadges={SHOW_BADGES}
-            badges={{
-              groups: myGroups.reduce((total, group) => total + group.unread, 0),
-              more:
-                announcements.filter((item) => item.unread).length +
-                surveys.filter((item) => item.status !== 'submitted' && item.status !== 'closed').length,
-            }}
-          />
+          {!searchOpen ? (
+            <PortalTabBar
+              tab={tab}
+              onSelect={selectTab}
+              showBadges={false}
+            />
+          ) : null}
+          {searchOpen ? (
+            <ScreenEnter style={[StyleSheet.absoluteFill, { backgroundColor: t.surfacePage }]}>
+              <SearchScreen
+                query={searchQuery}
+                results={searchResults}
+                loading={searchLoading}
+                refreshing={searchRefreshing}
+                error={searchError}
+                errorKind={searchErrorKind}
+                showingSuggestions={searchQuery.trim().replace(/\s+/g, ' ').length < 2}
+                onChangeQuery={setSearchQuery}
+                onClear={() => setSearchQuery('')}
+                onClose={closeSearch}
+                onRetry={() => retrySearch(false)}
+                onRefresh={() => retrySearch(true)}
+                onSelect={openSearchResult}
+              />
+            </ScreenEnter>
+          ) : null}
           {profileSheetOpen && !!meQuery.data && (
             <MemberSheet
               member={meQuery.data}
@@ -4708,6 +4970,17 @@ function Portal() {
     </View>
     </MemberProvider>
   );
+}
+
+function memberSearchErrorKind(error: Error): SearchErrorKind {
+  if (error instanceof ApiError) {
+    if (error.isNetworkError) return 'network';
+    if (error.status === 429) return 'rate-limit';
+    return 'other';
+  }
+  return /response is invalid|result \d+ is invalid|context is invalid/i.test(error.message)
+    ? 'malformed'
+    : 'other';
 }
 
 function homeGroupDestination(href: string): {

@@ -73,11 +73,93 @@ function Rise({ delay, children }: { delay: number; children: React.ReactNode })
   );
 }
 
+function PeerPhrase({
+  label,
+  delay,
+  color,
+  fromX,
+}: {
+  label: string;
+  delay: number;
+  color: string;
+  fromX: number;
+}) {
+  const p = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (reducedMotion) {
+      p.setValue(1);
+      return;
+    }
+
+    const animation = Animated.spring(p, {
+      toValue: 1,
+      delay,
+      damping: 13,
+      stiffness: 150,
+      mass: 0.75,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [delay, p, reducedMotion]);
+
+  return (
+    <Animated.Text
+      accessible={false}
+      style={[
+        styles.taglinePhrase,
+        { color },
+        {
+          opacity: p,
+          transform: [
+            { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [fromX, 0] }) },
+            { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
+            { scale: p.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.88, 1.06, 1] }) },
+          ],
+        },
+      ]}
+    >
+      {label}
+    </Animated.Text>
+  );
+}
+
 export default function SplashScreen() {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const animated = !reducedMotion;
+  const logoReveal = useRef(new Animated.Value(0)).current;
+  const arcSweep = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reducedMotion) {
+      logoReveal.setValue(1);
+      arcSweep.setValue(1);
+      return;
+    }
+
+    const animation = Animated.parallel([
+      Animated.timing(logoReveal, {
+        toValue: 1,
+        duration: 1500,
+        delay: 350,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+        useNativeDriver: true,
+      }),
+      Animated.timing(arcSweep, {
+        toValue: 1,
+        duration: 1900,
+        delay: 250,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [arcSweep, logoReveal, reducedMotion]);
 
   // The design's four loops. Each keeps its own period so they drift apart
   // rather than pulsing in lockstep.
@@ -85,7 +167,7 @@ export default function SplashScreen() {
   const breathe = useLoop(5200, animated);
   const halo = useLoop(7000, animated);
   const drift = useLoop(64000, animated);
-  const bar = useLoop(2000, animated);
+  const bar = useLoop(4000, animated);
 
   // A triangle wave, for the loops that ease out and back rather than resetting.
   const pingPong = (v: Animated.Value) =>
@@ -127,18 +209,59 @@ export default function SplashScreen() {
       />
 
       <View style={[styles.content, { paddingTop: Math.max(insets.top, 24) + height * 0.09 }]}>
-        <Rise delay={550}>
+        <Rise delay={700}>
           <Text style={styles.headline}>
             Better <Text style={styles.headlineStrong}>Together</Text>
           </Text>
         </Rise>
-        <Rise delay={750}>
-          <Text style={styles.subhead}>
-            An Association of Peers,{'\n'}by Peers, and for Peers
-          </Text>
-        </Rise>
+        <View
+          accessible
+          accessibilityLabel="An Association of Peers, by Peers, and for Peers"
+          style={styles.tagline}
+        >
+          <Rise delay={1150}>
+            <Text style={styles.taglineLead}>An Association</Text>
+          </Rise>
+          <View style={styles.taglinePhrases} importantForAccessibility="no-hide-descendants">
+            <PeerPhrase label="OF PEERS" delay={1450} color="#4d8ba8" fromX={-28} />
+            <PeerPhrase label="BY PEERS" delay={1750} color="#4a9e4f" fromX={0} />
+            <PeerPhrase label="FOR PEERS" delay={2050} color="#b8544c" fromX={28} />
+          </View>
+        </View>
 
         <View style={[styles.markWell, { marginTop: height * 0.28 }]}>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.logoArc,
+              animated && {
+                opacity: arcSweep.interpolate({
+                  inputRange: [0, 0.12, 0.78, 1],
+                  outputRange: [0, 0.9, 0.72, 0],
+                }),
+                transform: [
+                  {
+                    translateX: arcSweep.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-52, 42],
+                    }),
+                  },
+                  {
+                    rotate: arcSweep.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['-16deg', '12deg'],
+                    }),
+                  },
+                  {
+                    scaleX: arcSweep.interpolate({
+                      inputRange: [0, 0.55, 1],
+                      outputRange: [0.28, 1, 1.12],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
           {/* The halo expands out of the mark and fades, once per loop. */}
           <Animated.View
             style={[
@@ -155,6 +278,34 @@ export default function SplashScreen() {
             ]}
             pointerEvents="none"
           />
+          <Animated.View
+            style={[
+              styles.logoReveal,
+              animated && {
+                opacity: logoReveal,
+                transform: [
+                  {
+                    translateY: logoReveal.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24, 0],
+                    }),
+                  },
+                  {
+                    scale: logoReveal.interpolate({
+                      inputRange: [0, 0.72, 1],
+                      outputRange: [0.68, 1.045, 1],
+                    }),
+                  },
+                  {
+                    rotate: logoReveal.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['-7deg', '0deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
           <Animated.View
             style={[
               styles.markFill,
@@ -177,6 +328,7 @@ export default function SplashScreen() {
             ]}
           >
             <Image source={mark} style={styles.mark} resizeMode="contain" />
+          </Animated.View>
           </Animated.View>
         </View>
       </View>
@@ -251,16 +403,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headlineStrong: { fontFamily: 'Lato_700Bold' },
-  subhead: {
-    marginTop: 14,
+  tagline: { marginTop: 14, alignItems: 'center', gap: 9 },
+  taglineLead: {
     fontFamily: 'Lato_400Regular',
     fontSize: 13.5,
-    lineHeight: 21,
+    lineHeight: 18,
     color: 'rgba(255,255,255,0.62)',
     letterSpacing: 0.27,
     textAlign: 'center',
   },
+  taglinePhrases: { flexDirection: 'row', justifyContent: 'center', gap: 14 },
+  taglinePhrase: {
+    fontFamily: 'Lato_700Bold',
+    fontSize: 11.5,
+    lineHeight: 15,
+    letterSpacing: 0.9,
+  },
   markWell: { width: 132, height: 132, alignItems: 'center', justifyContent: 'center' },
+  logoArc: {
+    position: 'absolute',
+    top: -30,
+    left: -24,
+    width: 180,
+    height: 88,
+    borderRadius: 90,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderTopColor: 'rgba(170,220,238,0.9)',
+  },
   halo: {
     position: 'absolute',
     top: '-26%',
@@ -271,6 +441,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(150,200,230,0.5)',
   },
+  logoReveal: { width: '100%', height: '100%' },
   markFill: { width: '100%', height: '100%' },
   // 724×630 art, kept on ratio so the knot doesn't squash.
   mark: { width: '100%', height: '100%' },

@@ -25,6 +25,10 @@ export function ResourceTextRenderer({
     void fetch(uri, { headers, signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`The preview returned status ${response.status}.`);
+        const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+        if (contentType && !contentType.startsWith('text/') && contentType !== 'application/json') {
+          throw new Error('The server did not return a readable text preview.');
+        }
         const declaredSize = Number(response.headers.get('content-length'));
         if (Number.isFinite(declaredSize) && declaredSize > MAX_TEXT_BYTES) {
           throw new Error('This text file is too large to preview safely.');
@@ -33,6 +37,7 @@ export function ResourceTextRenderer({
         if (text.length > MAX_TEXT_BYTES) {
           throw new Error('This text file is too large to preview safely.');
         }
+        if (!text.trim()) throw new Error('This document does not contain previewable text.');
         setContent(text);
       })
       .catch((cause) => {
@@ -53,7 +58,7 @@ export function ResourceTextRenderer({
   }
 
   return (
-    <ScrollView style={{ backgroundColor: t.surfacePaper }} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.fill, { backgroundColor: t.surfacePaper }]} contentContainerStyle={styles.content}>
       <Text selectable style={[styles.text, { color: t.inkBody }]}>
         {content}
       </Text>
@@ -62,6 +67,7 @@ export function ResourceTextRenderer({
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   center: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   content: { padding: 20 },
   text: { fontFamily: mono(400), fontSize: 14.5, lineHeight: 22.5 },

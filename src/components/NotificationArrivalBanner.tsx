@@ -77,8 +77,10 @@ export default function NotificationArrivalBanner({
 }
 
 const styles = StyleSheet.create({
-  position: { position: 'absolute', left: 12, right: 12, zIndex: 120 },
+  position: { position: 'absolute', left: 12, right: 12, zIndex: 120, alignItems: 'center' },
   banner: {
+    width: '100%',
+    maxWidth: 560,
     minHeight: 78,
     flexDirection: 'row',
     alignItems: 'flex-start',

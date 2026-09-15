@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeNotification, normalizeNotifications } from '../src/api/notification-normalization';
+import {
+  normalizeNotification,
+  normalizeNotifications,
+  notificationTimeLabel,
+} from '../src/api/notification-normalization';
 import type { MemberNotification } from '../src/api/types';
 import { notificationDestination } from '../src/lib/notification-navigation';
 import {
@@ -47,8 +51,16 @@ test('normalizes canonical API responses and preserves membership boundary', () 
 
   assert.equal(result.memberCreatedAt, '2026-01-01T00:00:00.000Z');
   assert.equal(result.notifications[0]?.createdAt, '2026-08-30T12:00:00.000Z');
+  assert.notEqual(result.notifications[0]?.time, '2026-08-30T12:00:00.000Z');
   assert.equal(result.notifications[0]?.read, false);
   assert.equal(result.notifications[0]?.href, '/members/events?event=annual-forum');
+});
+
+test('notification timestamps become compact labels without rewriting server-authored copy', () => {
+  const now = Date.parse('2026-09-15T12:00:00.000Z');
+  assert.equal(notificationTimeLabel('2026-09-15T11:40:00.000Z', now), '20m ago');
+  assert.equal(notificationTimeLabel('2026-09-15T09:00:00.000Z', now), '3h ago');
+  assert.equal(notificationTimeLabel('2h ago', now), '2h ago');
 });
 
 test('drops malformed realtime rows without logging private notification copy', () => {

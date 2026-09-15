@@ -35,13 +35,22 @@ export function ResourcePdfRenderer({
   const { t } = useTheme();
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const Pdf = useMemo(getNativePdf, []);
 
   useEffect(() => {
     if (!Pdf) {
       onError('PDF preview requires a development build. Save the file to open it with another app.');
+      return;
     }
-  }, [Pdf, onError]);
+
+    setLoaded(false);
+    const timeout = setTimeout(() => {
+      onError('The PDF preview took too long to render.');
+    }, 15_000);
+    return () => clearTimeout(timeout);
+  }, [Pdf, onError, uri]);
 
   const openLink = (value: string) => {
     try {
@@ -63,31 +72,51 @@ export function ResourcePdfRenderer({
   }
 
   return (
-    <View style={[styles.fill, { backgroundColor: t.surfacePaper }]}>
-      <Pdf
-        key={uri}
-        source={{ uri, headers, cache: false }}
-        style={[styles.fill, { backgroundColor: t.surfacePaper }]}
-        progressContainerStyle={{ backgroundColor: t.surfacePaper }}
-        trustAllCerts={false}
-        enableDoubleTapZoom
-        enableAnnotationRendering
-        fitPolicy={0}
-        spacing={12}
-        renderActivityIndicator={() => <ActivityIndicator color={t.brandGreen} />}
-        onLoadComplete={(pages, path) => {
-          setPageCount(pages);
-          if (path) onLocalFile(path);
-        }}
-        onPageChanged={(nextPage, pages) => {
-          setPage(nextPage);
-          setPageCount(pages);
-        }}
-        onPressLink={openLink}
-        onError={(cause) =>
-          onError(cause instanceof Error ? cause.message : 'The PDF could not be loaded.')
-        }
-      />
+    <View
+      style={[styles.fill, { backgroundColor: t.surfacePaper }]}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setViewport((current) => current.width === width && current.height === height
+          ? current
+          : { width, height });
+      }}
+    >
+      {viewport.width > 0 && viewport.height > 0 ? (
+        <Pdf
+          key={uri}
+          source={{ uri, headers, cache: false }}
+          style={{
+            width: viewport.width,
+            height: viewport.height,
+            backgroundColor: t.surfacePaper,
+          }}
+          progressContainerStyle={{ backgroundColor: t.surfacePaper }}
+          trustAllCerts={false}
+          enableDoubleTapZoom
+          enableAnnotationRendering
+          fitPolicy={0}
+          spacing={12}
+          renderActivityIndicator={() => <ActivityIndicator color={t.brandGreen} />}
+          onLoadComplete={(pages, path) => {
+            setLoaded(true);
+            setPageCount(pages);
+            if (path) onLocalFile(path);
+          }}
+          onPageChanged={(nextPage, pages) => {
+            setPage(nextPage);
+            setPageCount(pages);
+          }}
+          onPressLink={openLink}
+          onError={(cause) =>
+            onError(cause instanceof Error ? cause.message : 'The PDF could not be loaded.')
+          }
+        />
+      ) : null}
+      {!loaded ? (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.center]}>
+          <ActivityIndicator color={t.brandGreen} />
+        </View>
+      ) : null}
       {pageCount > 0 ? (
         <View style={[styles.pageBadge, { backgroundColor: t.surfaceAnchor }]}>
           <Text style={[styles.pageText, { color: t.inkInverse }]}>

@@ -116,7 +116,7 @@ export interface GroupsScreenProps {
   pollAnswerDrafts: Record<string, PollAnswer[] | undefined>;
   onUpdatePollDraft: (threadId: string, answers: PollAnswer[]) => void;
   onSubmitPollAnswers: (threadId: string, answers: PollAnswer[]) => Promise<boolean>;
-  /** Whether this member has upvoted a post; adds 1 to its stored count. */
+  /** Optimistic viewer state; absent falls back to the canonical feed state. */
   upvoted: Record<string, boolean | undefined>;
   onToggleUpvote: (threadId: string) => void;
   /** Whether this member has reposted a post. */
@@ -278,7 +278,7 @@ export default function GroupsScreen({
         onSavePoll={(input) => onSavePoll(thread.id, input)}
         onClosePoll={() => onClosePoll(thread.id)}
         onDeletePoll={() => onDeletePoll(thread.id)}
-        upvoted={!!upvoted[thread.id]}
+        upvoted={upvoted[thread.id] ?? thread.hasUpvoted ?? false}
         onToggleUpvote={() => onToggleUpvote(thread.id)}
         reposted={reposted[thread.id] ?? thread.hasReposted ?? false}
         onToggleRepost={() => onToggleRepost(thread.id)}

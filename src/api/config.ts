@@ -1,3 +1,5 @@
+import type { MemberSearchQueryInput, MemberSearchSuggestionsInput } from './types';
+
 /**
  * Where the app gets its data.
  *
@@ -107,6 +109,67 @@ export const REQUEST_TIMEOUT_MS = 15000;
  */
 export const AI_REQUEST_TIMEOUT_MS = 75000;
 
+const MEMBER_SEARCH_DEFAULT_LIMIT = 20;
+const MEMBER_SEARCH_MAX_LIMIT = 40;
+const MEMBER_SEARCH_DEFAULT_CONTEXT_LIMIT = 8;
+
+export interface NormalizedMemberSearchQuery {
+  query: string;
+  limit: number;
+  contextGroupSlug: string | null;
+  contextLimit: number;
+}
+
+function boundedSearchLimit(value: number | undefined, fallback: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.trunc(value), 0), max);
+}
+
+/** Keeps fixture and remote search requests aligned with the server's limits. */
+export function normalizeMemberSearchQuery(
+  input: MemberSearchQueryInput
+): NormalizedMemberSearchQuery {
+  const limit = Math.max(
+    1,
+    boundedSearchLimit(input.limit, MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT)
+  );
+  const contextGroupSlug = input.contextGroupSlug?.trim() || null;
+  return {
+    query: input.query.trim().replace(/\s+/g, ' '),
+    limit,
+    contextGroupSlug,
+    contextLimit: boundedSearchLimit(
+      input.contextLimit,
+      Math.min(MEMBER_SEARCH_DEFAULT_CONTEXT_LIMIT, limit),
+      limit
+    ),
+  };
+}
+
+export function memberSearchRoute(input: MemberSearchQueryInput): string {
+  const normalized = normalizeMemberSearchQuery(input);
+  const params = new URLSearchParams({
+    q: normalized.query,
+    limit: String(normalized.limit),
+  });
+  if (normalized.contextGroupSlug) {
+    params.set('contextGroupSlug', normalized.contextGroupSlug);
+    params.set('contextLimit', String(normalized.contextLimit));
+  }
+  return `/api/members/search?${params.toString()}`;
+}
+
+export function memberSearchSuggestionsRoute(
+  input: MemberSearchSuggestionsInput = {}
+): string {
+  const limit = Math.max(
+    1,
+    boundedSearchLimit(input.limit, MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT)
+  );
+  const params = new URLSearchParams({ suggestions: '1', limit: String(limit) });
+  return `/api/members/search?${params.toString()}`;
+}
+
 /**
  * Paths are collected here so a backend whose routes differ can be adapted in
  * one place rather than across the call sites.
@@ -164,6 +227,8 @@ export const ROUTES = {
   memberAvatarLinkedIn: '/api/members/avatar/linkedin',
   memberChangePassword: '/api/members/change-password',
   memberSavedContent: '/api/members/saved-content',
+  memberSearch: memberSearchRoute,
+  memberSearchSuggestions: memberSearchSuggestionsRoute,
   memberDirectory: '/api/members/directory',
   memberBlocks: '/api/members/blocks',
   memberBlock: (targetMemberId: string) =>

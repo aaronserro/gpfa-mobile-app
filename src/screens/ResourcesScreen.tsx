@@ -20,17 +20,20 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import {
   ArrowRight,
   ArrowSquareOut,
   Article,
+  CalendarDots,
+  Clock,
   DownloadSimple,
   FileText,
   MagnifyingGlass,
   Pause,
   Play,
-  X,
+  UsersThree,
 } from '../ds/icons';
 import {
   Avatar,
@@ -40,6 +43,8 @@ import {
   StickyTitle,
   useStickyScroll,
 } from '../ds/primitives';
+import { FilterChip, FilterChipRow } from '../ds/controls';
+import { CollectionEmptyState } from '../ds/feedback';
 import { useSheetTransition } from '../hooks/useSheetTransition';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, resourceTypeStyle, sans, trackDisplay } from '../ds/tokens';
@@ -83,6 +88,50 @@ const TYPE_GLYPH: Record<ResourceType, string> = {
   Explainer: '?',
   'Event Notes': '✎',
 };
+
+function PodcastMeta({ episode, compact = false }: { episode: PodcastEpisode; compact?: boolean }) {
+  const { t } = useTheme();
+  const entries = [
+    episode.date ? { key: 'date', label: episode.date, Icon: CalendarDots } : null,
+    episode.duration ? { key: 'duration', label: episode.duration, Icon: Clock } : null,
+    episode.people.length
+      ? {
+          key: 'guests',
+          label: `${episode.people.length} ${episode.people.length === 1 ? 'guest' : 'guests'}`,
+          Icon: UsersThree,
+        }
+      : null,
+  ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  return (
+    <View style={[styles.podcastMeta, compact && styles.podcastMetaCompact]}>
+      {entries.map(({ key, label, Icon }) => (
+        <View
+          key={key}
+          style={[
+            styles.podcastMetaChip,
+            compact && styles.podcastMetaChipCompact,
+            {
+              backgroundColor: key === 'guests' ? t.brandGreenSoft : t.surfaceSubtle,
+              borderColor: key === 'guests' ? alpha(t.brandGreen, 0.28) : t.rule,
+            },
+          ]}
+        >
+          <Icon size={compact ? 12 : 14} color={t.brandGreen} />
+          <Text
+            style={[
+              styles.podcastMetaText,
+              compact && styles.podcastMetaTextCompact,
+              { color: key === 'guests' ? t.brandGreen : t.inkMuted },
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
   episode,
@@ -170,7 +219,7 @@ const PodcastEpisodeRow = memo(function PodcastEpisodeRow({
         <Text numberOfLines={1} style={[styles.epTitle, { color: t.inkStrong }]}>
           {episode.title}
         </Text>
-        <MastheadMeta size={11}>{episodeMeta(episode)}</MastheadMeta>
+        <PodcastMeta episode={episode} compact />
         <View style={styles.epFoot}>
           <Waveform
             peaks={episode.peaks ?? fallbackPeaks(episode.slug)}
@@ -545,6 +594,8 @@ export default function ResourcesScreen({
             value={query}
             onChangeText={setQuery}
             placeholder="Search resources"
+            accessibilityLabel="Search the resource library"
+            accessibilityHint="Filters resources by title, summary, author, or tag"
             placeholderTextColor={t.inkFaint}
             style={[styles.searchInput, { color: t.inkStrong }]}
             autoCapitalize="none"
@@ -553,42 +604,22 @@ export default function ResourcesScreen({
             clearButtonMode="while-editing"
           />
         </View>
-        <ScrollView
-          horizontal
-          contentContainerStyle={styles.typeFilters}
-          showsHorizontalScrollIndicator={false}
-          accessibilityRole="radiogroup"
-        >
+        <FilterChipRow>
           {[ALL_RESOURCE_TYPES, ...resourceTypes].map((type) => {
             const selected = resourceType === type;
             const label = type === ALL_RESOURCE_TYPES ? 'All types' : type;
             const count = type === ALL_RESOURCE_TYPES ? resources.length : (typeCounts.get(type) ?? 0);
             return (
-              <Pressable
+              <FilterChip
                 key={type}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: selected }}
+                label={label}
+                count={count}
+                selected={selected}
                 onPress={() => setResourceType(type)}
-                style={[
-                  styles.typeFilter,
-                  {
-                    borderColor: selected ? t.surfaceAnchor : t.rule,
-                    backgroundColor: selected ? t.surfaceAnchor : t.surfacePaper,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.typeFilterText,
-                    { color: selected ? t.inkInverse : t.inkMuted },
-                  ]}
-                >
-                  {label} · {count}
-                </Text>
-              </Pressable>
+              />
             );
           })}
-        </ScrollView>
+        </FilterChipRow>
         <View style={styles.controlRow}>
           <MastheadMeta size={11.5}>
             {q || resourceType !== ALL_RESOURCE_TYPES
@@ -606,6 +637,9 @@ export default function ResourcesScreen({
             <Pressable
               key={r.id}
               onPress={() => setSheet({ kind: 'resource', id: r.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${r.type}: ${r.title}`}
+              accessibilityHint="Shows resource details and available file actions"
               style={({ pressed }) => [
                 styles.docRow,
                 i > 0 && { borderTopWidth: 1, borderTopColor: t.rule },
@@ -629,29 +663,36 @@ export default function ResourcesScreen({
                     {r.pages ? ` · ${r.pages}P` : ''}
                   </MastheadMeta>
                 </View>
+                {!!r.tags.length && (
+                  <View style={styles.docTags}>
+                    {r.tags.slice(0, 3).map((tag) => (
+                      <View key={tag} style={[styles.docTag, { backgroundColor: t.surfaceSubtle }]}>
+                        <Text numberOfLines={1} style={[styles.docTagText, { color: t.inkMuted }]}>
+                          {tag}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             </Pressable>
           );
         })}
 
         {filtered.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: t.inkStrong }]}>
-              No resources match these filters
-            </Text>
-            <Text style={[styles.emptyBody, { color: t.inkMuted }]}>
-              Clear the search and type filter to show all {resources.length} resources.
-            </Text>
-            <Pressable
-              onPress={() => {
-                setQuery('');
-                setResourceType(ALL_RESOURCE_TYPES);
-              }}
-              style={[styles.clearFilters, { borderColor: t.rule }]}
-            >
-              <Text style={[styles.secondaryBtnText, { color: t.brandGreen }]}>Clear filters</Text>
-            </Pressable>
-          </View>
+          <CollectionEmptyState
+            title={resources.length === 0 ? 'No library resources' : 'No resources match these filters'}
+            body={resources.length === 0
+              ? 'Working papers, briefings, templates, and event notes will appear here.'
+              : `Clear the search and type filter to show all ${resources.length} resources.`}
+            Glyph={FileText}
+            actionLabel={resources.length === 0 ? undefined : 'Clear filters'}
+            onAction={resources.length === 0 ? undefined : () => {
+              setQuery('');
+              setResourceType(ALL_RESOURCE_TYPES);
+            }}
+            style={styles.empty}
+          />
         )}
       </View>
     </Animated.ScrollView>
@@ -682,8 +723,8 @@ export default function ResourcesScreen({
                   <View style={[styles.newChip, { borderColor: alpha(t.brandRed, 0.5) }]}>
                     <Text style={[styles.newChipText, { color: t.brandRed }]}>New</Text>
                   </View>
-                  <MastheadMeta size={12}>{episodeMeta(featured)}</MastheadMeta>
                 </View>
+                <PodcastMeta episode={featured} />
                 <Pressable onPress={() => setSheet({ kind: 'episode', slug: featured.slug })}>
                   <Text style={[styles.featuredTitle, { color: t.inkStrong }]}>{featured.title}</Text>
                 </Pressable>
@@ -1241,7 +1282,44 @@ function Sheet_({
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const [sheetHeight, setSheetHeight] = useState(0);
+  const dragOffset = useRef(new Animated.Value(0)).current;
   const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
+  const dismissDistance = Math.min(Math.max(sheetHeight * 0.16, 64), 128);
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!closing)
+        .activeOffsetY(8)
+        .failOffsetX([-28, 28])
+        .runOnJS(true)
+        .onUpdate((event) => {
+          dragOffset.setValue(Math.max(0, event.translationY));
+        })
+        .onEnd((event) => {
+          if (event.translationY >= dismissDistance || event.velocityY >= 900) {
+            requestClose();
+            return;
+          }
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        })
+        .onFinalize((_event, success) => {
+          if (success || closing) return;
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        }),
+    [closing, dismissDistance, dragOffset, requestClose]
+  );
   return (
     <View style={styles.sheetWrap}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
@@ -1262,26 +1340,22 @@ function Sheet_({
             backgroundColor: t.surfacePaper,
             opacity: sheetHeight ? 1 : 0,
             transform: [{
-              translateY: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [sheetHeight * 1.02, 0],
-              }),
+              translateY: Animated.add(
+                progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [sheetHeight * 1.02, 0],
+                }),
+                dragOffset
+              ),
             }],
           },
         ]}
       >
-        <View style={[styles.sheetHead, { borderBottomColor: t.rule }]}>
-          <Pressable
-            onPress={() => requestClose()}
-            disabled={closing}
-            accessibilityRole="button"
-            accessibilityLabel="Close resource details"
-            accessibilityState={{ disabled: closing }}
-            hitSlop={10}
-          >
-            <X size={16} color={t.inkMuted} />
-          </Pressable>
-        </View>
+        <GestureDetector gesture={dismissGesture}>
+          <View style={[styles.sheetHead, { borderBottomColor: t.rule }]}>
+            <View style={[styles.sheetGrabber, { backgroundColor: t.ruleStrong }]} />
+          </View>
+        </GestureDetector>
         <ScrollView
           ref={scrollRef}
           onLayout={(event) => onViewportHeight?.(event.nativeEvent.layout.height)}
@@ -1306,7 +1380,6 @@ function episodeMeta(e: PodcastEpisode): string {
   return [
     e.date,
     e.duration,
-    e.hasTranscript ? 'Transcript' : null,
     e.people.length ? `${e.people.length} ${e.people.length === 1 ? 'GUEST' : 'GUESTS'}` : null,
   ]
     .filter(Boolean)
@@ -1385,15 +1458,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   controls: { paddingHorizontal: 20, paddingTop: 12, gap: 10 },
-  typeFilters: { gap: 7, paddingRight: 4 },
-  typeFilter: {
-    minHeight: 34,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 17,
-    paddingHorizontal: 12,
-  },
-  typeFilterText: { fontFamily: sans(500), fontSize: 12.5 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1449,7 +1513,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     opacity: 0.85,
   },
-  docBody: { flex: 1 },
+  docBody: { flex: 1, minWidth: 0 },
   docTitle: {
     fontFamily: sans(600),
     fontSize: 15,
@@ -1463,6 +1527,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
   },
+  docTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  docTag: { maxWidth: '100%', borderRadius: 12, paddingVertical: 3, paddingHorizontal: 8 },
+  docTagText: { fontFamily: sans(400), fontSize: 11.5 },
   typeChip: {
     alignSelf: 'flex-start',
     borderWidth: 1,
@@ -1477,22 +1544,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.76,
   },
 
-  empty: { paddingVertical: 36, paddingHorizontal: 24, alignItems: 'center' },
-  emptyTitle: { fontFamily: sans(500), fontSize: 15 },
-  emptyBody: {
-    marginTop: 6,
-    fontFamily: sans(400),
-    fontSize: 13.5,
-    textAlign: 'center',
+  empty: { margin: 20 },
+
+  podcastMeta: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
   },
-  clearFilters: {
-    minHeight: 44,
-    marginTop: 14,
-    justifyContent: 'center',
+  podcastMetaCompact: { marginTop: 5, gap: 5 },
+  podcastMetaChip: {
+    minHeight: 28,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
+  podcastMetaChipCompact: { minHeight: 24, paddingHorizontal: 7 },
+  podcastMetaText: { fontFamily: mono(500), fontSize: 11.5, letterSpacing: 0.2 },
+  podcastMetaTextCompact: { fontSize: 10.5 },
 
   featuredWrap: { paddingHorizontal: 20, paddingTop: 14 },
   featured: { borderWidth: 1, borderRadius: 8, padding: 16 },
@@ -1592,13 +1664,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sheetHead: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 10,
     borderBottomWidth: 1,
+  },
+  sheetGrabber: {
+    position: 'absolute',
+    top: 10,
+    left: '50%',
+    width: 36,
+    height: 4,
+    marginLeft: -18,
+    borderRadius: 2,
   },
   sheetBodyWrap: { paddingHorizontal: 18, paddingTop: 16 },
   sheetTitle: {

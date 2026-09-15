@@ -62,9 +62,9 @@ export default function ForumModerationPanel({
                 </View>
 
                 {!!report.targetTitle && (
-                  <Text numberOfLines={2} style={[styles.title, { color: t.inkStrong }]}>{report.targetTitle}</Text>
+                  <Text style={[styles.title, { color: t.inkStrong }]}>{report.targetTitle}</Text>
                 )}
-                <Text numberOfLines={4} style={[styles.snapshot, { color: t.inkBody }]}>
+                <Text style={[styles.snapshot, { color: t.inkBody }]}>
                   {report.targetBody || 'No content remained when this report was captured.'}
                 </Text>
                 <Text style={[styles.meta, { color: t.inkMuted }]}>
@@ -199,22 +199,22 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
   subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
-  count: { minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  count: { minWidth: 28, minHeight: 28, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   countText: { fontFamily: sans(600), fontSize: 12 },
   cards: { gap: 10 },
   card: { overflow: 'hidden', borderWidth: 1, borderRadius: 12, paddingTop: 13, paddingHorizontal: 13 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   category: { minHeight: 25, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 13, paddingHorizontal: 8 },
   categoryText: { fontFamily: sans(600), fontSize: 11.5 },
   date: { fontFamily: sans(400), fontSize: 11 },
-  title: { marginTop: 10, fontFamily: sans(600), fontSize: 16, lineHeight: 22 },
-  snapshot: { marginTop: 8, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
+  title: { minWidth: 0, marginTop: 10, fontFamily: sans(600), fontSize: 16, lineHeight: 22 },
+  snapshot: { minWidth: 0, marginTop: 8, fontFamily: sans(400), fontSize: 14.5, lineHeight: 21 },
   meta: { marginTop: 5, fontFamily: sans(400), fontSize: 12.5 },
   details: { marginTop: 10, borderWidth: 1, borderRadius: 8, padding: 10 },
   detailsLabel: { fontFamily: sans(600), fontSize: 11.5 },
   detailsText: { marginTop: 4, fontFamily: sans(400), fontSize: 13, lineHeight: 19.5 },
-  actions: { marginTop: 13, marginHorizontal: -13, flexDirection: 'row', gap: 7, borderTopWidth: 1, padding: 10 },
-  action: { minHeight: 38, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8 },
+  actions: { marginTop: 13, marginHorizontal: -13, flexDirection: 'row', flexWrap: 'wrap', gap: 7, borderTopWidth: 1, padding: 10 },
+  action: { minHeight: 44, minWidth: 96, flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8 },
   actionText: { fontFamily: sans(600), fontSize: 12.5 },
   state: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, padding: 15 },
   stateTitle: { fontFamily: sans(600), fontSize: 15 },

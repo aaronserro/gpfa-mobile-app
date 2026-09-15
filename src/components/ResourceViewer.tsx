@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { LibraryResource } from '../api/types';
 import { API_BASE_URL, GPFA_WEB_ORIGIN } from '../api/config';
-import { resourceDownloadHeaders, resourcePreviewKind } from '../api/resource-download-policy';
+import {
+  resourceDownloadFilename,
+  resourceDownloadHeaders,
+  resourceExtractedTextPreviewUrl,
+  resourceIsTrustedContentAsset,
+  resourcePreviewKind,
+} from '../api/resource-download-policy';
 import { DownloadSimple } from '../ds/icons';
 import { PageActions, PageHead } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
@@ -33,6 +40,10 @@ export default function ResourceViewer({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
   const [pdfPath, setPdfPath] = useState<string | null>(null);
+  const [localPreview, setLocalPreview] = useState<{
+    resourceId: string;
+    uri: string;
+  } | null>(null);
   const file = resource.artifact.kind === 'file' ? resource.artifact : null;
   const trustedOrigins = useMemo(
     () => [API_BASE_URL, GPFA_WEB_ORIGIN].filter(Boolean),
@@ -55,18 +66,79 @@ export default function ResourceViewer({
   const previewKind = file ? resourcePreviewKind(file) : 'external';
   const pdfUnavailableInExpoGo =
     previewKind === 'pdf' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  const extractedTextPreviewUri = file &&
+    (previewKind === 'document' || pdfUnavailableInExpoGo) &&
+    resourceIsTrustedContentAsset(file.href, trustedOrigins)
+    ? resourceExtractedTextPreviewUrl(file.href)
+    : null;
+  const nativePreviewNeedsLocalFile =
+    (previewKind === 'pdf' && !pdfUnavailableInExpoGo) ||
+    (previewKind === 'image' && !!source.headers && Object.keys(source.headers).length > 0);
+  const localPreviewUri = localPreview?.resourceId === resource.id ? localPreview.uri : null;
+
+  const rendererError = useCallback((message: string) => {
+    setLoading(false);
+    setError(message);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     setSaveError(null);
     setPdfPath(null);
+    setLocalPreview(null);
   }, [resource.id]);
 
-  const rendererError = useCallback((message: string) => {
-    setLoading(false);
-    setError(message);
-  }, []);
+  useEffect(() => {
+    if (!file || !nativePreviewNeedsLocalFile) return;
+
+    let active = true;
+    const directory = new Directory(
+      Paths.cache,
+      `gpfa-preview-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+
+    const removeDirectory = () => {
+      try {
+        if (directory.exists) directory.delete();
+      } catch {
+        // Preview cache cleanup is best-effort; the OS can reclaim cache files.
+      }
+    };
+
+    directory.create({ intermediates: true });
+    const destination = new File(
+      directory,
+      resourceDownloadFilename(file.fileName, resource.id)
+    );
+
+    // Native PDF rendering can silently stall on remote URLs, even for public
+    // files. Stage every PDF locally so preview and Print share one verified file.
+    void File.downloadFileAsync(file.href, destination, {
+      headers: source.headers,
+      idempotent: true,
+    })
+      .then((downloaded) => {
+        if (!active) {
+          removeDirectory();
+          return;
+        }
+        setLocalPreview({ resourceId: resource.id, uri: downloaded.uri });
+        if (previewKind === 'pdf') setPdfPath(downloaded.uri);
+        setLoading(false);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        rendererError(
+          cause instanceof Error ? cause.message : 'The file preview could not be prepared.'
+        );
+      });
+
+    return () => {
+      active = false;
+      removeDirectory();
+    };
+  }, [file, nativePreviewNeedsLocalFile, previewKind, rendererError, resource.id, source.headers]);
 
   const save = async () => {
     setSaving(true);
@@ -94,7 +166,12 @@ export default function ResourceViewer({
     }
   };
 
-  const canRender = !!file && previewKind !== 'external' && !pdfUnavailableInExpoGo;
+  const previewSupported = !!file && previewKind !== 'external' &&
+    (previewKind !== 'document' || !!extractedTextPreviewUri) &&
+    (!pdfUnavailableInExpoGo || !!extractedTextPreviewUri);
+  const previewReady = previewSupported && (!nativePreviewNeedsLocalFile || !!localPreviewUri);
+  const rendererUri = localPreviewUri ?? source.uri;
+  const rendererHeaders = localPreviewUri ? undefined : source.headers;
 
   return (
     <View style={[styles.fill, { backgroundColor: t.surfacePage }]}>
@@ -103,26 +180,30 @@ export default function ResourceViewer({
           for a sticky bar to follow. */}
       <PageHead title={resource.title} onBack={onClose} backLabel="Back to resources" actions={<PageActions />} />
       <View style={[styles.viewer, { backgroundColor: t.surfacePaper }]}>
-        {canRender && !error && previewKind === 'pdf' ? (
+        {previewReady && !error && previewKind === 'pdf' && !pdfUnavailableInExpoGo ? (
           <ResourcePdfRenderer
-            uri={source.uri}
-            headers={source.headers}
+            uri={rendererUri}
+            headers={rendererHeaders}
             onError={rendererError}
             onLocalFile={setPdfPath}
           />
         ) : null}
-        {canRender && !error && previewKind === 'image' ? (
+        {previewReady && !error && previewKind === 'image' ? (
           <ResourceImageRenderer
-            uri={source.uri}
-            headers={source.headers}
+            uri={rendererUri}
+            headers={rendererHeaders}
             title={resource.title}
             onError={rendererError}
           />
         ) : null}
-        {canRender && !error && previewKind === 'text' ? (
+        {previewReady && !error && previewKind === 'text' ? (
           <ResourceTextRenderer uri={source.uri} headers={source.headers} onError={rendererError} />
         ) : null}
-        {canRender && !error && previewKind === 'html' ? (
+        {previewReady && !error && extractedTextPreviewUri &&
+          (previewKind === 'document' || pdfUnavailableInExpoGo) ? (
+          <ResourceTextRenderer uri={extractedTextPreviewUri} headers={source.headers} onError={rendererError} />
+        ) : null}
+        {previewReady && !error && previewKind === 'html' ? (
           <ResourceHtmlRenderer
             uri={source.uri}
             headers={source.headers}
@@ -139,12 +220,18 @@ export default function ResourceViewer({
           </View>
         )}
 
-        {(!canRender || error) && (
+        {previewSupported && !previewReady && !error ? (
+          <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: t.surfacePaper }]}>
+            <ActivityIndicator color={t.brandGreen} />
+          </View>
+        ) : null}
+
+        {(!previewSupported || error) && (
           <View style={styles.center}>
             <Text style={[styles.errorTitle, { color: t.inkStrong }]}>Preview unavailable</Text>
             <Text style={[styles.errorBody, { color: t.inkMuted }]}>
-              {error ?? (pdfUnavailableInExpoGo
-                ? 'PDF preview requires a development build. Save the file to open it with another app.'
+              {error ?? (previewKind === 'document' || pdfUnavailableInExpoGo
+                  ? 'A secure text preview is not available for this document. Save it to open it with another app.'
                 : 'This file type cannot be previewed in the app. Save it to open it with another app.')}
             </Text>
           </View>
@@ -230,6 +317,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     padding: 12,
   },
@@ -237,9 +325,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
     flexDirection: 'row',
+    flexGrow: 1,
     gap: 8,
     justifyContent: 'center',
     minHeight: 44,
+    minWidth: 170,
     paddingHorizontal: 18,
   },
   disabled: { opacity: 0.45 },
@@ -252,9 +342,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
+    flexGrow: 1,
     gap: 8,
     justifyContent: 'center',
     minHeight: 44,
+    minWidth: 96,
     paddingHorizontal: 18,
   },
   secondaryButtonText: { fontFamily: sans(600), fontSize: 14.5 },

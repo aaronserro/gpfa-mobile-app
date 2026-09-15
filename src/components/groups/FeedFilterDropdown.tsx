@@ -185,7 +185,7 @@ export default function FeedFilterDropdown<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, minWidth: 0 },
+  root: { flexBasis: 108, flexGrow: 1, minWidth: 108 },
   trigger: {
     minHeight: 44,
     flexDirection: 'row',

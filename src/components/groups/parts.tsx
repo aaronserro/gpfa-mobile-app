@@ -61,7 +61,7 @@ export function TagChip({
 }) {
   const { t } = useTheme();
   return (
-    <View style={[styles.tagChip, { height, backgroundColor: t.surfaceSoft }]}>
+    <View style={[styles.tagChip, { minHeight: height, backgroundColor: t.surfaceSoft }]}>
       <Hash size={size + 0.5} color={t.inkMuted} />
       <Text style={[styles.tagChipText, { fontSize: size, color: t.inkMuted }]}>{label}</Text>
     </View>
@@ -143,6 +143,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
     borderRadius: 32,
+    paddingVertical: 2,
     paddingHorizontal: 8,
   },
   tagChipText: { fontFamily: sans(400) },

@@ -57,7 +57,7 @@ export function normalizeNotification(
   }
   if (!title) return null;
 
-  const time = firstString(record.time, createdAt, record.date);
+  const time = notificationTimeLabel(firstString(record.time, createdAt, record.date));
   const href = firstString(record.navigation_href, record.href, record.url, record.link);
   const targetId = firstString(record.target_id, record.targetId);
   const contentType = firstString(record.content_type, record.contentType);
@@ -85,6 +85,22 @@ export function normalizeNotification(
     ...(contentId ? { contentId } : {}),
     ...(contentDeletedAt !== undefined ? { contentDeletedAt } : {}),
   };
+}
+
+/** Keeps server-authored labels, but turns canonical timestamps into compact mobile copy. */
+export function notificationTimeLabel(value: string | undefined, now = Date.now()): string | undefined {
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp) || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
+
+  const minutes = Math.max(0, Math.floor((now - timestamp) / 60000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short' }).format(timestamp);
 }
 
 function firstString(...values: unknown[]): string | undefined {

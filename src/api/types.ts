@@ -337,6 +337,8 @@ export interface Thread {
   targetType?: MemberContentTargetType;
   /** Canonical repost state returned by the working-group feed. */
   hasReposted?: boolean;
+  /** Canonical viewer upvote state included in the aggregate upvote count. */
+  hasUpvoted?: boolean;
   /** Canonical repost total returned by the working-group feed. */
   repostCount?: number;
   /** Defaults to 'discussion' when the source design didn't classify the post. */
@@ -424,6 +426,52 @@ export interface WorkingGroupMembership {
 
 export interface ApiSuccess {
   status: 'success';
+}
+
+export interface MemberSearchResult {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string | null;
+  excerpt: string | null;
+  href: string;
+  section: string;
+  badge: string;
+  updatedAt: string | null;
+  workingGroupSlug: string | null;
+}
+
+export interface MemberSearchContext {
+  slug: string;
+}
+
+export interface MemberSearchGroupedResults {
+  context: MemberSearchContext | null;
+  contextResults: MemberSearchResult[];
+  broaderResults: MemberSearchResult[];
+}
+
+export interface MemberSearchSuccessResponse extends MemberSearchGroupedResults {
+  status: 'success';
+  results: MemberSearchResult[];
+}
+
+export interface MemberSearchErrorResponse {
+  status: 'error';
+  message: string;
+}
+
+export type MemberSearchResponse = MemberSearchSuccessResponse | MemberSearchErrorResponse;
+
+export interface MemberSearchQueryInput {
+  query: string;
+  limit?: number;
+  contextGroupSlug?: string | null;
+  contextLimit?: number;
+}
+
+export interface MemberSearchSuggestionsInput {
+  limit?: number;
 }
 
 export interface WorkingGroupCoLead {

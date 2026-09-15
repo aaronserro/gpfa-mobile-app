@@ -25,23 +25,43 @@ const CONTENT_LABELS: Record<string, string> = {
   working_group_poll: 'working group poll',
 };
 
-const SAFE_SEGMENT = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/i;
+export const SAFE_MEMBER_PATH_SEGMENT = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/i;
 
-function parseMemberHref(href: string | undefined): URL | null {
+/** Parses only strict relative paths that are safe to resolve against a trusted GPFA origin. */
+export function parseMemberHref(href: string | undefined): URL | null {
   if (
     !href ||
     !href.startsWith('/') ||
     href.startsWith('//') ||
     href.includes('\\') ||
     href.includes('..') ||
-    /%(?:2e|2f|5c)/i.test(href)
+    /[\u0000-\u001f\u007f]/.test(href)
   ) return null;
+
+  // Decode repeatedly so double-encoded traversal and separators cannot be
+  // accepted here and decoded again by a browser or server later.
+  let decodedPath = href.split(/[?#]/, 1)[0];
+  for (let pass = 0; pass < 3; pass += 1) {
+    if (
+      decodedPath.startsWith('//') ||
+      decodedPath.includes('\\') ||
+      decodedPath.includes('..') ||
+      /%(?:2e|2f|5c)/i.test(decodedPath)
+    ) return null;
+    try {
+      const next = decodeURIComponent(decodedPath);
+      if (next === decodedPath) break;
+      decodedPath = next;
+    } catch {
+      return null;
+    }
+  }
 
   try {
     const url = new URL(href, 'https://gpfa.invalid');
     if (url.origin !== 'https://gpfa.invalid' || url.hash) return null;
     const parts = url.pathname.split('/').filter(Boolean);
-    if (parts.some((part) => !SAFE_SEGMENT.test(part))) return null;
+    if (parts.some((part) => !SAFE_MEMBER_PATH_SEGMENT.test(part))) return null;
     return url;
   } catch {
     return null;
@@ -99,7 +119,7 @@ export function notificationDestination(
   }
   if (url?.pathname === '/members/events') {
     const event = url.searchParams.get('event');
-    if (event && SAFE_SEGMENT.test(event)) return { kind: 'event', ids: [event] };
+    if (event && SAFE_MEMBER_PATH_SEGMENT.test(event)) return { kind: 'event', ids: [event] };
   }
 
   return { kind: 'unsupported' };

@@ -159,6 +159,12 @@ Rules inside a screen:
 - **Reuse primitives** before writing new markup: `ScreenHeader`,
   `MastheadMeta`, `DisplayHead`, `Badge`, `Card`, `Avatar`, `Input`,
   `RelevanceDot`, `LiveDot`, `FadeUp`, `RadialWash` in `src/ds/primitives.tsx`.
+- **Reuse semantic building blocks** for collection-heavy screens: `AppText`
+  from `src/ds/text.tsx`, `CollectionEmptyState` / `InlineRetryState` from
+  `src/ds/feedback.tsx`, `SegmentedControl` / `FilterChip` from
+  `src/ds/controls.tsx`, and `ContentRow` from `src/ds/content-row.tsx`.
+  Feature components should compose these rather than copy typography,
+  selected-state, empty-state, or pressed-state styles into each screen.
 - **Static styles go in `StyleSheet.create`**; only theme-dependent values go
   inline as a second array entry: `style={[styles.card, { borderColor: t.ruleHairline }]}`.
 

@@ -37,8 +37,6 @@ export default function MoreScreen({
   annualMeetingEnabled,
   annualMeetingStatus,
   updateCount,
-  eventCount,
-  resourceCount,
   onOpenAnnualMeeting,
   onOpenUpdates,
   onOpenEvents,
@@ -49,8 +47,6 @@ export default function MoreScreen({
   annualMeetingEnabled: boolean;
   annualMeetingStatus: string;
   updateCount: number;
-  eventCount: number;
-  resourceCount: number;
   onOpenAnnualMeeting: () => void;
   onOpenUpdates: () => void;
   onOpenEvents: () => void;
@@ -139,9 +135,6 @@ export default function MoreScreen({
             </View>
           </View>
 
-          <Text style={[styles.footnote, { color: t.inkFaint }]}>
-            {eventCount} upcoming events · {resourceCount} resources
-          </Text>
         </View>
       </Animated.ScrollView>
     </View>
@@ -166,5 +159,4 @@ const styles = StyleSheet.create({
   },
   profileName: { fontFamily: sans(600), fontSize: 17 },
   profileMeta: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5 },
-  footnote: { fontFamily: sans(400), fontSize: 13, textAlign: 'center' },
 });

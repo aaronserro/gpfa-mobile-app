@@ -7,7 +7,7 @@ export function resourceDownloadFilename(value: string | undefined, fallbackId: 
     .slice(-160) || 'gpfa-resource.bin';
 }
 
-export type ResourcePreviewKind = 'pdf' | 'image' | 'text' | 'html' | 'external';
+export type ResourcePreviewKind = 'pdf' | 'image' | 'text' | 'html' | 'document' | 'external';
 
 type PreviewableResourceFile = {
   href: string;
@@ -19,6 +19,19 @@ type PreviewableResourceFile = {
 const IMAGE_EXTENSIONS = new Set(['avif', 'gif', 'heic', 'jpeg', 'jpg', 'png', 'svg', 'webp']);
 const TEXT_EXTENSIONS = new Set(['csv', 'json', 'md', 'markdown', 'txt']);
 const WEB_EXTENSIONS = new Set(['htm', 'html', 'xhtml']);
+const DOCUMENT_EXTENSIONS = new Set(['doc', 'docx', 'odt', 'ods', 'odp', 'ppt', 'pptx', 'rtf', 'xls', 'xlsx']);
+const DOCUMENT_MIME_TYPES = new Set([
+  'application/msword',
+  'application/rtf',
+  'application/vnd.ms-excel',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.oasis.opendocument.presentation',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
 
 function resourceExtension(file: PreviewableResourceFile): string {
   const fromName = file.fileName?.trim();
@@ -44,6 +57,7 @@ export function resourcePreviewKind(file: PreviewableResourceFile): ResourcePrev
     return file.previewable ? 'html' : 'external';
   }
   if (mimeType.startsWith('text/') || mimeType === 'application/json') return 'text';
+  if (DOCUMENT_MIME_TYPES.has(mimeType)) return 'document';
 
   // A specific, unsupported MIME type is authoritative and must not be executed as HTML.
   if (mimeType && mimeType !== 'application/octet-stream') return 'external';
@@ -53,11 +67,22 @@ export function resourcePreviewKind(file: PreviewableResourceFile): ResourcePrev
   if (IMAGE_EXTENSIONS.has(extension)) return 'image';
   if (TEXT_EXTENSIONS.has(extension)) return 'text';
   if (WEB_EXTENSIONS.has(extension) && file.previewable) return 'html';
+  if (DOCUMENT_EXTENSIONS.has(extension)) return 'document';
   return 'external';
 }
 
 export function resourceCanPreview(file: PreviewableResourceFile): boolean {
   return resourcePreviewKind(file) !== 'external';
+}
+
+export function resourceExtractedTextPreviewUrl(url: string): string | null {
+  try {
+    const target = new URL(url);
+    target.searchParams.set('preview', 'text');
+    return target.toString();
+  } catch {
+    return null;
+  }
 }
 
 export function resourceIsTrustedContentAsset(

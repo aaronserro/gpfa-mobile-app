@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowRight, CalendarDots, CheckCircle, Megaphone } from '../ds/icons';
 import { Badge, MastheadMeta, PageActions, PageHead, ScreenEnter, StickyTitle, useStickyScroll } from '../ds/primitives';
+import { SegmentedControl } from '../ds/controls';
+import { CollectionEmptyState } from '../ds/feedback';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../ds/tokens';
 import type {
@@ -15,6 +17,12 @@ import type {
 
 type UpdatesFilter = 'all' | 'announcements' | 'surveys';
 export type UpdateSelection = { kind: 'announcement'; id: string } | { kind: 'survey'; id: string };
+
+const UPDATE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'announcements', label: 'Announcements' },
+  { id: 'surveys', label: 'Surveys' },
+] as const;
 
 export default function UpdatesScreen({
   announcements,
@@ -78,28 +86,12 @@ export default function UpdatesScreen({
         {...handlers}
       >
         <PageHead title="Updates" onBack={onBack} backLabel="Back to More" actions={<PageActions />}>
-        <View style={[styles.segment, { backgroundColor: t.surfaceSoft }]}>
-          {(
-            [
-              ['all', 'All'],
-              ['announcements', 'Announcements'],
-              ['surveys', 'Surveys'],
-            ] as [UpdatesFilter, string][]
-          ).map(([id, label]) => {
-            const active = filter === id;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => setFilter(id)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                style={[styles.segmentButton, active && { backgroundColor: t.surfacePaper }]}
-              >
-                <Text style={[styles.segmentLabel, { color: active ? t.inkStrong : t.inkMuted }]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+          <SegmentedControl
+            value={filter}
+            options={UPDATE_FILTERS}
+            onChange={setFilter}
+            accessibilityLabel="Filter updates"
+          />
         </PageHead>
         <View style={styles.summaryRow}>
           <Text style={[styles.summaryTitle, { color: t.inkStrong }]}>Member updates</Text>
@@ -107,6 +99,23 @@ export default function UpdatesScreen({
         </View>
 
         <View style={[styles.band, { backgroundColor: t.surfacePaper, borderColor: t.rule }]}>
+          {rows.length === 0 && (
+            <CollectionEmptyState
+              title={filter === 'announcements'
+                ? 'No announcements'
+                : filter === 'surveys'
+                  ? 'No surveys'
+                  : 'No member updates'}
+              body={filter === 'announcements'
+                ? 'New GPFA announcements will appear here.'
+                : filter === 'surveys'
+                  ? 'Open member surveys will appear here.'
+                  : 'Announcements and surveys will appear here when published.'}
+              Glyph={filter === 'surveys' ? CalendarDots : Megaphone}
+              compact
+              style={styles.emptyState}
+            />
+          )}
           {rows.map((row, index) => {
             if (row.kind === 'announcement') {
               const unread = row.item.unread && !readIds.includes(row.item.id);
@@ -388,13 +397,11 @@ function surveyStatementCount(survey: MobileSurveyPreview) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  segment: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 12 },
-  segmentButton: { flex: 1, minHeight: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  segmentLabel: { fontFamily: sans(600), fontSize: 11.5 },
   list: { paddingVertical: 22, paddingBottom: 32 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 11 },
   summaryTitle: { fontFamily: sans(600), fontSize: 19, letterSpacing: trackDisplay(19) },
   band: { borderTopWidth: 1, borderBottomWidth: 1 },
+  emptyState: { margin: 20 },
   row: { minHeight: 112, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 15 },
   typeIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   unreadDot: { position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5 },

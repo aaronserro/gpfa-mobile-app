@@ -2,8 +2,8 @@
  * Directory → one member organization.
  *
  * Presentational: the org, its people and its open roles all arrive resolved.
- * The design puts the Members/Jobs strip inside the scrolling region; it is
- * pinned here instead, so a long roster never scrolls the control away.
+ * The page follows the same hierarchy as other member screens: title, back
+ * action and global controls first, followed by organization stats and tabs.
  */
 import { useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -48,47 +48,6 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
     <SwipeBack onBack={onBack} style={[styles.fill, { backgroundColor: t.surfacePage }]}>
       <StickyTitle scrollY={scrollY} title={org.fullName ?? org.name} onBack={onBack} backLabel="Back to directory" actions={<PageActions />} />
 
-      <View
-        style={[
-          styles.stats,
-          { backgroundColor: t.surfacePaper, borderBottomColor: t.rule },
-        ]}
-      >
-        {stats.map((s, i) => (
-          <View
-            key={s.label}
-            style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.rule }]}
-          >
-            <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
-            <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View
-        style={[styles.tabs, { backgroundColor: t.surfacePaper, borderBottomColor: t.rule }]}
-      >
-        {(
-          [
-            ['members', 'Members'],
-            ['jobs', 'Jobs'],
-          ] as [ProfileTab, string][]
-        ).map(([id, label]) => {
-          const on = id === tab;
-          return (
-            <Pressable
-              key={id}
-              onPress={() => setTab(id)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              style={[styles.tab, { borderBottomColor: on ? t.surfaceAnchor : 'transparent' }]}
-            >
-              <Text style={[styles.tabLabel, { color: on ? t.inkStrong : t.inkFaint }]}>{label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
       <Animated.ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
         <PageHead title={org.fullName ?? org.name} onBack={onBack} backLabel="Back to directory" actions={<PageActions />}>
           <View style={styles.orgRow}>
@@ -103,6 +62,45 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
             </View>
           </View>
         </PageHead>
+        <View
+          style={[
+            styles.stats,
+            { backgroundColor: t.surfacePaper, borderBottomColor: t.rule },
+          ]}
+        >
+          {stats.map((s, i) => (
+            <View
+              key={s.label}
+              style={[styles.stat, i > 0 && { borderLeftWidth: 1, borderLeftColor: t.rule }]}
+            >
+              <Text style={[styles.statValue, { color: t.inkStrong }]}>{s.value}</Text>
+              <Text style={[styles.statLabel, { color: t.inkMuted }]}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+        <View
+          style={[styles.tabs, { backgroundColor: t.surfacePaper, borderBottomColor: t.rule }]}
+        >
+          {(
+            [
+              ['members', 'Members'],
+              ['jobs', 'Jobs'],
+            ] as [ProfileTab, string][]
+          ).map(([id, label]) => {
+            const on = id === tab;
+            return (
+              <Pressable
+                key={id}
+                onPress={() => setTab(id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={[styles.tab, { borderBottomColor: on ? t.surfaceAnchor : 'transparent' }]}
+              >
+                <Text style={[styles.tabLabel, { color: on ? t.inkStrong : t.inkFaint }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         {tab === 'members' ? (
           <>
             <SectionHead
@@ -137,7 +135,7 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
                       size={36}
                     />
                     <View style={styles.flex}>
-                      <Text style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
+                      <Text numberOfLines={1} style={[styles.personName, { color: t.inkStrong }]}>{p.name}</Text>
                       <Text numberOfLines={1} style={[styles.personRole, { color: t.inkMuted }]}>
                         {p.role}
                       </Text>
@@ -187,8 +185,8 @@ export default function OrgProfile({ org, people, jobs, onBack, onOpenJob, onOpe
                   ]}
                 >
                   <View style={styles.flex}>
-                    <Text style={[styles.jobTitle, { color: t.inkStrong }]}>{j.title}</Text>
-                    <Text style={[styles.jobMeta, { color: t.inkMuted }]}>
+                    <Text numberOfLines={2} style={[styles.jobTitle, { color: t.inkStrong }]}>{j.title}</Text>
+                    <Text numberOfLines={2} style={[styles.jobMeta, { color: t.inkMuted }]}>
                       {`${j.loc} · ${j.closes}`}
                     </Text>
                   </View>
@@ -220,15 +218,15 @@ function SectionHead({ label, count }: { label: string; count: string }) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1 },
+  fill: { flex: 1, overflow: 'hidden' },
   flex: { flex: 1, minWidth: 0 },
 
-  orgRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 13, paddingTop: 12 },
+  orgRow: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 13, paddingTop: 12 },
   orgMeta: { fontFamily: sans(400), fontSize: 13 },
   blurb: { marginTop: 6, fontFamily: sans(400), fontSize: 14.5, lineHeight: 23 },
 
-  stats: { flexDirection: 'row', borderBottomWidth: 1 },
-  stat: { flex: 1, gap: 2.4, paddingVertical: 13.6, paddingHorizontal: 16 },
+  stats: { width: '100%', flexDirection: 'row', borderBottomWidth: 1 },
+  stat: { flex: 1, minWidth: 0, gap: 2.4, paddingVertical: 13.6, paddingHorizontal: 8 },
   statValue: {
     fontFamily: sans(600),
     fontSize: 20,
@@ -237,8 +235,8 @@ const styles = StyleSheet.create({
   },
   statLabel: { fontFamily: sans(400), fontSize: 12.5 },
 
-  tabs: { flexDirection: 'row', gap: 22, paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 1 },
-  tab: { paddingBottom: 9, borderBottomWidth: 2 },
+  tabs: { width: '100%', flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, borderBottomWidth: 1 },
+  tab: { flex: 1, minWidth: 0, alignItems: 'center', paddingBottom: 9, borderBottomWidth: 2 },
   tabLabel: { fontFamily: sans(600), fontSize: 14.5 },
 
   scroll: { paddingBottom: 24 },
@@ -246,15 +244,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
     paddingTop: 14,
     paddingBottom: 6,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   sectionLabel: { fontFamily: sans(600), fontSize: 14.5, letterSpacing: trackDisplay(14.5) },
-  sectionCount: { fontFamily: sans(400), fontSize: 13 },
-  rows: { borderTopWidth: 1, borderBottomWidth: 1 },
+  sectionCount: { flexShrink: 1, textAlign: 'right', fontFamily: sans(400), fontSize: 13 },
+  rows: {
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
 
   personRow: {
+    width: '100%',
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -266,14 +273,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 11,
-    paddingLeft: 20,
+    paddingLeft: 12,
   },
   messageAction: {
-    minWidth: 52,
-    minHeight: 52,
+    width: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingRight: 12,
+    paddingRight: 8,
   },
   personName: { fontFamily: sans(500), fontSize: 15 },
   personRole: { marginTop: 2, fontFamily: sans(400), fontSize: 12.5 },
@@ -283,8 +290,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 11,
-    paddingRight: 20,
-    paddingLeft: 17,
+    paddingRight: 12,
+    paddingLeft: 12,
     borderBottomWidth: 1,
     borderLeftWidth: 3,
   },

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -24,6 +26,20 @@ const segments = [
   { start: 42, text: 'Board questions' },
   { start: 96, text: 'Comparison matrix' },
 ];
+
+test('podcast cards show visual date, duration, and guest metadata without transcript copy', () => {
+  const resources = readFileSync(
+    join(import.meta.dirname, '../src/screens/ResourcesScreen.tsx'),
+    'utf8'
+  );
+
+  assert.match(resources, /Icon: CalendarDots/);
+  assert.match(resources, /Icon: Clock/);
+  assert.match(resources, /Icon: UsersThree/);
+  assert.match(resources, /<PodcastMeta episode=\{featured\} \/>/);
+  assert.match(resources, /<PodcastMeta episode=\{episode\} compact \/>/);
+  assert.doesNotMatch(resources, /e\.hasTranscript \? 'Transcript'/);
+});
 
 test('transcript synchronization selects the latest started segment', () => {
   assert.equal(activeTranscriptSegmentIndex(segments, 0), 0);

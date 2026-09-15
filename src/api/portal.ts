@@ -7,7 +7,14 @@ import {
   normalizeAskConversation,
   normalizeAskMessage,
 } from './ask-stream';
-import { API_BASE_URL, GPFA_WEB_ORIGIN, ROUTES, USING_FIXTURE_PORTAL_DATA, USING_REMOTE_API } from './config';
+import {
+  API_BASE_URL,
+  GPFA_WEB_ORIGIN,
+  normalizeMemberSearchQuery,
+  ROUTES,
+  USING_FIXTURE_PORTAL_DATA,
+  USING_REMOTE_API,
+} from './config';
 import { normalizeNotification, normalizeNotifications } from './notification-normalization';
 import type {
   AskAnswer,
@@ -66,6 +73,11 @@ import type {
   MemberContentTargetInput,
   MemberContentTargetType,
   MemberRepost,
+  MemberSearchQueryInput,
+  MemberSearchResponse,
+  MemberSearchResult,
+  MemberSearchSuccessResponse,
+  MemberSearchSuggestionsInput,
   Member,
   MemberEmailPreferenceKey,
   MemberEmailPreferences,
@@ -163,6 +175,7 @@ import {
   MEMBER_ORGS,
   MESSAGE_CONVERSATIONS,
   MESSAGE_ITEMS,
+  MEMBER_SEARCH_DOCUMENTS,
   NEWS_STORIES,
   NEXT_EVENT,
   NOTIFICATIONS,
@@ -1103,6 +1116,33 @@ export function getJobs(): Promise<JobListing[]> {
   return request<unknown>(`${ROUTES.jobs}${queryString({ pageSize: 100 })}`).then(normalizeJobListings);
 }
 
+export function getMemberSearch(
+  input: MemberSearchQueryInput
+): Promise<MemberSearchSuccessResponse> {
+  const normalized = normalizeMemberSearchQuery(input);
+  if (USING_PORTAL_FIXTURES) return local(fixtureMemberSearch(normalized));
+  return request<unknown>(ROUTES.memberSearch(normalized)).then(requireMemberSearchSuccess);
+}
+
+export function getMemberSearchSuggestions(
+  input: MemberSearchSuggestionsInput = {}
+): Promise<MemberSearchSuccessResponse> {
+  if (USING_PORTAL_FIXTURES) {
+    const limit = normalizeMemberSearchQuery({ query: '', limit: input.limit }).limit;
+    const results = MEMBER_SEARCH_DOCUMENTS.slice(0, limit);
+    return local({
+      status: 'success',
+      results,
+      context: null,
+      contextResults: [],
+      broaderResults: results,
+    });
+  }
+  return request<unknown>(ROUTES.memberSearchSuggestions(input)).then(
+    requireMemberSearchSuccess
+  );
+}
+
 /**
  * Member institutions, alphabetical by `name` — the directory index groups
  * consecutive entries by initial letter and never re-sorts them.
@@ -1188,6 +1228,131 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} response is invalid.`);
   }
   return value as Record<string, unknown>;
+}
+
+export function parseMemberSearchResponse(value: unknown): MemberSearchResponse {
+  const response = requireRecord(value, 'Member search');
+  if (response.status === 'error') {
+    if (typeof response.message !== 'string' || !response.message.trim()) {
+      throw new Error('Member search response is invalid.');
+    }
+    return { status: 'error', message: response.message };
+  }
+  if (
+    response.status !== 'success' ||
+    !Array.isArray(response.results) ||
+    !Array.isArray(response.contextResults) ||
+    !Array.isArray(response.broaderResults)
+  ) {
+    throw new Error('Member search response is invalid.');
+  }
+
+  let context: MemberSearchSuccessResponse['context'];
+  if (response.context === null) {
+    context = null;
+  } else {
+    const rawContext = requireRecord(response.context, 'Member search context');
+    if (typeof rawContext.slug !== 'string' || !rawContext.slug.trim()) {
+      throw new Error('Member search context is invalid.');
+    }
+    context = { slug: rawContext.slug };
+  }
+
+  return {
+    status: 'success',
+    results: response.results.map((result, index) =>
+      parseMemberSearchResult(result, `Member search result ${index + 1}`)
+    ),
+    context,
+    contextResults: response.contextResults.map((result, index) =>
+      parseMemberSearchResult(result, `Member search context result ${index + 1}`)
+    ),
+    broaderResults: response.broaderResults.map((result, index) =>
+      parseMemberSearchResult(result, `Member search broader result ${index + 1}`)
+    ),
+  };
+}
+
+function parseMemberSearchResult(value: unknown, label: string): MemberSearchResult {
+  const result = requireRecord(value, label);
+  for (const field of ['id', 'kind', 'title', 'href', 'section', 'badge'] as const) {
+    if (typeof result[field] !== 'string' || !result[field].trim()) {
+      throw new Error(`${label} is invalid.`);
+    }
+  }
+  for (const field of ['subtitle', 'excerpt', 'updatedAt', 'workingGroupSlug'] as const) {
+    if (result[field] !== null && typeof result[field] !== 'string') {
+      throw new Error(`${label} is invalid.`);
+    }
+  }
+  return {
+    id: result.id as string,
+    kind: result.kind as string,
+    title: result.title as string,
+    subtitle: result.subtitle as string | null,
+    excerpt: result.excerpt as string | null,
+    href: result.href as string,
+    section: result.section as string,
+    badge: result.badge as string,
+    updatedAt: result.updatedAt as string | null,
+    workingGroupSlug: result.workingGroupSlug as string | null,
+  };
+}
+
+function requireMemberSearchSuccess(value: unknown): MemberSearchSuccessResponse {
+  const response = parseMemberSearchResponse(value);
+  if (response.status === 'error') throw new Error(response.message);
+  return response;
+}
+
+function fixtureMemberSearch(
+  input: ReturnType<typeof normalizeMemberSearchQuery>
+): MemberSearchSuccessResponse {
+  if (input.query.length < 2) {
+    return {
+      status: 'success',
+      results: [],
+      context: null,
+      contextResults: [],
+      broaderResults: [],
+    };
+  }
+
+  const query = searchableFixtureText(input.query);
+  const matches = MEMBER_SEARCH_DOCUMENTS.filter((result) =>
+    searchableFixtureText(
+      [result.title, result.subtitle, result.excerpt, result.section, result.badge].join(' ')
+    ).includes(query)
+  ).filter(
+    (result) =>
+      !input.contextGroupSlug ||
+      result.kind !== 'working_group' ||
+      result.workingGroupSlug !== input.contextGroupSlug
+  );
+  const contextResults = input.contextGroupSlug
+    ? matches
+        .filter((result) => result.workingGroupSlug === input.contextGroupSlug)
+        .slice(0, input.contextLimit)
+    : [];
+  const broaderResults = matches
+    .filter((result) => !contextResults.includes(result))
+    .slice(0, Math.max(0, input.limit - contextResults.length));
+  const results = [...contextResults, ...broaderResults];
+
+  return {
+    status: 'success',
+    results,
+    context: input.contextGroupSlug ? { slug: input.contextGroupSlug } : null,
+    contextResults,
+    broaderResults,
+  };
+}
+
+function searchableFixtureText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase();
 }
 
 function normalizeBlockedMembersResponse(value: unknown): BlockedMembersResponse {
@@ -2302,6 +2467,7 @@ export function workingGroupFeedItemResponseToEntry(
         title: firstString(thread.title) ?? post.title,
         body: firstString(thread.body) ?? post.body,
         upvotes: numberFrom(thread.upvoteCount, post.upvotes),
+        hasUpvoted: booleanFrom(thread.hasUpvoted, post.hasUpvoted),
         attachments: attachments.map(workingGroupDetailAttachmentToForumAttachment),
         file: firstAttachment ? attachmentTitle(firstAttachment) : post.file,
         fileMeta: firstAttachment ? attachmentMeta(firstAttachment) : post.fileMeta,
@@ -2324,6 +2490,7 @@ export function workingGroupFeedItemResponseToEntry(
       title: firstString(poll.title) ?? post.title,
       body: firstString(poll.description, poll.body) ?? post.body,
       upvotes: numberFrom(poll.upvoteCount, post.upvotes),
+      hasUpvoted: booleanFrom(poll.hasUpvoted, post.hasUpvoted),
       poll: workingGroupPollDetailToPoll(detail, post.poll),
       canReply: detail.permissions.canReply,
       canEdit: detail.permissions.canEdit,
@@ -3489,6 +3656,7 @@ function workingGroupFeedItemToThread(item: WorkingGroupFeedItem): Thread {
     id: item.id,
     groupSlug: item.groupSlug,
     targetType,
+    hasUpvoted: item.hasUpvoted,
     hasReposted: item.hasReposted,
     repostCount: item.repostCount,
     type,

@@ -19,6 +19,14 @@ test('News Radar cards use the same image resolver as the web app', () => {
   assert.match(screen, /cachePolicy="memory-disk"/);
 });
 
+test('opened News Radar stories keep the same resolved hero image as their cards', () => {
+  const screen = source('src/screens/NewsStoryScreen.tsx');
+
+  assert.match(screen, /newsCardImageUrl\(item\.imageUrl, item\.topic, AUTH_BASE_URL\)/);
+  assert.match(screen, /imageUrl \? <Image source=\{imageUrl\}/);
+  assert.match(screen, /recyclingKey=\{item\.id\}/);
+});
+
 test('News Radar image resolution prefers publisher art and matches web topic fallbacks', () => {
   const origin = 'https://www.gpfa.ai';
 
@@ -60,4 +68,5 @@ test('the Menu calls the combined destination Resources', () => {
 
   assert.match(menu, /label="Resources"/);
   assert.doesNotMatch(menu, /label="Library & podcasts"/);
+  assert.doesNotMatch(menu, /upcoming events ·|resourceCount|eventCount/);
 });

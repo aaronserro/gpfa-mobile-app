@@ -2,11 +2,13 @@ import { Image } from 'expo-image';
 import { Animated, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'markdown-to-jsx/native';
 
+import { AUTH_BASE_URL } from '../api/config';
 import type { NewsFeedItem, RelatedNewsThread } from '../api/types';
 import { ArrowLeft, ArrowRight, ArrowSquareOut, LockSimple, Sparkle } from '../ds/icons';
 import { MastheadMeta, PageActions, PageHead, StickyTitle, useStickyScroll } from '../ds/primitives';
 import { useTheme } from '../ds/ThemeProvider';
 import { alpha, mono, sans } from '../ds/tokens';
+import { newsCardImageUrl } from '../lib/news-images';
 import { newsLinkDestination, newsSummaryBullets, stripMarkdownHtml } from '../lib/newsReader';
 
 export default function NewsStoryScreen({ item, relatedThreads, canPrevious, canNext, onBack, onPrevious, onNext, onOpenThread }: {
@@ -16,6 +18,7 @@ export default function NewsStoryScreen({ item, relatedThreads, canPrevious, can
 }) {
   const { t } = useTheme();
   const { scrollY, handlers } = useStickyScroll();
+  const imageUrl = newsCardImageUrl(item.imageUrl, item.topic, AUTH_BASE_URL);
   const openMarkdownLink = (href: string) => {
     const destination = newsLinkDestination(href);
     if (destination.kind === 'external') void Linking.openURL(destination.url);
@@ -32,7 +35,7 @@ export default function NewsStoryScreen({ item, relatedThreads, canPrevious, can
     <StickyTitle scrollY={scrollY} title="Story" onBack={onBack} backLabel="Back to News Radar" actions={<PageActions />} />
     <Animated.ScrollView style={styles.fill} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...handlers}>
       <PageHead title="Story" onBack={onBack} backLabel="Back to News Radar" actions={<PageActions />} />
-      {item.imageUrl ? <Image source={item.imageUrl} style={styles.hero} contentFit="cover" cachePolicy="memory-disk" transition={160} accessibilityIgnoresInvertColors /> : <View style={[styles.hero, { backgroundColor: t.surfaceSoft }]} />}
+      {imageUrl ? <Image source={imageUrl} style={styles.hero} contentFit="cover" cachePolicy="memory-disk" recyclingKey={item.id} transition={160} accessibilityIgnoresInvertColors /> : <View style={[styles.hero, { backgroundColor: t.surfaceSoft }]} />}
       <View style={styles.article}>
         <View style={styles.badges}><Text style={[styles.badge, { borderColor: t.rule, color: t.inkMuted }]}>{item.kind === 'gpfa' ? item.articleType : item.topic}</Text>{item.kind === 'gpfa' && item.isMemberOnly ? <View style={styles.lock}><LockSimple size={13} color={t.inkMuted} /><Text style={{ color: t.inkMuted, fontFamily: mono(500), fontSize: 9 }}>MEMBERS ONLY</Text></View> : null}</View>
         <Text style={[styles.title, { color: t.inkStrong }]}>{item.title}</Text>

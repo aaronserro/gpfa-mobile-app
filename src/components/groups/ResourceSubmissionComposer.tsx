@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import {
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { FileText, Link, Paperclip, X } from '../../ds/icons';
 import { Input } from '../../ds/primitives';
@@ -74,6 +75,7 @@ export default function ResourceSubmissionComposer({
   const [files, setFiles] = useState<SelectedResourceFile[]>([]);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const dragOffset = useRef(new Animated.Value(0)).current;
   const { closing, progress, requestClose } = useSheetTransition(onClose, sheetHeight);
 
   const parsedTags = useMemo(
@@ -82,6 +84,42 @@ export default function ResourceSubmissionComposer({
   );
   const canSubmit = title.trim().length >= 3 && (!!sourceUrl.trim() || files.length > 0) && !submitting && !closing;
   const dismissDisabled = submitting || closing;
+  const dismissDistance = Math.min(Math.max(sheetHeight * 0.16, 64), 128);
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!dismissDisabled)
+        .activeOffsetY(8)
+        .failOffsetX([-28, 28])
+        .runOnJS(true)
+        .onUpdate((event) => {
+          dragOffset.setValue(Math.max(0, event.translationY));
+        })
+        .onEnd((event) => {
+          if (event.translationY >= dismissDistance || event.velocityY >= 900) {
+            requestClose();
+            return;
+          }
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        })
+        .onFinalize((_event, success) => {
+          if (success || closing) return;
+          Animated.spring(dragOffset, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 240,
+            mass: 0.8,
+            useNativeDriver: true,
+          }).start();
+        }),
+    [closing, dismissDisabled, dismissDistance, dragOffset, requestClose]
+  );
 
   const pickFiles = async () => {
     setMessage(null);
@@ -161,32 +199,28 @@ export default function ResourceSubmissionComposer({
               paddingBottom: Math.max(insets.bottom, 18),
               opacity: sheetHeight ? 1 : 0,
               transform: [{
-                translateY: progress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [sheetHeight * 1.02, 0],
-                }),
+                translateY: Animated.add(
+                  progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [sheetHeight * 1.02, 0],
+                  }),
+                  dragOffset
+                ),
               }],
             },
           ]}
         >
-          <View style={[styles.grabber, { backgroundColor: t.rule }]} />
-
-          <View style={styles.head}>
-            <View style={styles.flex}>
-              <Text style={[styles.kicker, { color: t.inkFaint }]}>RESOURCE SUBMISSION</Text>
-              <Text style={[styles.title, { color: t.inkStrong }]}>Share with {groupName}</Text>
+          <GestureDetector gesture={dismissGesture}>
+            <View>
+              <View style={[styles.grabber, { backgroundColor: t.rule }]} />
+              <View style={styles.head}>
+                <View style={styles.flex}>
+                  <Text style={[styles.kicker, { color: t.inkFaint }]}>RESOURCE SUBMISSION</Text>
+                  <Text style={[styles.title, { color: t.inkStrong }]}>Share with {groupName}</Text>
+                </View>
+              </View>
             </View>
-            <Pressable
-              onPress={() => requestClose()}
-              disabled={dismissDisabled}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Close resource submission"
-              accessibilityState={{ disabled: dismissDisabled }}
-            >
-              <X size={18} color={t.inkMuted} />
-            </Pressable>
-          </View>
+          </GestureDetector>
 
           <ScrollView
             style={styles.formScroll}
@@ -371,6 +405,8 @@ const styles = StyleSheet.create({
   sheet: {
     maxHeight: '94%',
     width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderTopWidth: 1,
@@ -408,7 +444,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontFamily: sans(500), fontSize: 13.5 },
   chips: { gap: 8, paddingVertical: 10 },
   chip: {
-    minHeight: 34,
+    minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderRadius: 32,
@@ -431,7 +467,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   attachButton: {
-    minHeight: 34,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,

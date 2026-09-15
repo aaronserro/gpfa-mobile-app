@@ -29,6 +29,7 @@ export { BriefcaseIcon as Briefcase } from 'phosphor-react-native/lib/commonjs/i
 export { BuildingsIcon as Buildings } from 'phosphor-react-native/lib/commonjs/icons/Buildings';
 export { CurrencyCircleDollarIcon as CurrencyCircleDollar } from 'phosphor-react-native/lib/commonjs/icons/CurrencyCircleDollar';
 export { CalendarDotsIcon as CalendarDots } from 'phosphor-react-native/lib/commonjs/icons/CalendarDots';
+export { ClockIcon as Clock } from 'phosphor-react-native/lib/commonjs/icons/Clock';
 export { CaretDownIcon as CaretDown } from 'phosphor-react-native/lib/commonjs/icons/CaretDown';
 export { CaretLeftIcon as CaretLeft } from 'phosphor-react-native/lib/commonjs/icons/CaretLeft';
 export { CaretRightIcon as CaretRight } from 'phosphor-react-native/lib/commonjs/icons/CaretRight';

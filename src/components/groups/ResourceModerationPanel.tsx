@@ -76,7 +76,7 @@ export default function ResourceModerationPanel({
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+      <View style={styles.filters}>
         {FILTERS.map((option) => {
           const active = option.id === filter;
           return (
@@ -97,7 +97,7 @@ export default function ResourceModerationPanel({
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       {loading ? (
         <StateCard title="Loading submissions" body="Fetching the moderation queue." />
@@ -126,7 +126,7 @@ export default function ResourceModerationPanel({
                 <Text style={[styles.date, { color: t.inkFaint }]}>{formatDate(submission.submittedAt)}</Text>
               </View>
               <Text style={[styles.cardTitle, { color: t.inkStrong }]}>{submission.title}</Text>
-              <Text numberOfLines={1} style={[styles.cardMeta, { color: t.inkMuted }]}>
+              <Text style={[styles.cardMeta, { color: t.inkMuted }]}>
                 {submission.submitter?.fullName ?? 'Contributor'} · {resourceTypeLabel(submission.resourceType)}
               </Text>
               {(submission.files.length > 0 || submission.sourceUrl) && (
@@ -406,14 +406,14 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   heading: { fontFamily: sans(600), fontSize: 18, letterSpacing: trackDisplay(18) },
   subheading: { marginTop: 3, fontFamily: sans(400), fontSize: 13.5, lineHeight: 19.5 },
-  count: { minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  count: { minWidth: 28, minHeight: 28, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   countText: { fontFamily: mono(600), fontSize: 12 },
-  filters: { gap: 8 },
-  filter: { minHeight: 32, borderWidth: 1, borderRadius: 18, paddingHorizontal: 11, justifyContent: 'center' },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filter: { minHeight: 44, borderWidth: 1, borderRadius: 22, paddingHorizontal: 11, justifyContent: 'center' },
   filterText: { fontFamily: sans(500), fontSize: 12.5 },
   cards: { gap: 9 },
   card: { borderWidth: 1, borderRadius: 12, padding: 13 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardTitle: { marginTop: 9, fontFamily: sans(600), fontSize: 16, lineHeight: 21 },
   cardMeta: { marginTop: 4, fontFamily: sans(400), fontSize: 13 },
   date: { fontFamily: mono(400), fontSize: 9.5 },
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   retry: { marginTop: 10, fontFamily: sans(600), fontSize: 13.5 },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(19,35,41,.42)' },
-  sheet: { maxHeight: '92%', borderTopWidth: 1, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 12, paddingHorizontal: 20 },
+  sheet: { width: '100%', maxWidth: 680, maxHeight: '92%', alignSelf: 'center', borderTopWidth: 1, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 12, paddingHorizontal: 20 },
   grabber: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
   sheetHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingBottom: 12 },
   sheetTitle: { fontFamily: sans(600), fontSize: 19, lineHeight: 24.5, letterSpacing: trackDisplay(19) },
@@ -443,6 +443,6 @@ const styles = StyleSheet.create({
   notesLabel: { marginTop: 5, fontFamily: sans(500), fontSize: 13.5 },
   notesInput: { minHeight: 82, paddingVertical: 10, paddingHorizontal: 12, fontSize: 15 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10 },
-  action: { minHeight: 44, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12 },
+  action: { minHeight: 44, minWidth: 120, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12 },
   actionText: { fontFamily: sans(600), fontSize: 13.5 },
 });

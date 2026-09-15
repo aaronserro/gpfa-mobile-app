@@ -28,6 +28,7 @@ import { Avatar, Input, MastheadMeta, PageActions, PageHead, StickyTitle, useSti
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, postTypeStyle, sans, trackDisplay } from '../../ds/tokens';
 import { initials as initialsOf } from '../../lib/format';
+import { displayedWorkingGroupUpvote } from '../../lib/working-group-upvotes';
 import { AnchorAvatar, RoleBadge, TagChip, ROW_ICON, TYPE_ICON } from './parts';
 import ForumFilePicker from './ForumFilePicker';
 import ForumReportSheet from './ForumReportSheet';
@@ -217,6 +218,7 @@ export default function PostDetail({
   onBack,
 }: PostDetailProps) {
   const { t } = useTheme();
+  const displayedUpvote = displayedWorkingGroupUpvote(post, upvoted);
   const { scrollY, handlers } = useStickyScroll();
   const insets = useSafeAreaInsets();
   const replyInputRef = useRef<TextInput | null>(null);
@@ -517,7 +519,7 @@ export default function PostDetail({
                 color={upvoted ? t.brandLeaf : t.inkMuted}
               />
               <Text style={[styles.actionText, { color: upvoted ? t.brandLeaf : t.inkMuted }]}>
-                {(post.upvotes ?? 0) + (upvoted ? 1 : 0)}
+                {displayedUpvote.count}
               </Text>
             </Pressable>
             <View style={[styles.action, { borderColor: t.rule, backgroundColor: t.surfacePage }]}>
@@ -1112,7 +1114,7 @@ const styles = StyleSheet.create({
     letterSpacing: trackDisplay(22),
   },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, borderWidth: 1, borderRadius: 8, padding: 10 },
-  bylineTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  bylineTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
   bylineMeta: { marginTop: 1 },
   author: { fontFamily: sans(600), fontSize: 15 },
   postBody: { marginTop: 14, fontFamily: sans(400), fontSize: 15, lineHeight: 25.5 },
@@ -1205,9 +1207,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   eventChipText: { fontFamily: sans(400), fontSize: 12.5 },
-  rsvpRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  rsvpRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   rsvpBtn: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 120,
     minHeight: 44,
     borderWidth: 1,
     borderRadius: 8,
@@ -1240,7 +1243,9 @@ const styles = StyleSheet.create({
   pollFileGroup: { marginTop: 4, fontFamily: sans(600), fontSize: 16 },
   pollFileGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   pollFileStat: {
-    width: '50%',
+    flexBasis: '50%',
+    flexGrow: 1,
+    minWidth: 150,
     minHeight: 68,
     borderTopWidth: 1,
     paddingVertical: 11,
@@ -1279,11 +1284,11 @@ const styles = StyleSheet.create({
 
   actionScroller: { marginTop: 12 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 2 },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, paddingHorizontal: 8, borderWidth: 1, borderRadius: 6 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 10, borderWidth: 1, borderRadius: 8 },
   actionText: { fontFamily: mono(400), fontSize: 11 },
   manageRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   manageBtn: {
-    minHeight: 28,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -1360,7 +1365,7 @@ const styles = StyleSheet.create({
   composer: { borderTopWidth: 1, paddingTop: 10, paddingHorizontal: 16 },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   composerInputWrap: { flex: 1 },
-  composerInput: { height: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 15 },
+  composerInput: { minHeight: 44, borderRadius: 22, paddingHorizontal: 16, fontSize: 15 },
   send: {
     width: 44,
     height: 44,

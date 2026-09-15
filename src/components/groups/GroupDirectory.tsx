@@ -14,10 +14,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
 import { ChatText, Fire, Funnel, MagnifyingGlass, UsersThree } from '../../ds/icons';
+import { FilterChip, FilterChipRow } from '../../ds/controls';
+import { CollectionEmptyState } from '../../ds/feedback';
 import { Chip, PageActions, PageHead, StickyTitle } from '../../ds/primitives';
 import { useTheme } from '../../ds/ThemeProvider';
 import { alpha, mono, sans, trackDisplay } from '../../ds/tokens';
@@ -55,6 +58,7 @@ export default function GroupDirectory({
   onOpen,
 }: GroupDirectoryProps) {
   const { t } = useTheme();
+  const { width: windowWidth, fontScale } = useWindowDimensions();
   const scrollY = useRef(new Animated.Value(0)).current;
   const [sortOpen, setSortOpen] = useState(false);
   const [failedImages, setFailedImages] = useState<Record<string, boolean | undefined>>({});
@@ -64,6 +68,7 @@ export default function GroupDirectory({
     { label: 'All groups', groups: rest },
   ].filter((s) => s.groups.length > 0);
   const total = subscribed.length + rest.length;
+  const wideCards = windowWidth >= 700 && fontScale < 1.35;
 
   return (
     <View style={styles.fill}>
@@ -95,6 +100,8 @@ export default function GroupDirectory({
                 value={query}
                 onChangeText={onQuery}
                 placeholder="Search groups"
+                accessibilityLabel="Search working groups"
+                accessibilityHint="Filters groups by name, topic, or description"
                 placeholderTextColor={t.inkMuted}
                 style={[styles.searchInput, { color: t.inkStrong }]}
                 autoCapitalize="none"
@@ -120,34 +127,22 @@ export default function GroupDirectory({
           </View>
 
           {sortOpen && (
-            <View style={styles.sortStrip}>
+            <FilterChipRow>
               {SORTS.map((option) => {
                 const active = option.id === sort;
                 return (
-                  <Pressable
+                  <FilterChip
                     key={option.id}
+                    label={option.label}
+                    selected={active}
                     onPress={() => {
                       onSort(option.id);
                       setSortOpen(false);
                     }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={({ pressed }) => [
-                      styles.sortChip,
-                      {
-                        backgroundColor: active ? t.surfaceAnchor : t.surfacePaper,
-                        borderColor: active ? t.surfaceAnchor : t.rule,
-                      },
-                      pressed ? styles.pressed : null,
-                    ]}
-                  >
-                    <Text style={[styles.sortChipText, { color: active ? '#fff' : t.inkBody }]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
+                  />
                 );
               })}
-            </View>
+            </FilterChipRow>
           )}
 
           <Text style={[styles.count, { color: t.inkMuted }]}>
@@ -157,20 +152,22 @@ export default function GroupDirectory({
           {sections.map((s) => (
             <View key={s.label} style={styles.section}>
               <Text style={[styles.sectionLabel, { color: t.inkStrong }]}>{s.label}</Text>
-              {s.groups.map((g) => (
-                <Pressable
-                  key={g.id}
-                  onPress={() => onOpen(g.id)}
-                  accessibilityRole="button"
-                  android_ripple={{ color: alpha(t.inkStrong, 0.08) }}
-                  style={({ pressed }) => [
-                    styles.card,
-                    { backgroundColor: t.surfacePaper, borderColor: t.rule },
-                    pressed && Platform.OS !== 'android'
-                      ? { backgroundColor: t.surfaceSubtle }
-                      : null,
-                  ]}
-                >
+              <View style={styles.cardGrid}>
+                {s.groups.map((g) => (
+                  <Pressable
+                    key={g.id}
+                    onPress={() => onOpen(g.id)}
+                    accessibilityRole="button"
+                    android_ripple={{ color: alpha(t.inkStrong, 0.08) }}
+                    style={({ pressed }) => [
+                      styles.card,
+                      wideCards && styles.cardWide,
+                      { backgroundColor: t.surfacePaper, borderColor: t.rule },
+                      pressed && Platform.OS !== 'android'
+                        ? { backgroundColor: t.surfaceSubtle }
+                        : null,
+                    ]}
+                  >
                   {/* The card art sits above the v2 body, edge to edge. The
                       hatch is the fallback, and stays behind the image so a
                       slow or broken load never shows a bare rectangle. */}
@@ -205,7 +202,7 @@ export default function GroupDirectory({
                     </View>
 
                     {!!g.meta && (
-                      <Text numberOfLines={3} style={[styles.groupBio, { color: t.inkMuted }]}>
+                      <Text style={[styles.groupBio, { color: t.inkMuted }]}>
                         {g.meta}
                       </Text>
                     )}
@@ -219,15 +216,22 @@ export default function GroupDirectory({
                       ) : null;
                     })()}
                   </View>
-                </Pressable>
-              ))}
+                  </Pressable>
+                ))}
+              </View>
             </View>
           ))}
 
           {sections.length === 0 && (
-            <Text style={[styles.empty, { color: t.inkMuted }]}>
-              {query.trim() ? `No working group matches “${query.trim()}”.` : 'No working groups yet.'}
-            </Text>
+            <CollectionEmptyState
+              title={query.trim() ? 'No matching groups' : 'No working groups yet'}
+              body={query.trim()
+                ? `No working group matches “${query.trim()}”. Try a broader search.`
+                : 'New member working groups will appear here when they become available.'}
+              Glyph={UsersThree}
+              actionLabel={query.trim() ? 'Clear search' : undefined}
+              onAction={query.trim() ? () => onQuery('') : undefined}
+            />
           )}
 
           <Text style={[styles.disclaimer, { color: t.inkFaint }]}>
@@ -268,13 +272,14 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 26 },
   body: { padding: 16, gap: 12 },
 
-  controls: { flexDirection: 'row', gap: 10 },
+  controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   search: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 220,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 44,
+    minHeight: 44,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
@@ -284,23 +289,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 44,
+    minHeight: 44,
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
   },
   sortButtonText: { fontFamily: sans(500), fontSize: 15 },
-  sortStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sortChip: {
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 32,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sortChipText: { fontFamily: sans(400), fontSize: 14 },
-
   count: { fontFamily: sans(400), fontSize: 14 },
   section: { gap: 12 },
   sectionLabel: {
@@ -310,7 +304,9 @@ const styles = StyleSheet.create({
     letterSpacing: trackDisplay(15),
   },
 
-  card: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  card: { width: '100%', minWidth: 0, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  cardWide: { width: '48.5%' },
   bannerFrame: { height: 112, position: 'relative', overflow: 'hidden' },
   bannerImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   cardBody: { padding: 16 },
@@ -325,13 +321,6 @@ const styles = StyleSheet.create({
   cardFoot: { marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
   cardStamp: { fontFamily: mono(400), fontSize: 12.5 },
 
-  empty: {
-    paddingVertical: 40,
-    paddingHorizontal: 24,
-    textAlign: 'center',
-    fontFamily: sans(400),
-    fontSize: 15,
-  },
   disclaimer: {
     paddingTop: 14,
     fontFamily: sans(400),
